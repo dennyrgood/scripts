@@ -3,7 +3,7 @@
 # =========================================================================
 # Enhanced Sync Script (Minimalist Output)
 # Finds and synchronizes all Git repositories in the parent directory.
-# Only outputs details for repos that have changes or errors.
+# Provides a concise one-line status for every repo processed.
 # =========================================================================
 
 # Temporarily disable 'set -e' to allow us to handle non-zero exit codes (like git pull failure) gracefully inside the loop.
@@ -72,7 +72,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     PULL_SUCCESS=true
     PUSH_SUCCESS=false
     CHANGES_DETECTED=false
-    REPO_PROCESSED=true # Flag to ensure we don't print twice
+    REPO_PROCESSED=true
     
     REPO_NAME=$(basename "$REPO_PATH")
 
@@ -91,8 +91,8 @@ for REPO_PATH in "${REPOS[@]}"; do
         CHANGES_DETECTED=true
         COMMITTED_FILES=$(git diff --name-only --staged)
         
-        # Commit changes
-        if ! git commit -m "$COMMIT_MESSAGE"; then
+        # Commit changes and suppress verbose log output
+        if ! git commit -m "$COMMIT_MESSAGE" > /dev/null; then
             ERROR_LOG+="\n❌ Commit failed for $REPO_NAME."
             REPO_PROCESSED=false
             cd "$START_DIR"
@@ -144,7 +144,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     # --- D. CONDENSED OUTPUT ---
     
     if $CHANGES_DETECTED; then
-        # Detailed output for changes
+        # Detailed output for changes (begins with the status line)
         echo "✅ SYNCED: $REPO_NAME"
         
         if [ -n "$PULLED_FILES" ]; then
