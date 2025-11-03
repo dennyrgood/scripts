@@ -104,6 +104,11 @@ for REPO_PATH in "${REPOS[@]}"; do
     if git diff --staged --quiet; then
         echo "✓ No changes to commit."
     else
+        # Log the files about to be committed (Local changes)
+        echo "--- ⬆️ Files Committed Locally (Mac) --------------------"
+        git diff --name-only --staged
+        echo "--------------------------------------------------------"
+        
         # Commit changes
         echo "Committing changes..."
         if git commit -m "$COMMIT_MESSAGE"; then
@@ -118,27 +123,63 @@ for REPO_PATH in "${REPOS[@]}"; do
     # --- PULL/PUSH BLOCK ---
     
     # Pull remote changes (using rebase to avoid unnecessary merge commits)
-    echo "Pulling from remote..."
-    if ! git pull --rebase; then
+    echo "Pulling from remote (Web -> Mac)..."
+    
+    # Capture the output of the pull operation to see what changed
+    PULL_OUTPUT=$(git pull --rebase 2>&1)
+    PULL_STATUS=$?
+    
+    if [ $PULL_STATUS -ne 0 ]; then
+        # Display the full error output if the pull failed
+        echo "$PULL_OUTPUT"
         echo "❌ PULL FAILED! Please resolve conflicts manually in $REPO_PATH"
         cd "$START_DIR"
         continue
     fi
+    
     echo "✓ Pull complete."
     
+    # Log the files that were updated during the pull/rebase (Web to Mac changes)
+    if echo "$PULL_OUTPUT" | grep -q "Fast-forward\|Updated"; then
+        echo "--- ⬇️ Files Updated from Web (Pull) -------------------"
+        # Find files updated by the last pull (which is a merge or rebase)
+        PULLED_FILES=$(git log --pretty=format: --name-only --since='5 seconds ago' | sort -u)
+        if [ -n "$PULLED_FILES" ]; then
+            echo "$PULLED_FILES"
+        else
+            echo "No files updated in pull."
+        fi
+        echo "--------------------------------------------------------"
+    else
+        echo "No file changes detected during pull."
+    fi
+
+    
     # Push local changes
-    echo "Pushing to remote..."
+    echo "Pushing to remote (Mac -> Web)..."
     
     # 1. Attempt standard push
+    PUSH_SUCCESS=false
     if git push; then
+        PUSH_SUCCESS=true
         echo "✓ Successfully synced $REPO_NAME"
     # 2. If standard push fails (e.g., first push or missing upstream), try -u
     elif git push -u origin main; then
-        # If the standard push failed, attempt the explicit first-push command.
+        PUSH_SUCCESS=true
         echo "✓ Successfully synced $REPO_NAME (Set upstream branch)"
     else
         # If both attempts fail
         echo "❌ Push failed for $REPO_NAME"
+    fi
+
+    # Log the files that were pushed
+    if $PUSH_SUCCESS; then
+        # We can't easily capture the push output itself to see file changes, 
+        # so we rely on the commit log to show what was just pushed.
+        echo "--- ⬆️ Files Pushed to Web (Mac) ----------------------"
+        # Note: This displays the files from the commit made locally.
+        git diff --name-only "HEAD^..HEAD" || echo "No files committed or pushed."
+        echo "--------------------------------------------------------"
     fi
     
     echo ""
