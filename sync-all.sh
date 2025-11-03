@@ -43,28 +43,7 @@ echo ""
 
 # --- 2. FIND ALL REPOSITORIES ---
 
-# Find all .git directories starting the search from the root, excluding the root itself
-REPOS=()
-while IFS= read -r DIR; do
-    # Get the parent directory of the .git folder (which is the repo root)
-    REPO_PATH=$(dirname "$DIR")
-    REPOS+=("$REPO_PATH")
-done < <(find "$REPO_ROOT_DIR" -maxdepth 3 -type d \
-    -not -path "$REPO_ROOT_DIR/.git" \
-    -not -name "*.[Bb][Kk][Uu][Pp]*" \
-    -not -name "*.[Bb][Aa][Kk]*" \
-    -name ".git" \
-    -prune 2>/dev/null | sed 's/\/\.git$//')
-
-# OLD FIND COMMAND (Removed for replacement below):
-# done < <(find "$REPO_ROOT_DIR" -maxdepth 3 -type d -name ".git" -not -path "$REPO_ROOT_DIR/.git")
-
-# NEW FIND COMMAND EXPLANATION:
-# The `find` command is complex to handle the exclusion reliably while finding the .git folders.
-# The most robust way to exclude paths is to use `-prune` on the directory name itself.
-# However, for simplicity and cross-compatibility, we will refine the initial approach.
-
-# REVISED: Using find to exclude directory names before finding .git
+# Find all .git directories starting the search from the root, excluding backups
 REPOS=()
 while IFS= read -r DIR; do
     REPO_PATH=$(dirname "$DIR")
@@ -85,7 +64,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     
     REPO_NAME=$(basename "$REPO_PATH")
 
-    # Double check to ensure we aren't processing backup directories. This should catch any misses from the find filter.
+    # Double check to ensure we aren't processing backup directories. 
     if [[ "$REPO_NAME" =~ \.BKUP|\.BAK|\.bkup|\.bak ]]; then
         continue
     fi
@@ -93,9 +72,11 @@ for REPO_PATH in "${REPOS[@]}"; do
     # Initialize status variables for this repo
     COMMITTED_CHANGES=""
     PULLED_CHANGES=""
-    LAST_COMMIT_HASH=""
     WAS_UP_TO_DATE=true
     
+    # Capture the HEAD commit hash BEFORE the pull, to use for diff later.
+    PRE_PULL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+
     # Change to the repository directory
     cd "$REPO_PATH"
     
@@ -105,24 +86,20 @@ for REPO_PATH in "${REPOS[@]}"; do
     git add -A
     
     # Check if there are changes to commit
-    # 1. Capture the list of files that were just staged
     STAGED_FILES=$(git diff --name-only --staged)
     
     if [ -n "$STAGED_FILES" ]; then
         WAS_UP_TO_DATE=false
         
-        # Commit changes, suppressing verbose output.
-        # ADDED: --no-verify flag to bypass pre-commit hooks that may be failing.
+        # Commit changes, suppressing verbose output. Use --no-verify to bypass hooks.
         COMMIT_OUTPUT=$(git commit -m "$COMMIT_MESSAGE" --no-verify 2>&1)
         
-        # Check if commit was successful and capture the hash of the new commit
+        # Check if commit was successful
         if echo "$COMMIT_OUTPUT" | grep -q 'file changed'; then
             LAST_COMMIT_HASH=$(git rev-parse HEAD)
             # Use diff-tree to get the file status (A, M, D) for the latest commit
-            # Filter out the first line of diff-tree (which is the commit hash)
             COMMITTED_CHANGES=$(git diff-tree --no-commit-id --name-status "$LAST_COMMIT_HASH" | awk '{print $1 "   " $2}')
         else
-            # This catch is for an edge case where commit fails for other reasons
             echo "❌ ERROR: Commit failed for $REPO_NAME." | tee >(cat >&2)
             ERROR_COUNT=$((ERROR_COUNT + 1))
             cd "$START_DIR"
@@ -132,32 +109,34 @@ for REPO_PATH in "${REPOS[@]}"; do
     
     # --- PULL BLOCK (Web -> Mac) ---
     
-    # Use `git pull --rebase` to avoid creating unnecessary merge commits.
+    # Run pull and capture output, ignoring errors initially to check for conflicts
     PULL_OUTPUT=$(git pull --rebase 2>&1)
-    
-    if echo "$PULL_OUTPUT" | grep -q 'CONFLICT'; then
+    PULL_EXIT_CODE=$?
+
+    if [ $PULL_EXIT_CODE -ne 0 ] && echo "$PULL_OUTPUT" | grep -q 'CONFLICT'; then
         echo "❌ PULL FAILED! Please resolve conflicts manually in $REPO_PATH" | tee >(cat >&2)
         ERROR_COUNT=$((ERROR_COUNT + 1))
         cd "$START_DIR"
         continue
-    elif echo "$PULL_OUTPUT" | grep -q 'Fast-forward'; then
+    elif [ $PULL_EXIT_CODE -ne 0 ] && echo "$PULL_OUTPUT" | grep -q 'Could not find remote branch'; then
+        # This handles repos with no upstream branch set (rare, but happens)
+        echo "⚠️ WARNING: Skipping pull for $REPO_NAME (No upstream branch set)."
+        # Set WAS_UP_TO_DATE to false if we committed anything locally, so it pushes.
+    elif echo "$PULL_OUTPUT" | grep -q 'Fast-forward\|Receiving objects'; then
         WAS_UP_TO_DATE=false
-        # Get list of files changed during the pull/rebase
-        # Find the merge-base before the pull and diff against the current HEAD
-        MERGE_BASE=$(echo "$PULL_OUTPUT" | grep 'Fast-forward' | awk '{print $NF}')
-        # Use HEAD~1 if no hash is immediately available after FF
-        if [ -z "$MERGE_BASE" ]; then MERGE_BASE="HEAD@{1}"; fi 
+        
+        # FIX: Robustly get changes by diffing current HEAD against the HEAD before the pull.
+        if [ -n "$PRE_PULL_HEAD" ] && ! git diff --quiet "$PRE_PULL_HEAD" HEAD; then
+            PULLED_CHANGES=$(git diff --name-status "$PRE_PULL_HEAD" HEAD | awk '{print $1 "   " $2}')
+        fi
 
-        # Diff the original HEAD against the new HEAD to find files that came down
-        # Filter for A, M, D status
-        PULLED_CHANGES=$(git diff --name-status "$MERGE_BASE" HEAD | awk '{print $1 "   " $2}')
-
-    elif echo "$PULL_OUTPUT" | grep -q 'up to date'; then
-        # Quiet pull, no changes
-        : # Do nothing
-    else
-        # Catch for any other successful rebase/pull message
+    elif ! echo "$PULL_OUTPUT" | grep -q 'up to date'; then
+        # Catch for any successful rebase/pull that wasn't a fast-forward, but still changed things
         WAS_UP_TO_DATE=false
+        # Similar robust diffing check
+        if [ -n "$PRE_PULL_HEAD" ] && ! git diff --quiet "$PRE_PULL_HEAD" HEAD; then
+            PULLED_CHANGES=$(git diff --name-status "$PRE_PULL_HEAD" HEAD | awk '{print $1 "   " $2}')
+        fi
     fi
 
     # --- PUSH BLOCK (Mac -> Web) ---
@@ -178,7 +157,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     
     # --- OUTPUT GENERATION ---
     
-    if [ "$WAS_UP_TO_DATE" = true ]; then
+    if [ "$WAS_UP_TO_DATE" = true ] && [ -z "$COMMITTED_CHANGES" ] && [ -z "$PULLED_CHANGES" ]; then
         # Minimalist output for clean repos
         echo "✓ $REPO_NAME: Up-to-date"
     else
