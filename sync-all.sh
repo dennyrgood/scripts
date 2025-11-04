@@ -58,18 +58,21 @@ for REPO_PATH in "${REPOS[@]}"; do
     # Stage all changes
     git add -A
     
-    # Commit changes. Output will show if a commit occurred or if "nothing to commit".
-    # Using '|| true' to prevent 'set -e' from exiting the script if there is nothing to commit.
-    git commit -m "$COMMIT_MESSAGE" --no-verify || true
+    # Commit changes.
+    # We remove the output redirection that might be happening implicitly
+    # and use '--quiet' flags on the 'git add' and 'git pull' commands 
+    # if we want to silence them later, but for now we keep the commit
+    # command simple to let it print the change summary.
+    git commit -m "$COMMIT_MESSAGE" --no-verify
     
     # --- PULL BLOCK (Web -> Local) ---
     
-    # Pull/rebase changes. Output will show if pull failed or if it updated.
+    # Pull/rebase changes.
     git pull --rebase
     
     # --- PUSH BLOCK (Local -> Web) ---
     
-    # Push changes. Output will show if push failed or was successful/up-to-date.
+    # Push changes.
     git push
     
     # Return to the starting directory. Uses '|| true' to ensure script doesn't stop here.
