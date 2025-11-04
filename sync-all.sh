@@ -1,79 +1,106 @@
 #!/bin/bash
 
 # =========================================================================
-# Ultra-Minimalist Core Git Sync Script
-# Runs git commands on all detected repositories. No error handling logic 
-# or verbose output—relies purely on Git's exit codes and standard output.
+# Minimal Git Sync Script
+# Syncs all Git repositories, showing only essential information
 # =========================================================================
 
-# Exit immediately if a command exits with a non-zero status.
 set -e
 
-# --- 0. INITIAL SETUP (Minimum necessary for file path resolution) ---
-
+# --- SETUP ---
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 REPO_ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 START_DIR=$(pwd)
+ERROR_COUNT=0
 
-# --- 1. PROMPT FOR COMMIT MESSAGE (Required for git commit) ---
-
-echo "Enter commit message for any repos with changes (or press Enter for default):"
+# --- COMMIT MESSAGE ---
+echo "Enter commit message (or press Enter for default):"
 read -r COMMIT_MESSAGE
+COMMIT_MESSAGE=${COMMIT_MESSAGE:-"Auto-sync from local changes"}
+echo ""
 
-if [ -z "$COMMIT_MESSAGE" ]; then
-    COMMIT_MESSAGE="Auto-sync"
-fi
-
-# --- 2. FIND ALL REPOSITORIES (Excluding *.bkup/*.bak) ---
-
+# --- FIND REPOSITORIES ---
 REPOS=()
 while IFS= read -r DIR; do
     REPO_PATH=$(dirname "$DIR")
-    # Exclude backup directories
-    if [[ "$REPO_PATH" =~ \.BKUP|\.BAK|\.bkup|\.bak ]]; then
-        continue
+    if [[ ! "$REPO_PATH" =~ \.BKUP|\.BAK|\.bkup|\.bak|_backup|_bak ]]; then
+        REPOS+=("$REPO_PATH")
     fi
-    REPOS+=("$REPO_PATH")
 done < <(find "$REPO_ROOT_DIR" -maxdepth 3 -type d -name ".git" -not -path "$REPO_ROOT_DIR/.git")
 
-# --- 3. LOOP THROUGH REPOSITORIES AND RUN GIT COMMANDS ---
-
+# --- PROCESS REPOSITORIES ---
 for REPO_PATH in "${REPOS[@]}"; do
-    
     REPO_NAME=$(basename "$REPO_PATH")
-
-    # Double check skip for backup directories. 
-    if [[ "$REPO_NAME" =~ \.BKUP|\.BAK|\.bkup|\.bak ]]; then
+    
+    cd "$REPO_PATH" || { 
+        echo "❌ $REPO_NAME: Cannot access directory" >&2
+        ERROR_COUNT=$((ERROR_COUNT + 1))
+        cd "$START_DIR"
         continue
-    fi
+    }
     
-    # Change to the repository directory. Uses '|| continue' instead of error logic.
-    cd "$REPO_PATH" || continue
+    echo "📂 $REPO_NAME"
     
-    # --- OUTPUT REPO NAME ONLY ---
-    echo "--- PROCESSING: $REPO_NAME ---"
-    
-    # --- STAGE & COMMIT BLOCK ---
-    
-    # Stage all changes
+    # --- COMMIT LOCAL CHANGES ---
     git add -A
     
-    # Commit changes. Use '|| true' so 'set -e' doesn't stop the script if there are no changes (exit code 1).
-    # The output (like the file summary) will still be printed on success.
-    git commit -m "$COMMIT_MESSAGE" --no-verify || true
+    if ! git diff --staged --quiet; then
+        # List changed files
+        echo "   Changes to commit:"
+        git diff --staged --name-status | while read status file; do
+            case "$status" in
+                A) echo "      + $file" ;;
+                M) echo "      ~ $file" ;;
+                D) echo "      - $file" ;;
+                *) echo "      $status $file" ;;
+            esac
+        done
+        
+        if git commit -m "$COMMIT_MESSAGE" --no-verify &>/dev/null; then
+            echo "   ✓ Committed"
+        else
+            echo "   ❌ Commit failed" >&2
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+        fi
+    fi
     
-    # --- PULL BLOCK (Web -> Local) ---
+    # --- PULL FROM REMOTE ---
+    PULL_OUTPUT=$(git pull --rebase 2>&1)
     
-    # Pull/rebase changes.
-    git pull --rebase
+    if [ $? -ne 0 ]; then
+        if echo "$PULL_OUTPUT" | grep -q 'CONFLICT'; then
+            echo "   ❌ CONFLICT - resolve manually" >&2
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+        elif echo "$PULL_OUTPUT" | grep -q 'no tracking'; then
+            echo "   ⚠ No upstream branch"
+        else
+            echo "   ❌ Pull failed" >&2
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+        fi
+    elif ! echo "$PULL_OUTPUT" | grep -q 'up to date'; then
+        echo "   ↓ Pulled changes"
+    fi
     
-    # --- PUSH BLOCK (Local -> Web) ---
+    # --- PUSH TO REMOTE ---
+    PUSH_OUTPUT=$(git push 2>&1)
     
-    # Push changes.
-    git push
+    if echo "$PUSH_OUTPUT" | grep -q 'error'; then
+        echo "   ❌ Push failed" >&2
+        ERROR_COUNT=$((ERROR_COUNT + 1))
+    elif ! echo "$PUSH_OUTPUT" | grep -q 'Everything up-to-date'; then
+        echo "   ↑ Pushed changes"
+    fi
     
-    # Return to the starting directory. Uses '|| true' to ensure script doesn't stop here.
-    cd "$START_DIR" || true
-    
+    echo ""
+    cd "$START_DIR"
 done
 
+# --- SUMMARY ---
+echo "━━━━━━━━━━━━━━━━━━━━"
+if [ $ERROR_COUNT -gt 0 ]; then
+    echo "⚠ Completed with $ERROR_COUNT error(s)"
+    exit 1
+else
+    echo "✓ All repositories synced"
+fi
+echo "━━━━━━━━━━━━━━━━━━━━"
