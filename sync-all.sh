@@ -1,17 +1,20 @@
 #!/bin/bash
 
 # =========================================================================
-# Minimal Git Sync Script
-# Syncs all Git repositories, showing only essential information
+# Multi-Repository Git Sync Script
+# Syncs all Git repositories on their current branches
 # =========================================================================
 
-set -e
+# --- CONFIGURATION ---
+USE_REBASE=false  # Set to true to use rebase instead of merge
+VERIFY_COMMITS=true  # Set to false to skip pre-commit hooks
 
 # --- SETUP ---
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 REPO_ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 START_DIR=$(pwd)
 ERROR_COUNT=0
+SKIP_COUNT=0
 
 # --- COMMIT MESSAGE ---
 echo "Enter commit message (or press Enter for default):"
@@ -28,12 +31,16 @@ while IFS= read -r DIR; do
     fi
 done < <(find "$REPO_ROOT_DIR" -maxdepth 3 -type d -name ".git" -not -path "$REPO_ROOT_DIR/.git")
 
+echo "Found ${#REPOS[@]} repositories to sync"
+echo ""
+
 # --- PROCESS REPOSITORIES ---
 for REPO_PATH in "${REPOS[@]}"; do
     REPO_NAME=$(basename "$REPO_PATH")
+    REPO_FAILED=false
     
     cd "$REPO_PATH" || { 
-        echo "❌ $REPO_NAME: Cannot access directory" >&2
+        echo "✗ $REPO_NAME: Cannot access directory" >&2
         ERROR_COUNT=$((ERROR_COUNT + 1))
         cd "$START_DIR"
         continue
@@ -41,10 +48,29 @@ for REPO_PATH in "${REPOS[@]}"; do
     
     echo "📂 $REPO_NAME"
     
+    # --- CHECK FOR DETACHED HEAD ---
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    
+    if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+        echo "   ⚠  Detached HEAD state - skipping (not on any branch)" >&2
+        echo "      Run: git checkout -b <branch-name> to create a branch"
+        SKIP_COUNT=$((SKIP_COUNT + 1))
+        echo ""
+        cd "$START_DIR"
+        continue
+    fi
+    
+    echo "   Branch: $CURRENT_BRANCH"
+    
+    # --- CHECK FOR UNCOMMITTED CHANGES BEFORE PULLING ---
+    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+        echo "   ℹ  Uncommitted changes detected"
+    fi
+    
     # --- COMMIT LOCAL CHANGES ---
     git add -A
     
-    if ! git diff --staged --quiet; then
+    if ! git diff --staged --quiet 2>/dev/null; then
         # List changed files
         echo "   Changes to commit:"
         git diff --staged --name-status | while read status file; do
@@ -56,39 +82,99 @@ for REPO_PATH in "${REPOS[@]}"; do
             esac
         done
         
-        if git commit -m "$COMMIT_MESSAGE" --no-verify &>/dev/null; then
+        # Commit with or without verification based on config
+        COMMIT_CMD="git commit -m \"$COMMIT_MESSAGE\""
+        if [ "$VERIFY_COMMITS" = false ]; then
+            COMMIT_CMD="$COMMIT_CMD --no-verify"
+        fi
+        
+        if eval "$COMMIT_CMD" &>/dev/null; then
             echo "   ✓ Committed"
         else
-            echo "   ❌ Commit failed" >&2
+            echo "   ✗ Commit failed" >&2
+            if [ "$VERIFY_COMMITS" = true ]; then
+                echo "      Tip: Pre-commit hooks may have rejected the commit"
+                echo "      Check output with: cd $REPO_PATH && git commit"
+            fi
             ERROR_COUNT=$((ERROR_COUNT + 1))
+            REPO_FAILED=true
         fi
+    fi
+    
+    # Skip pull/push if commit failed
+    if [ "$REPO_FAILED" = true ]; then
+        echo ""
+        cd "$START_DIR"
+        continue
     fi
     
     # --- PULL FROM REMOTE ---
-    PULL_OUTPUT=$(git pull --rebase 2>&1)
+    PULL_CMD="git pull"
+    if [ "$USE_REBASE" = true ]; then
+        PULL_CMD="$PULL_CMD --rebase"
+    fi
+    PULL_CMD="$PULL_CMD origin $CURRENT_BRANCH"
     
-    if [ $? -ne 0 ]; then
-        if echo "$PULL_OUTPUT" | grep -q 'CONFLICT'; then
-            echo "   ❌ CONFLICT - resolve manually" >&2
+    PULL_OUTPUT=$($PULL_CMD 2>&1)
+    PULL_EXIT=$?
+    
+    if [ $PULL_EXIT -ne 0 ]; then
+        # Check for specific error types
+        if echo "$PULL_OUTPUT" | grep -qi "conflict"; then
+            echo "   ✗ MERGE CONFLICT detected" >&2
+            echo "      Resolve manually: cd $REPO_PATH" >&2
+            echo "      Then run: git status" >&2
             ERROR_COUNT=$((ERROR_COUNT + 1))
-        elif echo "$PULL_OUTPUT" | grep -q 'no tracking'; then
-            echo "   ⚠ No upstream branch"
+            REPO_FAILED=true
+        elif echo "$PULL_OUTPUT" | grep -qi "no tracking\|does not exist"; then
+            echo "   ⚠  No upstream branch set for $CURRENT_BRANCH"
+            echo "      Will set on push with -u flag"
+        elif echo "$PULL_OUTPUT" | grep -qi "uncommitted changes"; then
+            echo "   ✗ Pull blocked by uncommitted changes" >&2
+            echo "      Stash or commit changes first" >&2
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+            REPO_FAILED=true
         else
-            echo "   ❌ Pull failed" >&2
+            echo "   ✗ Pull failed" >&2
+            echo "      Error: $(echo "$PULL_OUTPUT" | head -n 2)" >&2
             ERROR_COUNT=$((ERROR_COUNT + 1))
+            REPO_FAILED=true
         fi
-    elif ! echo "$PULL_OUTPUT" | grep -q 'up to date'; then
+    elif ! echo "$PULL_OUTPUT" | grep -qi "up.to.date\|already up to date"; then
         echo "   ↓ Pulled changes"
     fi
     
-    # --- PUSH TO REMOTE ---
-    PUSH_OUTPUT=$(git push 2>&1)
+    # Skip push if pull failed
+    if [ "$REPO_FAILED" = true ]; then
+        echo ""
+        cd "$START_DIR"
+        continue
+    fi
     
-    if echo "$PUSH_OUTPUT" | grep -q 'error'; then
-        echo "   ❌ Push failed" >&2
+    # --- PUSH TO REMOTE ---
+    # Use -u flag to set upstream tracking for new branches
+    PUSH_OUTPUT=$(git push -u origin "$CURRENT_BRANCH" 2>&1)
+    PUSH_EXIT=$?
+    
+    if [ $PUSH_EXIT -ne 0 ]; then
+        if echo "$PUSH_OUTPUT" | grep -qi "rejected"; then
+            echo "   ✗ Push rejected - remote has changes" >&2
+            echo "      Pull and resolve conflicts first" >&2
+        elif echo "$PUSH_OUTPUT" | grep -qi "permission denied\|authentication failed"; then
+            echo "   ✗ Push failed - authentication/permission error" >&2
+        elif echo "$PUSH_OUTPUT" | grep -qi "network\|connection"; then
+            echo "   ✗ Push failed - network error" >&2
+        else
+            echo "   ✗ Push failed" >&2
+            echo "      Error: $(echo "$PUSH_OUTPUT" | head -n 2)" >&2
+        fi
         ERROR_COUNT=$((ERROR_COUNT + 1))
-    elif ! echo "$PUSH_OUTPUT" | grep -q 'Everything up-to-date'; then
-        echo "   ↑ Pushed changes"
+    elif ! echo "$PUSH_OUTPUT" | grep -qi "up.to.date\|everything up-to-date"; then
+        if echo "$PUSH_OUTPUT" | grep -qi "new branch"; then
+            echo "   ↑ Pushed (new branch, upstream set)"
+        else
+            echo "   ↑ Pushed changes"
+        fi
     fi
     
     echo ""
@@ -96,11 +182,27 @@ for REPO_PATH in "${REPOS[@]}"; do
 done
 
 # --- SUMMARY ---
-echo "━━━━━━━━━━━━━━━━━━━━"
-if [ $ERROR_COUNT -gt 0 ]; then
-    echo "⚠ Completed with $ERROR_COUNT error(s)"
-    exit 1
-else
-    echo "✓ All repositories synced"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+TOTAL_REPOS=${#REPOS[@]}
+SUCCESS_COUNT=$((TOTAL_REPOS - ERROR_COUNT - SKIP_COUNT))
+
+echo "Processed: $TOTAL_REPOS repositories"
+echo "Success:   $SUCCESS_COUNT"
+if [ $SKIP_COUNT -gt 0 ]; then
+    echo "Skipped:   $SKIP_COUNT"
 fi
-echo "━━━━━━━━━━━━━━━━━━━━"
+if [ $ERROR_COUNT -gt 0 ]; then
+    echo "Errors:    $ERROR_COUNT"
+fi
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if [ $ERROR_COUNT -gt 0 ]; then
+    echo "⚠  Completed with errors - review output above"
+    exit 1
+elif [ $SKIP_COUNT -gt 0 ]; then
+    echo "✓ Completed with $SKIP_COUNT skipped"
+    exit 0
+else
+    echo "✓ All repositories synced successfully"
+    exit 0
+fi
