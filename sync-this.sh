@@ -1,104 +1,50 @@
 #!/bin/bash
+# Quick status check for current git repo
 
-# --- 1. Get Current Branch Name ---
-# This command gets the name of the currently checked-out branch.
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "=== Current Branch ==="
+CURRENT_BRANCH=$(git branch --show-current)
+echo "$CURRENT_BRANCH"
 
-# --- 2. Get Commit Message ---
-
-DEFAULT_MESSAGE="Cleaning up files/sync from local to remote branch: $CURRENT_BRANCH"
-
-# Check if message provided as command line argument
-if [ -n "$1" ]; then
-    COMMIT_MESSAGE="$1"
-else
-    # Prompt user for input
-    echo "Enter commit message (or press Enter to use default):"
-    read -r USER_MESSAGE
-
-    # Set the final commit message
-    if [ -z "$USER_MESSAGE" ]; then
-        COMMIT_MESSAGE="$DEFAULT_MESSAGE"
+# Show if branch has upstream
+UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)
+if [ -n "$UPSTREAM" ]; then
+    echo "Tracking: $UPSTREAM"
+    
+    # Show if ahead/behind
+    git fetch --quiet 2>/dev/null
+    AHEAD=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "0")
+    BEHIND=$(git rev-list --count HEAD..@{u} 2>/dev/null || echo "0")
+    
+    if [ "$AHEAD" -gt 0 ] && [ "$BEHIND" -gt 0 ]; then
+        echo "⚠️  $AHEAD ahead, $BEHIND behind (need to pull and push)"
+    elif [ "$AHEAD" -gt 0 ]; then
+        echo "↑ $AHEAD commit(s) ahead (need to push)"
+    elif [ "$BEHIND" -gt 0 ]; then
+        echo "↓ $BEHIND commit(s) behind (need to pull)"
     else
-        COMMIT_MESSAGE="$USER_MESSAGE"
+        echo "✓ Up to date with remote"
     fi
-fi
-
-echo "--- Using commit message: \"$COMMIT_MESSAGE\" ---"
-echo "--- Syncing current branch: $CURRENT_BRANCH ---"
-echo ""
-
-# --- Show what's about to be committed ---
-echo "Files to be committed:"
-git status --short
-echo ""
-
-# --- 3. Git Operations: Commit Local Changes ---
-
-# Stage all changes (additions, modifications, deletions) with verbose output
-echo "Staging all changes..."
-git add -A -v
-
-# Commit staged changes
-echo "Committing staged changes..."
-git commit -m "$COMMIT_MESSAGE"
-
-# Check if the commit was successful before proceeding
-if [ $? -ne 0 ]; then
-    echo "Warning: No changes to commit. Proceeding with pull/push sync."
-fi
-
-
-# --- 4. Git Operations: Pull and Push to Current Branch ---
-
-# FETCH: Get all tags from remote
-echo "Fetching tags from remote..."
-git fetch --tags
-
-# PULL: Fetch and merge remote changes for the current branch
-echo "Pulling remote changes from origin/$CURRENT_BRANCH..."
-git pull origin "$CURRENT_BRANCH"
-
-# Check if pull was successful (handles merge conflicts)
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "==================================================="
-    echo "ERROR: Pull failed - likely due to merge conflicts"
-    echo "==================================================="
-    echo ""
-    echo "What to do next:"
-    echo "  1. Run 'git status' to see conflicting files"
-    echo "  2. Open and resolve conflicts in each file"
-    echo "  3. Run 'git add <resolved-files>'"
-    echo "  4. Run 'git commit' to complete the merge"
-    echo "  5. Run this script again to push changes"
-    echo ""
-    exit 1
-fi
-
-# PUSH: Send local changes to the remote branch
-echo "Pushing local changes to origin/$CURRENT_BRANCH..."
-# The -u flag is included in case this is a brand new local branch 
-# that hasn't been pushed upstream yet.
-git push -u origin "$CURRENT_BRANCH"
-
-# Check if push was successful
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "==================================================="
-    echo "ERROR: Push failed"
-    echo "==================================================="
-    echo ""
-    echo "Possible reasons:"
-    echo "  - Network connectivity issues"
-    echo "  - No permission to push to origin/$CURRENT_BRANCH"
-    echo "  - Remote branch has been force-updated"
-    echo ""
-    echo "Your changes are still committed locally."
-    echo "Run 'git status' for more information."
-    echo ""
-    exit 1
+else
+    echo "⚠️  No upstream branch set"
 fi
 
 echo ""
-echo "Sync complete! All changes pushed to origin/$CURRENT_BRANCH"
+echo "=== Files Changed ==="
+if git diff --quiet && git diff --staged --quiet; then
+    echo "✓ No changes"
+else
+    git status --short
+fi
+
+echo ""
+echo "=== Last 5 Commits ==="
+git log --oneline -5
+
+echo ""
+echo "=== Recent Tags ==="
+TAGS=$(git tag -l --sort=-version:refname | head -5)
+if [ -n "$TAGS" ]; then
+    echo "$TAGS"
+else
+    echo "(no tags)"
+fi
