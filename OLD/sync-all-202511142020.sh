@@ -8,32 +8,6 @@
 # --- CONFIGURATION ---
 USE_REBASE=false  # Set to true to use rebase instead of merge
 VERIFY_COMMITS=true  # Set to false to skip pre-commit hooks
-SHOW_COMMANDS=true  # Set to false to hide git command traces
-DRY_RUN=false  # Set to true to see what would happen without doing it
-SKIP_CLEAN_REPOS=true  # Set to false to process all repos even if up-to-date
-
-# --- PARSE ARGUMENTS ---
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --dry-run)
-            DRY_RUN=true
-            echo "🔍 DRY RUN MODE - No changes will be made"
-            echo ""
-            shift
-            ;;
-        --verbose)
-            SHOW_COMMANDS=true
-            shift
-            ;;
-        --all)
-            SKIP_CLEAN_REPOS=false
-            shift
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
 
 # --- SETUP ---
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
@@ -64,7 +38,6 @@ echo ""
 for REPO_PATH in "${REPOS[@]}"; do
     REPO_NAME=$(basename "$REPO_PATH")
     REPO_FAILED=false
-    HAS_CHANGES=false
     
     cd "$REPO_PATH" || { 
         echo "✗ $REPO_NAME: Cannot access directory" >&2
@@ -79,7 +52,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
     
     if [ "$CURRENT_BRANCH" = "HEAD" ]; then
-        echo "   ⚠   Detached HEAD state - skipping (not on any branch)" >&2
+        echo "   ⚠  Detached HEAD state - skipping (not on any branch)" >&2
         echo "      Run: git checkout -b <branch-name> to create a branch"
         SKIP_COUNT=$((SKIP_COUNT + 1))
         echo ""
@@ -89,38 +62,12 @@ for REPO_PATH in "${REPOS[@]}"; do
     
     echo "   Branch: $CURRENT_BRANCH"
     
-    # --- FETCH TAGS ---
-    if [ "$SHOW_COMMANDS" = true ]; then
-        echo "   📍 Running: git fetch --tags"
-    fi
-    git fetch --tags --quiet 2>/dev/null
-    
-    # --- CHECK FOR CHANGES ---
+    # --- CHECK FOR UNCOMMITTED CHANGES BEFORE PULLING ---
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-        HAS_CHANGES=true
-        echo "   Files changed:"
-        git status --short | sed 's/^/      /'
-        echo ""
-    fi
-    
-    # --- SKIP IF NO CHANGES AND UP-TO-DATE ---
-    if [ "$HAS_CHANGES" = false ] && [ "$SKIP_CLEAN_REPOS" = true ]; then
-        git fetch origin "$CURRENT_BRANCH" --quiet 2>/dev/null
-        LOCAL=$(git rev-parse @ 2>/dev/null)
-        REMOTE=$(git rev-parse @{u} 2>/dev/null || echo "")
-        
-        if [ "$LOCAL" = "$REMOTE" ] && [ -n "$REMOTE" ]; then
-            echo "   ✓ Up-to-date (skipped)"
-            echo ""
-            cd "$START_DIR"
-            continue
-        fi
+        echo "   ℹ  Uncommitted changes detected"
     fi
     
     # --- COMMIT LOCAL CHANGES ---
-    if [ "$SHOW_COMMANDS" = true ]; then
-        echo "   📍 Running: git add -A"
-    fi
     git add -A
     
     if ! git diff --staged --quiet 2>/dev/null; then
@@ -141,13 +88,7 @@ for REPO_PATH in "${REPOS[@]}"; do
             COMMIT_CMD="$COMMIT_CMD --no-verify"
         fi
         
-        if [ "$SHOW_COMMANDS" = true ]; then
-            echo "   📍 Running: $COMMIT_CMD"
-        fi
-        
-        if [ "$DRY_RUN" = true ]; then
-            echo "   [DRY RUN] Would commit changes"
-        elif eval "$COMMIT_CMD" &>/dev/null; then
+        if eval "$COMMIT_CMD" &>/dev/null; then
             echo "   ✓ Committed"
         else
             echo "   ✗ Commit failed" >&2
@@ -174,18 +115,8 @@ for REPO_PATH in "${REPOS[@]}"; do
     fi
     PULL_CMD="$PULL_CMD origin $CURRENT_BRANCH"
     
-    if [ "$SHOW_COMMANDS" = true ]; then
-        echo "   📍 Running: $PULL_CMD"
-    fi
-    
-    if [ "$DRY_RUN" = true ]; then
-        echo "   [DRY RUN] Would pull from origin/$CURRENT_BRANCH"
-        PULL_OUTPUT="Already up to date."
-        PULL_EXIT=0
-    else
-        PULL_OUTPUT=$($PULL_CMD 2>&1)
-        PULL_EXIT=$?
-    fi
+    PULL_OUTPUT=$($PULL_CMD 2>&1)
+    PULL_EXIT=$?
     
     if [ $PULL_EXIT -ne 0 ]; then
         # Check for specific error types
@@ -196,7 +127,7 @@ for REPO_PATH in "${REPOS[@]}"; do
             ERROR_COUNT=$((ERROR_COUNT + 1))
             REPO_FAILED=true
         elif echo "$PULL_OUTPUT" | grep -qi "no tracking\|does not exist"; then
-            echo "   ⚠   No upstream branch set for $CURRENT_BRANCH"
+            echo "   ⚠  No upstream branch set for $CURRENT_BRANCH"
             echo "      Will set on push with -u flag"
         elif echo "$PULL_OUTPUT" | grep -qi "uncommitted changes"; then
             echo "   ✗ Pull blocked by uncommitted changes" >&2
@@ -222,18 +153,8 @@ for REPO_PATH in "${REPOS[@]}"; do
     
     # --- PUSH TO REMOTE ---
     # Use -u flag to set upstream tracking for new branches
-    if [ "$SHOW_COMMANDS" = true ]; then
-        echo "   📍 Running: git push -u origin $CURRENT_BRANCH"
-    fi
-    
-    if [ "$DRY_RUN" = true ]; then
-        echo "   [DRY RUN] Would push to origin/$CURRENT_BRANCH"
-        PUSH_OUTPUT="Everything up-to-date"
-        PUSH_EXIT=0
-    else
-        PUSH_OUTPUT=$(git push -u origin "$CURRENT_BRANCH" 2>&1)
-        PUSH_EXIT=$?
-    fi
+    PUSH_OUTPUT=$(git push -u origin "$CURRENT_BRANCH" 2>&1)
+    PUSH_EXIT=$?
     
     if [ $PUSH_EXIT -ne 0 ]; then
         if echo "$PUSH_OUTPUT" | grep -qi "rejected"; then
@@ -261,7 +182,7 @@ for REPO_PATH in "${REPOS[@]}"; do
 done
 
 # --- SUMMARY ---
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 TOTAL_REPOS=${#REPOS[@]}
 SUCCESS_COUNT=$((TOTAL_REPOS - ERROR_COUNT - SKIP_COUNT))
 
@@ -273,10 +194,10 @@ fi
 if [ $ERROR_COUNT -gt 0 ]; then
     echo "Errors:    $ERROR_COUNT"
 fi
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if [ $ERROR_COUNT -gt 0 ]; then
-    echo "⚠   Completed with errors - review output above"
+    echo "⚠  Completed with errors - review output above"
     exit 1
 elif [ $SKIP_COUNT -gt 0 ]; then
     echo "✓ Completed with $SKIP_COUNT skipped"

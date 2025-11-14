@@ -1,0 +1,11 @@
+# Work on code
+vi myfile.py
+
+# Save it
+./sync-this.sh "Fixed the parser"
+
+# Tag it when stable
+git tag -a v1.0 -m "Stable version"
+git push --tags
+
+# Go to GitHub web to create pretty release page

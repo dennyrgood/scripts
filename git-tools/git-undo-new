@@ -1,0 +1,449 @@
+#!/bin/bash
+# Save these as separate files in ~/bin or wherever you keep scripts
+# Each script shows the git commands it's running so you can learn
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+# ============================================
+# File: get-previous
+# Usage: get-previous <filename>
+# ============================================
+#!/bin/bash
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+if [ -z "$1" ]; then
+    echo "Usage: get-previous <filename>"
+    echo "Example: get-previous sync-this.sh"
+    exit 1
+fi
+
+FILENAME="$1"
+
+echo "=== Looking for previous versions of: $FILENAME ==="
+echo ""
+
+# Show commits that modified this file
+echo "Recent commits that changed this file:"
+run_git log --oneline --follow -10 "$FILENAME"
+
+# Ask which version they want
+echo "Enter the commit hash (like 7da1111) to see that version"
+echo "Or press Enter to see the most recent change:"
+read -r COMMIT
+
+if [ -z "$COMMIT" ]; then
+    COMMIT="HEAD~1"
+fi
+
+echo ""
+echo "=== Content from commit $COMMIT ==="
+run_git show "$COMMIT:$FILENAME"
+
+echo ""
+echo "=== What do you want to do? ==="
+echo "1) Save this version as ${FILENAME}.old (for comparison)"
+echo "2) Replace current file with this version"
+echo "3) Just show me the differences"
+echo "4) Never mind, exit"
+read -r CHOICE
+
+case $CHOICE in
+    1)
+        echo "📍 Running: git show $COMMIT:$FILENAME > ${FILENAME}.old"
+        git show "$COMMIT:$FILENAME" > "${FILENAME}.old"
+        echo ""
+        echo "✓ Saved to ${FILENAME}.old"
+        echo "Compare with: vi $FILENAME ${FILENAME}.old"
+        ;;
+    2)
+        echo "⚠️  This will replace your current $FILENAME"
+        echo "Type 'yes' to confirm:"
+        read -r CONFIRM
+        if [ "$CONFIRM" = "yes" ]; then
+            run_git checkout "$COMMIT" -- "$FILENAME"
+            echo "✓ File restored from commit $COMMIT"
+            echo "Now run: ./sync-this.sh \"Restored $FILENAME from $COMMIT\""
+        else
+            echo "Cancelled."
+        fi
+        ;;
+    3)
+        echo "=== Differences between $COMMIT and current ==="
+        run_git diff "$COMMIT" HEAD -- "$FILENAME"
+        ;;
+    4)
+        echo "Exiting."
+        ;;
+    *)
+        echo "Invalid choice. Exiting."
+        ;;
+esac
+
+
+# ============================================
+# File: show-history
+# Usage: show-history <filename>
+# ============================================
+#!/bin/bash
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+if [ -z "$1" ]; then
+    echo "Usage: show-history <filename>"
+    echo "Example: show-history sync-this.sh"
+    exit 1
+fi
+
+FILENAME="$1"
+
+echo "=== Complete history of: $FILENAME ==="
+echo ""
+run_git log --follow --pretty=format:"%h | %ad | %s" --date=short "$FILENAME"
+echo ""
+echo "Tip: Use 'get-previous $FILENAME' to recover an old version"
+
+
+# ============================================
+# File: git-undo
+# Usage: git-undo (interactive)
+# ============================================
+#!/bin/bash
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+echo "=== Git Undo Helper ==="
+echo ""
+echo "Current status:"
+run_git status --short
+
+if [ -z "$(git status --porcelain)" ]; then
+    echo "No uncommitted changes found."
+    echo ""
+    echo "Do you want to undo your last commit?"
+    echo "1) Undo last commit, keep the changes (to re-edit)"
+    echo "2) Undo last commit, throw away the changes (danger!)"
+    echo "3) Create new commit that undoes last commit (safe for already pushed)"
+    echo "4) Never mind"
+    read -r CHOICE
+    
+    case $CHOICE in
+        1)
+            echo "Last commit:"
+            run_git log -1 --oneline
+            echo "Type 'yes' to undo this commit but keep your files:"
+            read -r CONFIRM
+            if [ "$CONFIRM" = "yes" ]; then
+                run_git reset --soft HEAD~1
+                echo "✓ Commit undone. Your changes are still in your files."
+            fi
+            ;;
+        2)
+            echo "⚠️  DANGER: This will permanently delete your last commit's changes!"
+            echo "Last commit:"
+            run_git log -1 --oneline
+            echo ""
+            echo "Type 'yes I am sure' to proceed:"
+            read -r CONFIRM
+            if [ "$CONFIRM" = "yes I am sure" ]; then
+                run_git reset --hard HEAD~1
+                echo "✓ Commit and changes deleted."
+            fi
+            ;;
+        3)
+            echo "This creates a NEW commit that reverses the last commit."
+            echo "Safe to use even if you already pushed to GitHub."
+            echo ""
+            echo "Last commit:"
+            run_git log -1 --oneline
+            echo ""
+            echo "Show full details of this commit? (y/n):"
+            read -r SHOW_DETAILS
+            if [ "$SHOW_DETAILS" = "y" ] || [ "$SHOW_DETAILS" = "Y" ]; then
+                run_git show HEAD
+            fi
+            echo ""
+            echo "Type 'yes' to create undo commit:"
+            read -r CONFIRM
+            if [ "$CONFIRM" = "yes" ]; then
+                echo ""
+                echo "NOTE: Vi/Vim will open for commit message."
+                echo "To save: Press ESC, type :wq, press Enter"
+                echo ""
+                read -r -p "Press Enter to continue..."
+                run_git revert HEAD
+                if [ $? -eq 0 ]; then
+                    echo ""
+                    echo "✓ Undo commit created locally."
+                    echo "Now run: ./sync-this.sh or git push"
+                else
+                    echo "Revert was cancelled or failed."
+                fi
+            fi
+            ;;
+        4)
+            echo "Cancelled."
+            ;;
+    esac
+else
+    echo "You have uncommitted changes. What do you want to undo?"
+    echo "1) Throw away ALL my edits since last commit"
+    echo "2) Throw away changes to ONE file"
+    echo "3) Never mind"
+    read -r CHOICE
+    
+    case $CHOICE in
+        1)
+            echo "⚠️  This will delete ALL your edits since last commit!"
+            echo "Type 'yes I am sure' to proceed:"
+            read -r CONFIRM
+            if [ "$CONFIRM" = "yes I am sure" ]; then
+                run_git reset --hard HEAD
+                echo "✓ All changes thrown away. Back to last commit."
+            fi
+            ;;
+        2)
+            echo "Which file?"
+            run_git status --short
+            echo "Enter filename:"
+            read -r FILENAME
+            if [ -n "$FILENAME" ]; then
+                run_git checkout -- "$FILENAME"
+                echo "✓ $FILENAME restored to last committed version."
+            fi
+            ;;
+        3)
+            echo "Cancelled."
+            ;;
+    esac
+fi
+
+
+# ============================================
+# File: safe-experiment
+# Usage: safe-experiment <branch-name>
+# ============================================
+#!/bin/bash
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+if [ -z "$1" ]; then
+    echo "Usage: safe-experiment <experiment-name>"
+    echo "Example: safe-experiment try-new-parser"
+    echo ""
+    echo "This creates a branch so you can experiment without breaking main."
+    exit 1
+fi
+
+BRANCH_NAME="$1"
+
+# Check for uncommitted changes
+if [ -n "$(git status --porcelain)" ]; then
+    echo "⚠️  You have uncommitted changes:"
+    run_git status --short
+    echo "Commit them first? (yes/no)"
+    read -r COMMIT_FIRST
+    
+    if [ "$COMMIT_FIRST" = "yes" ]; then
+        echo "Enter commit message:"
+        read -r MSG
+        run_git add -A
+        run_git commit -m "$MSG"
+        run_git push
+    else
+        echo "Please commit or stash your changes first."
+        exit 1
+    fi
+fi
+
+echo "Creating experimental branch: $BRANCH_NAME"
+run_git checkout -b "$BRANCH_NAME"
+
+echo "✓ You're now on branch: $BRANCH_NAME"
+echo ""
+echo "Work freely! When done:"
+echo "  - If it worked: merge-experiment $BRANCH_NAME"
+echo "  - If it failed: abandon-experiment"
+
+
+# ============================================
+# File: merge-experiment
+# Usage: merge-experiment <branch-name>
+# ============================================
+#!/bin/bash
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+if [ -z "$1" ]; then
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ]; then
+        echo "Usage: merge-experiment <branch-name>"
+        echo "You're on main. Switch to your experiment branch first."
+        exit 1
+    fi
+    BRANCH_NAME="$CURRENT_BRANCH"
+else
+    BRANCH_NAME="$1"
+fi
+
+echo "Merging experiment branch: $BRANCH_NAME into main"
+echo ""
+
+# Commit any changes first
+if [ -n "$(git status --porcelain)" ]; then
+    echo "Committing current changes..."
+    echo "Enter commit message:"
+    read -r MSG
+    run_git add -A
+    run_git commit -m "$MSG"
+fi
+
+# Switch to main and merge
+run_git checkout main
+run_git merge "$BRANCH_NAME"
+
+if [ $? -eq 0 ]; then
+    echo "✓ Experiment merged successfully!"
+    echo ""
+    echo "Push to GitHub? (yes/no)"
+    read -r PUSH
+    if [ "$PUSH" = "yes" ]; then
+        run_git push
+    fi
+    
+    echo ""
+    echo "Delete experiment branch? (yes/no)"
+    read -r DELETE
+    if [ "$DELETE" = "yes" ]; then
+        echo "📍 Running: git branch -d $BRANCH_NAME"
+        git branch -d "$BRANCH_NAME"
+        echo ""
+        echo "✓ Branch deleted."
+    fi
+else
+    echo ""
+    echo "⚠️  Merge had conflicts. Resolve them, then run:"
+    echo "  git commit"
+    echo "  git push"
+fi
+
+
+# ============================================
+# File: abandon-experiment
+# Usage: abandon-experiment (when on experiment branch)
+# ============================================
+#!/bin/bash
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$CURRENT_BRANCH" = "main" ]; then
+    echo "You're on main branch. Nothing to abandon."
+    exit 0
+fi
+
+echo "⚠️  You're about to abandon branch: $CURRENT_BRANCH"
+echo "All changes on this branch will be lost."
+echo ""
+echo "Type 'abandon' to confirm:"
+read -r CONFIRM
+
+if [ "$CONFIRM" = "abandon" ]; then
+    run_git checkout main
+    echo "📍 Running: git branch -D $CURRENT_BRANCH"
+    git branch -D "$CURRENT_BRANCH"
+    echo ""
+    echo "✓ Branch abandoned. You're back on main with your safe code."
+else
+    echo "Cancelled."
+fi
+
+
+# ============================================
+# File: what-changed
+# Usage: what-changed <commit1> <commit2> [filename]
+# ============================================
+#!/bin/bash
+
+# Helper function to show and run git commands
+run_git() {
+    echo "📍 Running: git $@"
+    git "$@"
+    local result=$?
+    echo ""
+    return $result
+}
+
+if [ -z "$1" ]; then
+    echo "Usage: what-changed <commit1> <commit2> [filename]"
+    echo "Example: what-changed v2.0 v4.0"
+    echo "Example: what-changed v2.0 HEAD sync-this.sh"
+    echo ""
+    echo "Shows what changed between two commits"
+    exit 1
+fi
+
+COMMIT1="$1"
+COMMIT2="${2:-HEAD}"
+FILENAME="$3"
+
+if [ -n "$FILENAME" ]; then
+    echo "=== Changes to $FILENAME between $COMMIT1 and $COMMIT2 ==="
+    run_git diff "$COMMIT1" "$COMMIT2" -- "$FILENAME"
+else
+    echo "=== All changes between $COMMIT1 and $COMMIT2 ==="
+    run_git diff "$COMMIT1" "$COMMIT2" --stat
+    echo ""
+    echo "For detailed changes, run:"
+    echo "  git diff $COMMIT1 $COMMIT2"
+fi
