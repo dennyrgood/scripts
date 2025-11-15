@@ -18,8 +18,9 @@ fi
 FILENAME="$1"
 
 echo "=== Complete history of: $FILENAME ==="
+echo "(Including deleted versions)"
 echo ""
-run_git log --follow --pretty=format:"%h | %ad | %s" --date=short "$FILENAME"
+run_git log --all --full-history --follow --pretty=format:"%h | %ad | %s" --date=short -- "$FILENAME"
 echo ""
 echo ""
 echo "Tip: Use 'get-previous $FILENAME' to recover an old version"
