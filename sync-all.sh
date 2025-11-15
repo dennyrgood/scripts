@@ -13,11 +13,14 @@ DRY_RUN=false         # Set to true to see what would happen without doing it
 SKIP_CLEAN_REPOS=true # Set to false to process all repos even if up-to-date
 
 # --- SETUP ---
+# SCRIPT_DIR is determined dynamically, but is NOT used to find the repos.
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-# Assuming the root directory containing all repos is one level above the script.
-# If your script is inside MywebsiteGIT, this needs to be updated.
-# Based on your prompt, we set the root to the parent of the script's directory.
-REPO_ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+#
+# IMPORTANT MODIFICATION: 
+# The REPO_ROOT_DIR is now a fixed path (relative to the user's home directory ~)
+# This allows the script to be run from ~/bin or anywhere else.
+REPO_ROOT_DIR="$HOME/Documents/MywebsiteGIT"
+#
 START_DIR=$(pwd)
 ERROR_COUNT=0
 SKIP_COUNT=0
@@ -85,6 +88,15 @@ echo "Using message: \"$COMMIT_MESSAGE\""
 echo "Root Directory: $REPO_ROOT_DIR"
 echo "=========================================="
 echo ""
+
+# --- VALIDATE ROOT DIRECTORY ---
+if [ ! -d "$REPO_ROOT_DIR" ]; then
+    echo "=========================================="
+    echo "✗ ERROR: Repository root directory not found." >&2
+    echo "Please confirm $REPO_ROOT_DIR exists." >&2
+    echo "=========================================="
+    exit 1
+fi
 
 
 # --- FIND REPOSITORIES ---
