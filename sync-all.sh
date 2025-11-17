@@ -55,6 +55,15 @@ get_branch_status() {
 }
 
 # --- PARSE ARGUMENTS ---
+COMMIT_MESSAGE=""
+
+# First, check if first argument is not a flag (positional message)
+if [[ $# -gt 0 ]] && [[ ! "$1" =~ ^-- ]]; then
+    COMMIT_MESSAGE="$1"
+    shift
+fi
+
+# Then parse remaining flags
 while [[ $# -gt 0 ]]; do
     case $1 in
         --dry-run)
@@ -81,9 +90,14 @@ done
 echo "=========================================="
 echo "          MULTI-REPO SYNC SETUP           "
 echo "=========================================="
-echo "Enter commit message (or press Enter for default):"
-read -r COMMIT_MESSAGE
-COMMIT_MESSAGE=${COMMIT_MESSAGE:-"Auto-sync from local changes"}
+
+# Only prompt if message not provided via command line
+if [ -z "$COMMIT_MESSAGE" ]; then
+    echo "Enter commit message (or press Enter for default):"
+    read -r COMMIT_MESSAGE
+    COMMIT_MESSAGE=${COMMIT_MESSAGE:-"Auto-sync from local changes"}
+fi
+
 echo "Using message: \"$COMMIT_MESSAGE\""
 echo "Root Directory: $REPO_ROOT_DIR"
 echo "=========================================="
@@ -137,7 +151,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
     
     if [ "$CURRENT_BRANCH" = "HEAD" ]; then
-        echo "   ⚠   Detached HEAD state - skipping (not on any branch)" >&2
+        echo "   ⚠️    Detached HEAD state - skipping (not on any branch)" >&2
         echo "      Tip: Run 'git checkout -b <branch-name>' to fix."
         SKIP_COUNT=$((SKIP_COUNT + 1))
         echo "------------------------------------------"
@@ -150,7 +164,10 @@ for REPO_PATH in "${REPOS[@]}"; do
     # --- PRE-SYNC STATUS ---
     echo "   Pre-Sync Remote: $(get_branch_status "$CURRENT_BRANCH")"
     
-    # Check for uncommitted changes
+    # Check for uncommitted changes (INCLUDING UNTRACKED FILES)
+    HAS_CHANGES=false
+    
+    # Check for modified/staged files
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
         HAS_CHANGES=true
         echo "   Files Changed Locally (Staging):"
@@ -166,8 +183,20 @@ for REPO_PATH in "${REPOS[@]}"; do
                 *) echo "      $status $file" ;;
             esac
         done
-    else
-        HAS_CHANGES=false
+    fi
+    
+    # NEW: Check for untracked files
+    UNTRACKED_COUNT=$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')
+    if [ "$UNTRACKED_COUNT" -gt 0 ]; then
+        HAS_CHANGES=true
+        echo "   Untracked Files Found: $UNTRACKED_COUNT"
+        git ls-files --others --exclude-standard | head -10 | sed 's/^/      ?? /'
+        if [ "$UNTRACKED_COUNT" -gt 10 ]; then
+            echo "      ... and $((UNTRACKED_COUNT - 10)) more"
+        fi
+    fi
+    
+    if [ "$HAS_CHANGES" = false ]; then
         echo "   Local Files: ✓ Clean working directory"
     fi
     
@@ -192,7 +221,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     echo "   >>> START TRANSACTION <<<"
     
     if [ "$SHOW_COMMANDS" = true ]; then
-        echo "   📍 Running: git add -A"
+        echo "   🔧 Running: git add -A"
     fi
     git add -A
     
@@ -205,7 +234,7 @@ for REPO_PATH in "${REPOS[@]}"; do
         fi
         
         if [ "$SHOW_COMMANDS" = true ]; then
-            echo "   📍 Running: $COMMIT_CMD"
+            echo "   🔧 Running: $COMMIT_CMD"
         fi
         
         if [ "$DRY_RUN" = true ]; then
@@ -240,7 +269,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     PULL_CMD="$PULL_CMD origin $CURRENT_BRANCH"
     
     if [ "$SHOW_COMMANDS" = true ]; then
-        echo "   📍 Running: $PULL_CMD"
+        echo "   🔧 Running: $PULL_CMD"
     fi
     
     if [ "$DRY_RUN" = true ]; then
@@ -278,7 +307,7 @@ for REPO_PATH in "${REPOS[@]}"; do
     
     # --- PUSH TO REMOTE ---
     if [ "$SHOW_COMMANDS" = true ]; then
-        echo "   📍 Running: git push -u origin $CURRENT_BRANCH"
+        echo "   🔧 Running: git push -u origin $CURRENT_BRANCH"
     fi
     
     if [ "$DRY_RUN" = true ]; then
@@ -327,7 +356,7 @@ fi
 echo "=========================================="
 
 if [ $ERROR_COUNT -gt 0 ]; then
-    echo "⚠   Completed with ERRORS. Please review output above and resolve conflicts manually."
+    echo "⚠️    Completed with ERRORS. Please review output above and resolve conflicts manually."
     exit 1
 elif [ $SUCCESS_COUNT -eq 0 ] && [ $TOTAL_PROCESSED -gt 0 ]; then
     echo "✓ All repositories were already clean and up-to-date (or were skipped)."
