@@ -46,7 +46,6 @@ class MyEverythingApp:
         ttk.Entry(input_frame, textvariable=self.search_name).grid(row=1, column=1, padx=5, pady=5, sticky="ew")
         ttk.Checkbutton(input_frame, text="Case Insensitive (-iname)", variable=self.case_insensitive).grid(row=1, column=2, padx=5, pady=5)
 
-        # Configure columns for input_frame
         input_frame.grid_columnconfigure(1, weight=1)
 
         # 2. Options Frame (File Type and Size)
@@ -59,14 +58,16 @@ class MyEverythingApp:
         ttk.Radiobutton(options_frame, text="Directory (d)", variable=self.file_type, value="d").grid(row=0, column=2, padx=5, pady=5)
         ttk.Radiobutton(options_frame, text="Any Type", variable=self.file_type, value="").grid(row=0, column=3, padx=5, pady=5)
         
-        # Size Filter (NEW)
-        ttk.Label(options_frame, text="Size (-size +/-N[cKMG]):").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        # Size Filter (UPDATED DESCRIPTION)
+        size_desc = "Size (-size): +/-N[cKMG] (e.g., +10M = >10MB, -500k = <500KB)"
+        ttk.Label(options_frame, text=size_desc).grid(row=1, column=0, padx=5, pady=5, sticky="w")
         ttk.Entry(options_frame, textvariable=self.size_val, width=15).grid(row=1, column=1, padx=5, pady=5, sticky="w")
         
         options_frame.grid_columnconfigure(3, weight=1)
 
-        # 3. Time Filter Frame (NEW: For -mtime, -atime, -ctime)
-        time_frame = ttk.LabelFrame(self.master, text="⌚ Time Filters (Days: +/-N)")
+        # 3. Time Filter Frame (UPDATED DESCRIPTION and structure)
+        time_desc = "Days: (+N = >N full days ago; -N = <N full days ago)"
+        time_frame = ttk.LabelFrame(self.master, text=f"⌚ Time Filters {time_desc}")
         time_frame.pack(padx=10, pady=5, fill="x")
         
         ttk.Label(time_frame, text="Modified (-mtime):").grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -89,22 +90,26 @@ class MyEverythingApp:
         results_frame = ttk.Frame(self.master)
         results_frame.pack(padx=10, pady=5, fill="both", expand=True)
 
-        # Treeview setup for columns
+        # Treeview setup for columns (ADDED Accessed and Changed)
         self.results_tree = ttk.Treeview(results_frame, 
-                                         columns=("Folder", "Size", "Date"), 
-                                         show="tree headings") # FIX: Explicitly includes 'tree' to force #0 header visibility
+                                         columns=("Folder", "Size", "Modified", "Accessed", "Changed"), 
+                                         show="tree headings") 
         
-        # Column Headings & Sorting (REQUIRED COLUMNS)
+        # Column Headings & Sorting 
         self.results_tree.heading("#0", text="File Name", command=lambda: self._sort_column(self.results_tree, "#0", False))
         self.results_tree.heading("Folder", text="Folder", command=lambda: self._sort_column(self.results_tree, "Folder", False))
         self.results_tree.heading("Size", text="Size", command=lambda: self._sort_column(self.results_tree, "Size", False))
-        self.results_tree.heading("Date", text="Last Modified", command=lambda: self._sort_column(self.results_tree, "Date", False))
+        self.results_tree.heading("Modified", text="Modified Date", command=lambda: self._sort_column(self.results_tree, "Modified", False)) # Renamed 'Date' to 'Modified'
+        self.results_tree.heading("Accessed", text="Accessed Date", command=lambda: self._sort_column(self.results_tree, "Accessed", False)) # NEW
+        self.results_tree.heading("Changed", text="Changed Date", command=lambda: self._sort_column(self.results_tree, "Changed", False))   # NEW
         
         # Column widths
-        self.results_tree.column("#0", width=250, stretch=tk.YES, anchor='w') 
-        self.results_tree.column("Folder", width=350, stretch=tk.YES, anchor='w')
-        self.results_tree.column("Size", width=100, stretch=tk.NO, anchor='e')
-        self.results_tree.column("Date", width=150, stretch=tk.NO, anchor='e')
+        self.results_tree.column("#0", width=200, stretch=tk.YES, anchor='w') 
+        self.results_tree.column("Folder", width=250, stretch=tk.YES, anchor='w')
+        self.results_tree.column("Size", width=80, stretch=tk.NO, anchor='e')
+        self.results_tree.column("Modified", width=120, stretch=tk.NO, anchor='e')
+        self.results_tree.column("Accessed", width=120, stretch=tk.NO, anchor='e') # NEW
+        self.results_tree.column("Changed", width=120, stretch=tk.NO, anchor='e')   # NEW
 
         # Scrollbars
         v_scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.results_tree.yview)
@@ -134,16 +139,13 @@ class MyEverythingApp:
             self.start_path.get()
         ]
 
-        # Add -type 
         file_type_val = self.file_type.get()
         if file_type_val:
             command.extend(["-type", file_type_val])
         
-        # Add -name or -iname
         search_arg = "-iname" if self.case_insensitive.get() else "-name"
         command.extend([search_arg, self.search_name.get()])
 
-        # Add Size Filter (-size)
         size_val = self.size_val.get().strip()
         if size_val:
             command.extend(["-size", size_val])
@@ -163,7 +165,6 @@ class MyEverythingApp:
     def run_find(self):
         """Executes the constructed find command and displays output in the Treeview."""
         
-        # Clear previous Treeview results
         self.results_tree.delete(*self.results_tree.get_children())
         self.file_data = {}
         self.status_label.config(text="Searching...", foreground='black')
@@ -172,7 +173,6 @@ class MyEverythingApp:
             find_command = self._build_find_command()
             self.status_label.config(text=f"Running: {' '.join(shlex.quote(arg) for arg in find_command)}")
             
-            # Execute the command
             process = subprocess.run(
                 find_command, 
                 capture_output=True, 
@@ -188,34 +188,39 @@ class MyEverythingApp:
                 if not path:
                     continue
                 
-                # Use os.path.split to separate file name and folder path
                 folder, name = os.path.split(path)
                 
                 size_bytes = 0
                 mtime_timestamp = 0
+                atime_timestamp = 0 # NEW
+                ctime_timestamp = 0 # NEW
                 
                 try:
-                    # Fetch metadata (size and mtime) using os.stat
                     stat_info = os.stat(path)
                     size_bytes = stat_info.st_size
                     mtime_timestamp = stat_info.st_mtime
+                    atime_timestamp = stat_info.st_atime # NEW
+                    ctime_timestamp = stat_info.st_ctime # NEW
                 except Exception:
-                    # Handle files not found or permission denied
                     pass
 
                 # Convert size and timestamp for display
                 human_size = self._human_readable_size(size_bytes)
                 mtime_date = datetime.datetime.fromtimestamp(mtime_timestamp).strftime('%Y-%m-%d %H:%M') if mtime_timestamp else "N/A"
+                atime_date = datetime.datetime.fromtimestamp(atime_timestamp).strftime('%Y-%m-%d %H:%M') if atime_timestamp else "N/A" # NEW
+                ctime_date = datetime.datetime.fromtimestamp(ctime_timestamp).strftime('%Y-%m-%d %H:%M') if ctime_timestamp else "N/A" # NEW
                 
-                # Insert into Treeview: 'text' goes to the #0 File Name column
-                item_id = self.results_tree.insert("", tk.END, text=name, values=(folder, human_size, mtime_date))
+                # Insert into Treeview: text=name, values=(Folder, Size, Modified, Accessed, Changed)
+                item_id = self.results_tree.insert("", tk.END, text=name, values=(folder, human_size, mtime_date, atime_date, ctime_date))
                 
                 # Store original data for accurate numeric sorting
                 self.file_data[item_id] = {
                     "Name": name, 
                     "Folder": folder, 
                     "Size_Bytes": size_bytes, 
-                    "Date_Timestamp": mtime_timestamp
+                    "Modified_Timestamp": mtime_timestamp,
+                    "Accessed_Timestamp": atime_timestamp, # NEW
+                    "Changed_Timestamp": ctime_timestamp    # NEW
                 }
                 
                 count += 1
@@ -248,9 +253,15 @@ class MyEverythingApp:
         elif col == "Size":
             # Sort by raw size in bytes (numeric)
             l = [(self.file_data[k]["Size_Bytes"], k) for k in tree.get_children('')]
-        elif col == "Date":
-            # Sort by raw timestamp (numeric)
-            l = [(self.file_data[k]["Date_Timestamp"], k) for k in tree.get_children('')]
+        elif col == "Modified":
+            # Sort by raw mtime timestamp (numeric)
+            l = [(self.file_data[k]["Modified_Timestamp"], k) for k in tree.get_children('')]
+        elif col == "Accessed": # NEW
+            # Sort by raw atime timestamp (numeric)
+            l = [(self.file_data[k]["Accessed_Timestamp"], k) for k in tree.get_children('')]
+        elif col == "Changed": # NEW
+            # Sort by raw ctime timestamp (numeric)
+            l = [(self.file_data[k]["Changed_Timestamp"], k) for k in tree.get_children('')]
         else:
             # Sort by Folder (text)
             l = [(tree.set(k, col).lower(), k) for k in tree.get_children('')]
