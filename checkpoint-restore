@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# checkpoint-restore - Restore both LLM and Scripts repos to a checkpoint commit
+# Usage: checkpoint-restore "checkpoint message" or checkpoint-restore <commit-sha>
+
+CHECKPOINT_MSG="${1:-}"
+
+if [ -z "$CHECKPOINT_MSG" ]; then
+    echo "Usage: checkpoint-restore \"checkpoint message\""
+    echo "   or: checkpoint-restore <commit-sha>"
+    echo ""
+    echo "Recent checkpoints:"
+    echo ""
+    echo "=== LLM Repo ==="
+    cd /Users/dennishmathes/Documents/MyWebsiteGIT/LLM
+    git log --oneline | grep -i checkpoint | head -5
+    echo ""
+    echo "=== Scripts Repo ==="
+    cd /Users/dennishmathes/Documents/MyWebsiteGIT/Scripts
+    git log --oneline | grep -i checkpoint | head -5
+    exit 1
+fi
+
+echo "=========================================="
+echo "    CHECKPOINT RESTORE: STARTING"
+echo "=========================================="
+echo "Restoring to: $CHECKPOINT_MSG"
+echo ""
+
+# Try to find checkpoint by message first, then treat as SHA
+echo "--- LLM Repo ---"
+cd /Users/dennishmathes/Documents/MyWebsiteGIT/LLM
+
+LLM_SHA=$(git log --oneline | grep -i "$CHECKPOINT_MSG" | head -1 | awk '{print $1}')
+if [ -z "$LLM_SHA" ]; then
+    # Assume it's a SHA
+    LLM_SHA="$CHECKPOINT_MSG"
+fi
+
+echo "Found commit: $LLM_SHA"
+git reset --hard "$LLM_SHA" 2>/dev/null
+if [ $? -eq 0 ]; then
+    echo "✓ LLM repo restored"
+else
+    echo "✗ Failed to restore LLM repo"
+    exit 1
+fi
+
+echo ""
+echo "--- Scripts Repo ---"
+cd /Users/dennishmathes/Documents/MyWebsiteGIT/Scripts
+
+SCRIPTS_SHA=$(git log --oneline | grep -i "$CHECKPOINT_MSG" | head -1 | awk '{print $1}')
+if [ -z "$SCRIPTS_SHA" ]; then
+    # Assume it's a SHA
+    SCRIPTS_SHA="$CHECKPOINT_MSG"
+fi
+
+echo "Found commit: $SCRIPTS_SHA"
+git reset --hard "$SCRIPTS_SHA" 2>/dev/null
+if [ $? -eq 0 ]; then
+    echo "✓ Scripts repo restored"
+else
+    echo "✗ Failed to restore Scripts repo"
+    exit 1
+fi
+
+echo ""
+echo "=========================================="
+echo "    CHECKPOINT RESTORE: COMPLETE"
+echo "=========================================="
+echo ""
+echo "Restored both repos to:"
+echo "  LLM:     $LLM_SHA"
+echo "  Scripts: $SCRIPTS_SHA"
+echo ""
+cd /Users/dennishmathes/Documents/MyWebsiteGIT/LLM
+echo "Current LLM status:"
+git log --oneline -3
