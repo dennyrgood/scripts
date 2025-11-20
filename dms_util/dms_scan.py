@@ -45,7 +45,13 @@ def load_state(state_path: Path) -> dict:
         }
 
 def scan_directory(doc_dir: Path, state: dict) -> tuple:
-    """Scan Doc/ directory and detect changes"""
+    """Scan Doc/ directory and detect changes
+    
+    Handles file pairs:
+    - Original file (image, PDF, etc) + readable version in md_outputs/
+    - Only the readable version is tracked as a document
+    - Original file is linked but ignored during scan
+    """
     
     new_files = []
     changed_files = []
@@ -64,17 +70,56 @@ def scan_directory(doc_dir: Path, state: dict) -> tuple:
             rel_path = f"./{file_path.relative_to(doc_dir)}"
             disk_files[rel_path] = file_path
     
+    # Find which files have readable versions in md_outputs
+    # Maps original file -> readable file
+    readable_versions = {}
+    for rel_path in disk_files.keys():
+        if './md_outputs/' in rel_path:
+            # This is a readable version
+            # Find its corresponding original
+            filename = Path(rel_path).stem  # Remove .txt
+            
+            # Look for matching original in root
+            for orig_path in disk_files.keys():
+                if './md_outputs/' not in orig_path:  # In root
+                    if Path(orig_path).stem == filename:
+                        readable_versions[orig_path] = rel_path
+                        break
+    
     # Check for new and changed files
     for rel_path, file_path in disk_files.items():
+        # Skip original files that have readable versions
+        if rel_path in readable_versions:
+            continue
+        
+        # Skip readable versions in md_outputs if they're paired with originals
+        if './md_outputs/' in rel_path:
+            # Check if this is a readable version of an original
+            is_paired = False
+            for orig, readable in readable_versions.items():
+                if readable == rel_path:
+                    is_paired = True
+                    break
+            
+            if is_paired:
+                # Process the original file instead, which will include the readable link
+                continue
+        
         file_hash = compute_file_hash(file_path)
         
         if rel_path not in state_docs:
             # New file
-            new_files.append({
+            file_info = {
                 "path": rel_path,
                 "hash": file_hash,
                 "size": file_path.stat().st_size
-            })
+            }
+            
+            # If this file has a readable version, link it
+            if rel_path in readable_versions:
+                file_info["readable_version"] = readable_versions[rel_path]
+            
+            new_files.append(file_info)
         else:
             # Check if changed
             if state_docs[rel_path].get("hash") != file_hash:

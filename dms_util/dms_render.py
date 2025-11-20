@@ -315,10 +315,17 @@ def _generate_category_section(category, docs):
         summary = html_module.escape(doc_data.get("summary", ""))
         path_escaped = html_module.escape(file_path)
         
+        # Check if this has an original file link
+        original_link = ""
+        if doc_data.get("readable_version"):
+            readable_path = html_module.escape(doc_data["readable_version"])
+            original_file = Path(readable_path).stem.replace('.txt', '')
+            original_link = f'<br><small><a href="#{readable_path}" style="color:var(--accent-2)">📄 Original: {html_module.escape(original_file)}</a></small>'
+        
         li = f"""            <li class="file" data-path="{path_escaped}" data-link="{path_escaped}">
       <div class="meta">
         <div class="title"><a href="#{path_escaped}" class="file-link">{title}</a></div>
-        <div class="desc">{summary}</div>
+        <div class="desc">{summary}{original_link}</div>
         <div class="tags small-muted">{file_ext} · {html_module.escape(category)}</div>
       </div>
             </li>"""

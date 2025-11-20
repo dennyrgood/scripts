@@ -62,7 +62,7 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
         by_category[category] = by_category.get(category, 0) + 1
         
         # Update state
-        state['documents'][file_path] = {
+        doc_entry = {
             'hash': summary_info['file'].get('hash', ''),
             'category': category,
             'summary': summary_info.get('summary', ''),
@@ -70,6 +70,12 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
             'title': summary_info.get('title', Path(file_path).stem),
             'last_processed': datetime.now().isoformat()
         }
+        
+        # Include readable version link if provided
+        if summary_info['file'].get('readable_version'):
+            doc_entry['readable_version'] = summary_info['file']['readable_version']
+        
+        state['documents'][file_path] = doc_entry
         
         # Update category list if new
         if category not in state['categories']:
