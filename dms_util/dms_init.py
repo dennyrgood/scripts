@@ -58,7 +58,7 @@ def init_dms(doc_dir: Path) -> int:
     import subprocess
     from pathlib import Path as PathlibPath
     
-    scripts_dir = PathlibPath(__file__).parent.parent
+    scripts_dir = PathlibPath.home() / "Documents/MyWebsiteGIT/Scripts"
     render_script = scripts_dir / "dms_util" / "dms_render.py"
     
     if render_script.exists():

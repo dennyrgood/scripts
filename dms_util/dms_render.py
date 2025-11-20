@@ -113,6 +113,9 @@ def _generate_html(docs_by_category, state):
     #content{{max-width:1000px;margin:0 auto;flex:1;display:flex;flex-direction:column;width:100%}}
     /* PDF viewer should take full height */
     #pdfViewer{{height:80vh !important;}}
+
+SCRIPTS_DIR = Path.home() / "Documents/MyWebsiteGIT/Scripts"
+
     /* markdown container */
     #mdViewer{{background:rgba(255,255,255,0.01);padding:18px;border-radius:8px}}
     #mdViewer h1,#mdViewer h2,#mdViewer h3{{color:#e8faff}}

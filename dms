@@ -37,21 +37,12 @@ import subprocess
 CONFIG_NAME = "dms_config.json"
 
 def find_scripts_dir() -> Path:
-    """Locate the Scripts directory (should be on PATH or known location)"""
-    # Try common location first
-    common = Path.home() / "Documents" / "MyWebsiteGIT" / "Scripts"
-    if common.exists():
-        return common
-    
-    # Try to find via PATH
-    import shutil
-    test_script = shutil.which("dms_scan.py")
-    if test_script:
-        return Path(test_script).parent
-    
-    print("ERROR: Cannot locate Scripts directory with DMS tools.", file=sys.stderr)
-    print("Expected: ~/Documents/MyWebsiteGIT/Scripts", file=sys.stderr)
-    sys.exit(1)
+    """Return the Scripts directory at known location"""
+    scripts_dir = Path.home() / "Documents" / "MyWebsiteGIT" / "Scripts"
+    if not scripts_dir.exists():
+        print(f"ERROR: Scripts directory not found at {scripts_dir}", file=sys.stderr)
+        sys.exit(1)
+    return scripts_dir
 
 def load_config(scripts_dir: Path) -> dict:
     """Load configuration from Scripts/dms_config.json"""

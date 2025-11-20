@@ -37,6 +37,9 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
     
     print("==> Applying approved changes to .dms_state.json...\n")
     
+    # Get doc_dir from state_path
+    doc_dir = state_path.parent
+    
     # Load current state
     state = load_state(state_path)
     
@@ -107,10 +110,16 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
         print("ERROR: Failed to render index.html", file=sys.stderr)
         return 1
     
-    # Clean up pending file
+    # Clean up pending files after successful apply
+    scan_path = doc_dir / ".dms_scan.json"
+    
     if pending_path.exists():
         pending_path.unlink()
         print(f"\n✓ Cleaned up {pending_path}")
+    
+    if scan_path.exists():
+        scan_path.unlink()
+        print(f"✓ Cleaned up {scan_path}")
     
     print(f"\n✓ Apply complete!")
     print(f"\nUpdated files:")
@@ -120,9 +129,8 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
     return 0
 
 def find_scripts_dir() -> Path:
-    """Find the Scripts directory"""
-    script_dir = Path(__file__).parent.parent
-    return script_dir
+    """Return the Scripts directory"""
+    return Path.home() / "Documents/MyWebsiteGIT/Scripts"
 
 def main():
     parser = argparse.ArgumentParser(description="Apply approved changes to index")

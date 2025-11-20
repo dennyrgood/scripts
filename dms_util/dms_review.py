@@ -15,6 +15,9 @@ import sys
 import json
 from pathlib import Path
 
+
+SCRIPTS_DIR = Path.home() / "Documents/MyWebsiteGIT/Scripts"
+
 def load_pending_summaries(pending_path: Path) -> dict:
     """Load pending summaries from summarize step"""
     if not pending_path.exists():
