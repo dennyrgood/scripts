@@ -230,9 +230,14 @@ def main():
     
     args = parser.parse_args()
     
+    # Find scripts directory early (needed for menu)
+    scripts_dir = find_scripts_dir()
+    
     if not args.command:
-        parser.print_help()
-        return 0
+        # Launch interactive menu
+        menu_script = scripts_dir / "dms_menu.py"
+        result = subprocess.run([sys.executable, str(menu_script)])
+        return result.returncode
     
     # Check we're in a git repository
     cwd = Path.cwd()
@@ -254,7 +259,6 @@ def main():
         print("For a fresh repo, use: dms init", file=sys.stderr)
         return 1
     
-    scripts_dir = find_scripts_dir()
     config = load_config(scripts_dir)
     
     commands = {
