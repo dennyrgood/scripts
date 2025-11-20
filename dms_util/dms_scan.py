@@ -104,6 +104,12 @@ def scan_directory(doc_dir: Path, state: dict) -> tuple:
                 # Skip it - we'll process the original instead
                 continue
         
+        # Check if this original file is already tracked (via its readable version)
+        if rel_path not in state_docs and rel_path in readable_versions:
+            # This original file has a readable version that's already in state
+            # Skip it - don't report as new
+            continue
+        
         file_hash = compute_file_hash(file_path)
         
         if rel_path not in state_docs:
