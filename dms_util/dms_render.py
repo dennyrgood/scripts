@@ -14,6 +14,16 @@ import html as html_module
 from pathlib import Path
 from datetime import datetime
 
+def format_file_mtime(mtime_iso: str) -> str:
+    """Format ISO 8601 timestamp for display"""
+    if not mtime_iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(mtime_iso)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        return ""
+
 def render_index_html(state_path: Path, index_path: Path):
     """Generate index.html from .dms_state.json"""
     
@@ -368,6 +378,7 @@ def _generate_category_section(category, docs):
         <div class="title"><a href="#{path_escaped}" class="file-link">{title}</a></div>
         <div class="desc">{summary}{original_link}</div>
         <div class="tags small-muted">{file_ext} · {html_module.escape(category)}</div>
+        {f'<div class="mtime">📅 {format_file_mtime(doc_data.get("file_mtime", ""))}</div>' if doc_data.get("file_mtime") else ''}
       </div>
             </li>"""
         li_items.append(li)

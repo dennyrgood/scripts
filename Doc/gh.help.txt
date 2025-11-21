@@ -1,0 +1,86 @@
+# ==================================
+# 1. CORE SETUP & AUTHENTICATION
+# ==================================
+
+# Log in to GitHub.com or Enterprise (interactive guide)
+gh auth login
+
+# Check your current authentication status
+gh auth status
+
+# View your personalized status (assigned PRs/Issues, needed reviews)
+gh status
+
+# Set your preferred text editor (e.g., VS Code) for prompts
+# gh config set editor 'code --wait'
+
+
+# ==================================
+# 2. REPOSITORY MANAGEMENT (gh repo)
+# ==================================
+
+# Clone a repository using the simple owner/repo syntax
+gh repo clone OWNER/REPO
+
+# Interactively create a new repository on GitHub
+gh repo create
+
+# Open the current repository's main page in your web browser
+gh browse
+
+# Open the current branch in your web browser
+gh browse -b
+
+
+# ==================================
+# 3. PULL REQUEST WORKFLOW (gh pr)
+# ==================================
+
+# Create a new Pull Request from your current branch (interactive)
+gh pr create
+
+# List all open PRs (use --assignee, --state, --label for filters)
+gh pr list
+
+# View a dashboard of relevant PRs (checks status, reviews needed)
+gh pr status
+
+# THE BEST COMMAND: Fetch, create a local branch, and check out a specific PR
+gh pr checkout NUMBER
+
+# View details (title, body, status) of a specific PR
+gh pr view NUMBER
+
+# View details AND comments for a specific PR
+gh pr view NUMBER --comments
+
+# Merge the current PR (or specify a NUMBER)
+gh pr merge
+
+
+# ==================================
+# 4. ISSUES & CI/CD (gh issue / gh run)
+# ==================================
+
+# List all open issues
+gh issue list
+
+# Create a new issue (interactive)
+gh issue create
+
+# List recent runs of GitHub Actions workflows
+gh run list
+
+# View the full log output of a specific workflow run ID (for debugging)
+gh run view ID --log
+
+# Manually trigger a specific GitHub Actions workflow by name
+# gh workflow run [NAME]
+
+# ==================================
+# 5. PRO TIP: ALIASES
+# ==================================
+
+# Create an alias (shortcut) for a frequently used command
+# Example: gh alias set myissues 'issue list --assignee @me --state open'
+# Then run: gh myissues

@@ -71,6 +71,14 @@ def check_system():
     
     print("\n" + "="*70 + "\n")
 
+def show_categories_submenu():
+    """Display categories management submenu"""
+    scripts_dir = Path.home() / "Documents" / "MyWebsiteGIT" / "Scripts"
+    script_path = scripts_dir / "dms_util" / "dms_categories_interactive.py"
+    
+    import subprocess
+    subprocess.run([sys.executable, str(script_path), "--doc", "Doc"])
+
 def show_menu():
     """Display the main menu"""
     print("\n" + "="*70)
@@ -96,6 +104,7 @@ def show_menu():
     print("  o                 Convert images to text (OCR)")
     print("  x                 Cleanup missing files from state")
     print("  d                 Delete entries from state")
+    print("  g                 Manage categories (list/add/move/rename/delete)")
     
     print("\nOther:")
     print("  status            Show current DMS state")
@@ -245,6 +254,9 @@ Current config: ~/Documents/MyWebsiteGIT/Scripts/dms_config.json
         elif choice == 'd':
             run_cmd(['dms', 'delete-entry'], "Delete entries from state")
             input("\nPress Enter to continue...")
+        
+        elif choice == 'g':
+            show_categories_submenu()
         
         # Full command names
         elif choice == 'status':

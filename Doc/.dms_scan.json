@@ -1,0 +1,19 @@
+{
+  "timestamp": "2025-11-21T13:55:21.925184",
+  "new_files": [
+    {
+      "path": "./Fix Three Critical Bugs in DMS Pipeline copy.pdf",
+      "hash": "sha256:2bcb76ff27289a607a8294b25bb0b1230ab6fd3f3b0ef7bd220da26f42b8ee83",
+      "size": 67922,
+      "file_mtime": "2025-11-19T21:06:41.171019"
+    }
+  ],
+  "changed_files": [
+    {
+      "path": "./index.html",
+      "old_hash": "sha256:c571e63a13e26fc6cc82d4900e1b2b674ad59c5496d1f383c12e291486bbfcd2",
+      "new_hash": "sha256:9229ce5d22a831d41fe658fa705813ff3cb36a6c23d43d91916d756fecae63dc"
+    }
+  ],
+  "missing_files": []
+}

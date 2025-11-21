@@ -14,6 +14,11 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
+def get_file_mtime_iso(path: Path) -> str:
+    """Get file modification time in ISO 8601 format"""
+    mtime = path.stat().st_mtime
+    return datetime.fromtimestamp(mtime).isoformat()
+
 def load_state(state_path: Path) -> dict:
     """Load .dms_state.json"""
     if not state_path.exists():
@@ -73,6 +78,15 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
             'title': summary_info.get('title', Path(file_path).stem),
             'last_processed': datetime.now().isoformat()
         }
+        
+        # Include file modification time if available
+        if summary_info['file'].get('file_mtime'):
+            doc_entry['file_mtime'] = summary_info['file']['file_mtime']
+        else:
+            # Try to get mtime from actual file if not in summary
+            full_path = doc_dir / file_path.lstrip('./')
+            if full_path.exists():
+                doc_entry['file_mtime'] = get_file_mtime_iso(full_path)
         
         # Include readable version link if provided
         if summary_info['file'].get('readable_version'):

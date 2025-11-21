@@ -25,6 +25,11 @@ def compute_file_hash(path: Path) -> str:
             sha.update(chunk)
     return f"sha256:{sha.hexdigest()}"
 
+def get_file_mtime_iso(path: Path) -> str:
+    """Get file modification time in ISO 8601 format"""
+    mtime = path.stat().st_mtime
+    return datetime.fromtimestamp(mtime).isoformat()
+
 def load_state(state_path: Path) -> dict:
     """Load .dms_state.json"""
     if not state_path.exists():
@@ -120,7 +125,8 @@ def scan_directory(doc_dir: Path, state: dict) -> tuple:
                 new_files.append({
                     "path": rel_path,
                     "hash": file_hash,
-                    "size": file_path.stat().st_size
+                    "size": file_path.stat().st_size,
+                    "file_mtime": get_file_mtime_iso(file_path)
                 })
             else:
                 # Check if changed
@@ -142,7 +148,8 @@ def scan_directory(doc_dir: Path, state: dict) -> tuple:
             new_files.append({
                 "path": rel_path,
                 "hash": file_hash,
-                "size": file_path.stat().st_size
+                "size": file_path.stat().st_size,
+                "file_mtime": get_file_mtime_iso(file_path)
             })
         else:
             # Check if changed

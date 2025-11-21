@@ -169,6 +169,29 @@ def cmd_delete_entry(args, scripts_dir: Path, config: dict):
     
     return run_dms_script("dms_util/dms_delete_entry.py", script_args, scripts_dir)
 
+def cmd_categories(args, scripts_dir: Path, config: dict):
+    """Manage categories in state"""
+    script_args = ["--doc", "Doc"]
+    
+    if hasattr(args, 'cat_action') and args.cat_action:
+        script_args.append(args.cat_action)
+        
+        if args.cat_action == "add":
+            script_args.append(args.name)
+        elif args.cat_action == "move":
+            script_args.append(args.file)
+            script_args.append(args.category)
+        elif args.cat_action == "rename":
+            script_args.append(args.old)
+            script_args.append(args.new)
+        elif args.cat_action == "delete":
+            script_args.append(args.name)
+    else:
+        # Default to list if no subcommand
+        script_args.append("list")
+    
+    return run_dms_script("dms_util/dms_categories.py", script_args, scripts_dir)
+
 def main():
     parser = argparse.ArgumentParser(
         prog="dms",
@@ -219,6 +242,21 @@ def main():
     # status
     subparsers.add_parser("status", help="Show current DMS state")
     
+    # categories
+    p_cat = subparsers.add_parser("categories", help="Manage document categories")
+    p_cat_sub = p_cat.add_subparsers(dest="cat_action", help="Action (defaults to list)")
+    p_cat_sub.add_parser("list", help="List all categories and file counts")
+    p_cat_add = p_cat_sub.add_parser("add", help="Add new category")
+    p_cat_add.add_argument("name", help="Category name")
+    p_cat_move = p_cat_sub.add_parser("move", help="Move file to category")
+    p_cat_move.add_argument("file", help="File path (e.g., './myfile.txt')")
+    p_cat_move.add_argument("category", help="Target category")
+    p_cat_rename = p_cat_sub.add_parser("rename", help="Rename category (updates all files)")
+    p_cat_rename.add_argument("old", help="Old category name")
+    p_cat_rename.add_argument("new", help="New category name")
+    p_cat_delete = p_cat_sub.add_parser("delete", help="Delete category (moves files to Junk)")
+    p_cat_delete.add_argument("name", help="Category name")
+    
     args = parser.parse_args()
     
     # Find scripts directory early (needed for menu)
@@ -263,7 +301,8 @@ def main():
         "auto": cmd_auto,
         "init": cmd_init,
         "status": cmd_status,
-        "delete-entry": cmd_delete_entry
+        "delete-entry": cmd_delete_entry,
+        "categories": cmd_categories
     }
     
     return commands[args.command](args, scripts_dir, config)
