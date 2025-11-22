@@ -20,7 +20,7 @@ def load_config() -> dict:
     config_path = Path(__file__).parent.parent / "dms_config.json"
     if not config_path.exists():
         return {
-            "ollama_model": "phi3:mini",
+            "ollama_model": "phi4:14b",
             "ollama_host": "https://ollama.ldmathes.cc",
             "summary_max_words": 50,
             "temperature": 0.3
@@ -114,7 +114,7 @@ If proposing a new category, set is_new_category to true."""
                 "temperature": 0.2,  # Lower temperature for more consistent output
                 "stream": False
             },
-            timeout=120
+            timeout=300
         )
         
         if resp.status_code != 200:

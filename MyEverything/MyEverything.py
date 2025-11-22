@@ -62,6 +62,9 @@ class MyEverythingApp:
         
         # Internal dictionary to store file metadata (raw size/timestamps) for accurate sorting
         self.file_data = {}
+        
+        # Flag to indicate if shell=True is needed (due to pipe in other_args)
+        self.use_shell = False 
 
         # --- Build GUI ---
         self._create_widgets()
@@ -124,15 +127,23 @@ class MyEverythingApp:
         # Added "Days" after the last time input box (Changed)
         ttk.Label(filters_frame, text="Days").grid(row=3, column=6, padx=(5, 5), pady=(10, 5), sticky="w")
 
-        # Row 4/5/6: Other Arguments
-        ttk.Label(filters_frame, text="Other Arguments (Advanced):").grid(row=4, column=0, columnspan=7, padx=5, pady=(10, 0), sticky="w")
-        
-        other_entry = ttk.Entry(filters_frame, textvariable=self.other_args)
-        other_entry.grid(row=5, column=0, columnspan=7, padx=5, pady=(0, 5), sticky="ew")
+        # Row 4/5/6: Other Arguments - MODIFIED WITH HELP BUTTON
+        # Add "Other Arguments (Advanced)" entry field
+        ttk.Label(filters_frame, text="Other Arguments (Advanced):").grid(
+            row=4, column=0, columnspan=7, padx=5, pady=(10, 0), sticky="w")
 
-        # Examples Label
-        examples = "e.g., -perm 644 -user root -delete -exec 'mv {} {}.bak' \\;"
-        ttk.Label(filters_frame, text=examples, font=('Courier', 8)).grid(row=6, column=0, columnspan=7, padx=5, pady=(0, 5), sticky="w")
+        # Create the "Other Arguments" entry widget
+        other_entry = ttk.Entry(filters_frame, textvariable=self.other_args)
+        other_entry.grid(row=5, column=0, columnspan=6, padx=5, pady=(0, 5), sticky="ew")
+
+        # Add the "?" help button next to the entry box
+        ttk.Button(filters_frame, text="?", command=self._open_help_popup, width=2).grid(
+            row=5, column=6, padx=5, pady=(0, 5), sticky="e")
+
+        # Add examples text below the "Other Arguments" entry or keep as is
+        examples = r'e.g., -perm 644 | ! -name ".*" | -exec "mv {} {}.bak" \;'
+        ttk.Label(filters_frame, text=examples, font=('Courier', 10)).grid(
+            row=6, column=0, columnspan=7, padx=5, pady=(0, 5), sticky="w")
         
         filters_frame.grid_columnconfigure(6, weight=1) 
 
@@ -233,12 +244,18 @@ class MyEverythingApp:
         self.temp_stderr = "" # Clear temporary stderr holder
 
         try:
+            # _build_find_command now returns either a list (shell=False) or a string (shell=True)
             find_command = self._build_find_command()
             self.results_tree.delete(*self.results_tree.get_children())
             self.file_data = {}
 
-            # Display command being run
-            quoted_command = ' '.join(shlex.quote(arg) for arg in find_command)
+            # Display command being run (Handle list or string output)
+            if isinstance(find_command, list):
+                # Ensure the display command is correctly quoted using shlex.quote
+                quoted_command = ' '.join(shlex.quote(arg) for arg in find_command)
+            else:
+                quoted_command = find_command # It's already the full string command
+
             self.command_output.config(state='normal')
             self.command_output.delete(0, tk.END)
             self.command_output.insert(0, quoted_command)
@@ -261,7 +278,12 @@ class MyEverythingApp:
 
 
     def _execute_search_threaded(self, command):
-        """Executes the find command in a worker thread using Popen."""
+        """
+        Executes the find command in a worker thread using Popen.
+        Uses shell=True if the command is a string (meaning it contains a pipe).
+        """
+        is_shell_command = isinstance(command, str)
+        
         try:
             # Use Popen to get streaming output
             self.process = subprocess.Popen(
@@ -269,7 +291,8 @@ class MyEverythingApp:
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE,
                 text=True, 
-                bufsize=1
+                bufsize=1,
+                shell=is_shell_command # THIS IS THE CRITICAL CHANGE
             )
             
             # Stream stdout line by line and put into queue
@@ -277,12 +300,14 @@ class MyEverythingApp:
                 for line in self.process.stdout:
                     if self.process.poll() is not None and not line.strip(): # Check if process terminated early
                         break
+                    # IMPORTANT: For piped commands (like 'find ... | xargs grep'), the final output 
+                    # is the file path list, which must be inserted into the tree.
                     self.output_queue.put(('result', line.strip()))
 
             # Wait for process to finish
             self.process.wait()
 
-            # Put stderr into queue only if results were not processed
+            # Read stderr
             stderr_output = self.process.stderr.read() if self.process.stderr else ""
             if stderr_output:
                 self.output_queue.put(('error_output', stderr_output))
@@ -369,6 +394,59 @@ class MyEverythingApp:
         if folder_selected:
             self.start_path.set(folder_selected)
 
+    def _open_help_popup(self):
+        """Opens a Help pop-up with examples for 'Other Arguments'."""
+        # Create the pop-up window
+        help_popup = tk.Toplevel(self.master)
+        help_popup.title("Advanced Arguments Examples")
+        help_popup.geometry("600x600")
+        
+        # Add a scrollable text area
+        text_frame = ttk.Frame(help_popup)
+        text_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        scrollbar = tk.Scrollbar(text_frame)
+        text = tk.Text(text_frame, wrap="word", yscrollcommand=scrollbar.set)
+        scrollbar.config(command=text.yview)
+        
+        # Insert examples
+        examples_text = r"""
+        === Examples for 'Other Arguments' ===
+
+        1. Permissions:
+        - Find files with specific permissions:
+          Example: -perm 755 
+        - Exclude files with specific permissions:
+          Example: ! -perm 644 
+
+        2. Name and Pattern Matching:
+        - Exclude temporary files:
+          Example: ! -name "*.tmp"
+        - Find multiple file types (e.g., .pyc or .log):
+          Example: -name "*.pyc" -o -name "*.log"
+
+        3. Date and Time Filters:
+        - Modified after January 1, 2025:
+          Example: -newermt "2025-01-01"
+
+        4. Actions (Piping requires full command string - use carefully):
+        - Delete matching files (USE WITH CAUTION):
+          Example: -delete
+        - Change permissions to 644:
+          Example: -exec chmod 644 {} \;
+          
+        - Text Search (Piped): 
+          Example: -print0 | xargs -0 grep -l "search_string"
+          (Note: This requires 'shell=True' mode, handled automatically if '|' is present)
+        """
+        text.insert("1.0", examples_text)
+        text.config(state="disabled")  # Make read-only
+        text.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Close button
+        ttk.Button(help_popup, text="Close", command=help_popup.destroy).pack(pady=5)
+
     def _update_status(self, message, color='black'):
         """Helper to update the main status bar."""
         self.status_label.config(text=message, foreground=color)
@@ -393,25 +471,46 @@ class MyEverythingApp:
         self.error_status_label.config(text=status_text, foreground='red')
 
     def _build_find_command(self):
-        """Constructs the full 'find' command based on GUI inputs."""
+        """
+        Constructs the full 'find' command based on GUI inputs.
+        Returns a list if no pipe is used, or a single string if a pipe is used.
+        """
         
         command = [
             "find",
-            self.start_path.get()
+            self.start_path.get() # Do not quote here, shlex.quote will handle it later if needed
         ]
 
         # Name/iName Filter (Special Case)
-        search_arg = "-iname" if self.case_insensitive.get() else "-name"
-        command.extend([search_arg, self.search_name.get()])
+        search_name = self.search_name.get()
+        if search_name:
+            search_arg = "-iname" if self.case_insensitive.get() else "-name"
+            # Pattern goes unquoted into the list
+            command.extend([search_arg, search_name]) 
 
         # Iteratively build command using the FIND_FILTERS constant
         for var_name, flag in self.FIND_FILTERS:
             var_instance = getattr(self, var_name, None) 
-            if var_instance and var_instance.get().strip():
-                command.extend([flag, var_instance.get().strip()])
+            val = var_instance.get().strip() if var_instance else ""
+            if val:
+                # Value goes unquoted into the list
+                command.extend([flag, val]) 
 
         # Append any manually specified arguments
         other_args_val = self.other_args.get().strip()
+        
+        # Detect pipe to decide on execution mode
+        self.use_shell = '|' in other_args_val
+        
+        if self.use_shell:
+            # CRITICAL FIX: Quote all arguments in the command list before joining them into the string.
+            # This prevents wildcards like '*' from expanding prematurely in the shell.
+            quoted_find_part = [shlex.quote(arg) for arg in command]
+            
+            full_command_string = ' '.join(quoted_find_part) + ' ' + other_args_val
+            return full_command_string
+        
+        # If no pipe is used, we append the arguments and return a list (safer mode)
         if other_args_val:
             try:
                 # Use shlex.split for robust parsing of complex arguments
@@ -421,9 +520,19 @@ class MyEverythingApp:
                 self._log_error("Warning: shlex failed to parse 'Other Arguments'. Using simple split.", is_exception=False)
                 command.extend(other_args_val.split())
         
-        # Append -print 
-        command.append("-print")
+        # Check for common action flags that supersede '-print'
+        has_action = any(a in other_args_val for a in ['-exec', '-delete', '-ok', '-print0'])
         
+        if not has_action:
+            # If no explicit action is given in the "Other Arguments" field, 
+            # we default back to the list-based output action.
+            command.append("-print")
+        
+        # Ensure the starting path is quoted for Popen list execution
+        # (This is a safety check for the non-shell mode)
+        if command and command[1] == self.start_path.get():
+             command[1] = shlex.quote(command[1])
+
         return command
 
     def _insert_result_into_tree(self, path):
