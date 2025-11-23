@@ -138,12 +138,6 @@ class MyEverythingApp(ttk.Frame):
         other_entry.grid(row=5, column=1, columnspan=2, sticky='ew', pady=(8,0))
         other_entry.insert('1.0', '')
 
-        ttk.Button(filters_frame, 
-            text='Clear Other Args', 
-            command=lambda: other_entry.delete('1.0', 'end')
-        ).grid(row=5, column=3, padx=(6,0), pady=(8,0), sticky='nw')
- 
-
         # add a small dropdown of templates
         snippets = [
             '-perm 644',
@@ -153,8 +147,8 @@ class MyEverythingApp(ttk.Frame):
             '! -name "*.tmp"',
             '-name "*.pyc" -o -name "*.log"',
             r'-exec chmod 644 {} \;',
-            '-print0 | xargs -0 grep -l "search_string"',
-            '-print0 | xargs -0 grep -l "MyWebsiteGIT" > /tmp/results.txt']
+            '-print0 | xargs -0 grep -l "search_string"'
+        ]
  
         def insert_snippet(event=None):
             sel = snippet_box.get()
