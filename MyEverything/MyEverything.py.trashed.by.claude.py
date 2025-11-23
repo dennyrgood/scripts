@@ -420,14 +420,18 @@ class MyEverythingApp(ttk.Frame):
         count = self.result_count
         
         if error:
+            #self._append_stderr(error)
+            print(f"Error: {error}")  # or just remove this line
             self.status_var.set(f'Search FAILED: {error}')
-        elif self.temp_stderr or (return_code is not None and return_code not in [0, -15, 143]):
-            # Only show error for real errors, not cancel signals (-15, 143)
-            self.status_var.set(f'Completed with {count} results. NOTE: Errors occurred.')
+        elif self.temp_stderr or (return_code is not None and return_code != 0):
+            #self._append_stderr(self.temp_stderr or f"Process exited with code: {return_code}")
+            #print(f"stderr: {self.temp_stderr or f'Process exited with code: {return_code}'}")  # or just remove
+            self.status_var.set(f'Completed with {count} results. Errors occurred (see stderr box).')
         elif count == 0:
             self.status_var.set('Search complete. NO RESULTS FOUND.')
         else:
             self.status_var.set(f'Search complete. Found {count} results.')
+        
         self.temp_stderr = ""
 
     def _cancel_search(self):

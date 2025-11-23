@@ -75,7 +75,7 @@ class MyEverythingApp(ttk.Frame):
         self.command_preview_var = tk.StringVar()
 
         self.status_var = tk.StringVar(value='Ready.')
-        #self.stderr_visible = tk.BooleanVar(value=False)
+        self.stderr_visible = tk.BooleanVar(value=False)
 
     def _build_ui(self):
         pad = {'padx': 12, 'pady': 8}
@@ -188,11 +188,11 @@ class MyEverythingApp(ttk.Frame):
         ttk.Label(run_frame, textvariable=self.status_var).pack(side='right')
 
         # STDERR / LOG area (collapsible)
-        #stderr_frame = ttk.LabelFrame(self, text='Command Errors (stderr)')
-        #stderr_frame.pack(fill='both', expand=False, **pad)
-        #self.stderr_text = tk.Text(stderr_frame, height=4, wrap='word', background='#fff3f3')
-        #self.stderr_text.pack(fill='both', expand=True, padx=6, pady=6)
-        #self.stderr_text.configure(state='disabled')
+        stderr_frame = ttk.LabelFrame(self, text='Command Errors (stderr)')
+        stderr_frame.pack(fill='both', expand=False, **pad)
+        self.stderr_text = tk.Text(stderr_frame, height=4, wrap='word', background='#fff3f3')
+        self.stderr_text.pack(fill='both', expand=True, padx=6, pady=6)
+        self.stderr_text.configure(state='disabled')
 
         # RESULTS
         results_frame = ttk.LabelFrame(self, text='Results (Click headers to sort)')
@@ -303,9 +303,9 @@ class MyEverythingApp(ttk.Frame):
         self.cancel_button.state(['!disabled'])
         self.progress_bar.start()
         
-        #self.stderr_text.configure(state='normal')
-        #self.stderr_text.delete('1.0', 'end')
-        #self.stderr_text.configure(state='disabled')
+        self.stderr_text.configure(state='normal')
+        self.stderr_text.delete('1.0', 'end')
+        self.stderr_text.configure(state='disabled')
         self.temp_stderr = ""
         self._clear_results()
 
@@ -319,44 +319,45 @@ class MyEverythingApp(ttk.Frame):
         
         # Start checking the output queue
         self.parent.after(100, self._process_stream_output)
-    #new
 
     def _execute_search_threaded(self, command):
-        """Executes the find command in a worker thread using Popen."""
-        
-        p = None 
+        """Executes the find command and streams results via queue."""
+        p = None
         try:
             p = subprocess.Popen(
-                ['/bin/bash', '-c', command],  # <-- Now it's a proper list for bash
-                stdout=subprocess.PIPE, 
+                ['/bin/bash', '-lc', command],
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                bufsize=1
             )
             
-            self.process = p 
+            self.search_process = p
             
-            # Use communicate() to get all output at once
-            stdout, stderr = p.communicate()
+            # Stream stdout line by line
+            if p.stdout:
+                for line in p.stdout:
+                    if p.poll() is not None and not line.strip():
+                        break
+                    self.output_queue.put(('result', line.strip()))
             
-            # Split output into lines and put in queue
-            if stdout:
-                for line in stdout.strip().split('\n'):
-                    if line.strip():
-                        self.output_queue.put(('result', line.strip()))
+            # Wait for process to finish
+            p.wait()
             
-            if stderr:
-                self.output_queue.put(('error_output', stderr))
-                
+            # Get stderr
+            stderr_output = p.stderr.read() if p.stderr else ""
+            if stderr_output:
+                self.output_queue.put(('error_output', stderr_output))
+            
+            # Signal completion
             self.output_queue.put(('complete', p.returncode))
-
+            
         except Exception as e:
             self.output_queue.put(('hard_error', f"Subprocess execution failed: {e}"))
         finally:
-            if self.process is p:
-                self.process = None
+            if self.search_process is p:
+                self.search_process = None
 
-
-    
     def _process_stream_output(self):
         """Checks the queue for results/errors and updates the GUI."""
         
@@ -376,11 +377,11 @@ class MyEverythingApp(ttk.Frame):
             elif item_type == 'complete':
                 self._finalize_search(success=True, return_code=data)
                 return
-
+            
             elif item_type == 'hard_error':
                 self._finalize_search(success=False, error=data)
                 return
-            
+        
         # If thread is still running, check again soon
         if self.search_thread and self.search_thread.is_alive():
             self.parent.after(100, self._process_stream_output)
@@ -420,31 +421,32 @@ class MyEverythingApp(ttk.Frame):
         count = self.result_count
         
         if error:
+            self._append_stderr(error)
             self.status_var.set(f'Search FAILED: {error}')
-        elif self.temp_stderr or (return_code is not None and return_code not in [0, -15, 143]):
-            # Only show error for real errors, not cancel signals (-15, 143)
-            self.status_var.set(f'Completed with {count} results. NOTE: Errors occurred.')
+        elif self.temp_stderr or (return_code is not None and return_code != 0):
+            self._append_stderr(self.temp_stderr or f"Process exited with code: {return_code}")
+            self.status_var.set(f'Completed with {count} results. Errors occurred (see stderr box).')
         elif count == 0:
             self.status_var.set('Search complete. NO RESULTS FOUND.')
         else:
             self.status_var.set(f'Search complete. Found {count} results.')
+        
         self.temp_stderr = ""
 
     def _cancel_search(self):
-        """Terminates the running subprocess and cleans up the thread."""
-        if self.process and self.process.poll() is None:
+        if self.search_process and self.search_process.poll() is None:
             try:
-                # Send SIGTERM to the subprocess
-                self.process.terminate()
-                # Put cancel signal in queue so the UI thread knows to stop
-                self.output_queue.put(('cancelled', None))
+                self.search_process.terminate()
+                self.status_var.set('Search CANCELLED by user.')
             except Exception as e:
-                self.output_queue.put(('hard_error', str(e)))
+                self._append_stderr(str(e))
+        else:
+            self.status_var.set('No running search to cancel')
 
-    #def _append_stderr(self, txt):
-    #    self.stderr_text.configure(state='normal')
-    #    self.stderr_text.insert('end', txt + '\n')
-    #    self.stderr_text.configure(state='disabled')
+    def _append_stderr(self, txt):
+        self.stderr_text.configure(state='normal')
+        self.stderr_text.insert('end', txt + '\n')
+        self.stderr_text.configure(state='disabled')
 
     def _clear_results(self):
         for row in self.tree.get_children():
