@@ -7,9 +7,13 @@ A modernized Tkinter + ttk UI rewrite of MyEverything: macOS Find GUI.
 Keeps full find-command functionality while improving layout, spacing,
 command preview, results table with row striping, and a status/error panel.
 
-NOW WITH STREAMING RESULTS - results appear progressively during search!
-
 Original file reference: /mnt/data/MyEverything.py
+
+Notes:
+ - Date pickers are simple (Within N days / Exact date as text) to avoid
+   external dependencies; macOS native date picker deferred.
+ - Advanced features (syntax highlighting, presets, full command builder refactor)
+   are deferred for a follow-up iteration.
 
 Author: ChatGPT (generated)
 """
@@ -22,7 +26,6 @@ import shlex
 import os
 import sys
 import datetime
-import queue
 
 ORIGINAL_FILE = "/mnt/data/MyEverything.py"
 
@@ -30,7 +33,7 @@ class MyEverythingApp(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
-        self.parent.title("MyEverything: macOS Find GUI – Modern")
+        self.parent.title("MyEverything: macOS Find GUI — Modern")
         self.parent.geometry("1100x760")
         self.style = ttk.Style()
         # Use a modern-ish theme if available
@@ -42,9 +45,6 @@ class MyEverythingApp(ttk.Frame):
         self._create_vars()
         self._build_ui()
         self.search_process = None
-        self.search_thread = None
-        self.output_queue = queue.Queue()
-        self.temp_stderr = ""
         self.result_count = 0
 
     def _create_vars(self):
@@ -143,6 +143,7 @@ class MyEverythingApp(ttk.Frame):
             command=lambda: other_entry.delete('1.0', 'end')
         ).grid(row=5, column=3, padx=(6,0), pady=(8,0), sticky='nw')
  
+
         # add a small dropdown of templates
         snippets = [
             '-perm 644',
@@ -176,14 +177,10 @@ class MyEverythingApp(ttk.Frame):
         run_frame.pack(fill='x', **pad)
         self.run_button = ttk.Button(run_frame, text='▶ Run Find', command=lambda: self._start_search(other_entry))
         self.run_button.pack(side='left')
-        self.cancel_button = ttk.Button(run_frame, text='■ Cancel', command=self._cancel_search, state='disabled')
+        self.cancel_button = ttk.Button(run_frame, text='■ Cancel', command=self._cancel_search)
         self.cancel_button.pack(side='left', padx=(8,0))
         ttk.Button(run_frame, text='🔍 Preview Find', command=lambda: self._preview_find(other_entry)).pack(side='left', padx=(12,0))
         ttk.Button(run_frame, text='Clear Results', command=self._clear_results).pack(side='left', padx=(12,0))
-
-        # Progress bar
-        self.progress_bar = ttk.Progressbar(run_frame, mode='indeterminate', length=150)
-        self.progress_bar.pack(side='left', padx=(12,0))
 
         ttk.Label(run_frame, textvariable=self.status_var).pack(side='right')
 
@@ -214,8 +211,9 @@ class MyEverythingApp(ttk.Frame):
         self.tree.bind('<Double-1>', self._open_selected)
 
         # row striping
-        self.tree.tag_configure('odd', background="#f0f0f0")
-        self.tree.tag_configure('even', background="#ffffff")
+        self.tree.tag_configure('odd', background="#b8eec3")
+        self.tree.tag_configure('even', background="#EA1313")
+        # note: these background values assume dark theme; ttk will adapt in many cases
 
         # pack main frame
         self.pack(fill='both', expand=True)
@@ -243,12 +241,17 @@ class MyEverythingApp(ttk.Frame):
             parts.extend(['-type', 'f'])
         elif self.file_type.get() == 'd':
             parts.extend(['-type', 'd'])
+        # else 'any' -> nothing
 
         # size
         sv = self.size_value.get().strip()
         if sv:
             unit = self.size_unit.get()
             op = self.size_op.get()
+            # convert to find +/-n[ckmg] heuristic: find uses -size with blocks; but we will use -size with suffixes supported by GNU find or use -size +10M etc.
+            # Keep simple: build a -size expression with suffix
+            suffix = unit
+            # map to find suffix lowercase
             suffix_map = {'B':'c','K':'k','M':'M','G':'G'}
             suffix_flag = suffix_map.get(unit,'M')
             if op == '>':
@@ -265,8 +268,10 @@ class MyEverythingApp(ttk.Frame):
         def date_part(mode_var, days_var, date_var, flag):
             if mode_var.get() == 'within':
                 n = int(days_var.get() or 0)
+                # find uses -mtime n (in days). +N = more than N days; -N = less than N days; we want within N days -> -N
                 return [flag, '-' + str(n)]
             elif mode_var.get() == 'since':
+                # The native find doesn't accept exact dates easily across platforms; we will translate to -newermt 'YYYY-MM-DD' if supported (GNU/BSD have it on macOS as -newermt)
                 d = date_var.get().strip()
                 if d:
                     return ['-newermt', shlex.quote(d)]
@@ -279,11 +284,12 @@ class MyEverythingApp(ttk.Frame):
         # other args
         other = other_entry_text.strip()
         if other:
+            # naive split; we allow the advanced user to type raw find fragments
             parts.append(other)
 
+        # join safely for shell
         cmd = ' '.join(parts)
         return cmd
-
     def _preview_find(self, other_entry_widget):
         other_text = other_entry_widget.get('1.0', 'end').strip()
         cmd = self._build_find_command(other_text)
@@ -291,153 +297,49 @@ class MyEverythingApp(ttk.Frame):
         self.status_var.set('Preview updated.')
 
     def _start_search(self, other_entry_widget):
-        if self.search_process or self.search_thread:
+        if self.search_process:
             messagebox.showinfo('Search running', 'A search is already running. Cancel it before starting a new one.')
             return
-        
         other_text = other_entry_widget.get('1.0', 'end').strip()
         cmd = self._build_find_command(other_text)
         self.command_preview_var.set(cmd)
-        self.status_var.set('Searching...')
+        self.status_var.set('Running...')
         self.run_button.state(['disabled'])
         self.cancel_button.state(['!disabled'])
-        self.progress_bar.start()
-        
         self.stderr_text.configure(state='normal')
         self.stderr_text.delete('1.0', 'end')
         self.stderr_text.configure(state='disabled')
-        self.temp_stderr = ""
         self._clear_results()
 
-        # Start search in thread
-        self.search_thread = threading.Thread(
-            target=self._execute_search_threaded,
-            args=(cmd,),
-            daemon=True
-        )
-        self.search_thread.start()
-        
-        # Start checking the output queue
-        self.parent.after(100, self._process_stream_output)
-
-    def _execute_search_threaded(self, command):
-        """Executes the find command and streams results via queue."""
-        p = None
-        try:
-            p = subprocess.Popen(
-                ['/bin/bash', '-lc', command],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
-            
-            self.search_process = p
-            
-            # Stream stdout line by line
-            if p.stdout:
-                for line in p.stdout:
-                    if p.poll() is not None and not line.strip():
-                        break
-                    self.output_queue.put(('result', line.strip()))
-            
-            # Wait for process to finish
-            p.wait()
-            
-            # Get stderr
-            stderr_output = p.stderr.read() if p.stderr else ""
-            if stderr_output:
-                self.output_queue.put(('error_output', stderr_output))
-            
-            # Signal completion
-            self.output_queue.put(('complete', p.returncode))
-            
-        except Exception as e:
-            self.output_queue.put(('hard_error', f"Subprocess execution failed: {e}"))
-        finally:
-            if self.search_process is p:
-                self.search_process = None
-
-    def _process_stream_output(self):
-        """Checks the queue for results/errors and updates the GUI."""
-        
-        # Process all items currently in the queue
-        while not self.output_queue.empty():
+        # run in a thread to avoid blocking UI
+        def target():
             try:
-                item_type, data = self.output_queue.get_nowait()
-            except queue.Empty:
-                break
-            
-            if item_type == 'result':
-                self._insert_result(data)
-                
-            elif item_type == 'error_output':
-                self.temp_stderr = data
-                
-            elif item_type == 'complete':
-                self._finalize_search(success=True, return_code=data)
-                return
-            
-            elif item_type == 'hard_error':
-                self._finalize_search(success=False, error=data)
-                return
-        
-        # If thread is still running, check again soon
-        if self.search_thread and self.search_thread.is_alive():
-            self.parent.after(100, self._process_stream_output)
+                # We will run via /bin/bash -lc to allow advanced fragments in 'other'
+                self.search_process = subprocess.Popen(['/bin/bash', '-lc', cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                out, err = self.search_process.communicate()
+                self.search_process = None
+                if err:
+                    self._append_stderr(err)
+                if out:
+                    lines = out.splitlines()
+                    self._populate_results(lines)
+                    self.status_var.set(f'Finished — {len(lines)} results')
+                else:
+                    self.status_var.set('Finished — 0 results')
+            except Exception as e:
+                self._append_stderr(str(e))
+                self.status_var.set('Error')
+            finally:
+                self.run_button.state(['!disabled'])
+                self.cancel_button.state(['disabled'])
 
-    def _insert_result(self, path):
-        """Insert a single result into the tree as it arrives."""
-        if not path:
-            return
-        
-        folder, name = os.path.split(path)
-        try:
-            stat = os.stat(path)
-            size = self._human_readable_size(stat.st_size)
-            mtime = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            atime = datetime.datetime.fromtimestamp(stat.st_atime).strftime('%Y-%m-%d %H:%M:%S')
-            ctime = datetime.datetime.fromtimestamp(stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S')
-        except Exception:
-            size = ''
-            mtime = atime = ctime = ''
-        
-        tag = 'even' if (self.result_count % 2 == 0) else 'odd'
-        self.tree.insert('', 'end', values=(name, folder, size, mtime, atime, ctime), tags=(tag,))
-        self.result_count += 1
-        
-        # Update status periodically
-        if self.result_count % 10 == 0:
-            self.status_var.set(f'Searching... {self.result_count} results')
-
-    def _finalize_search(self, success, error=None, return_code=None):
-        """Clean up and show final status."""
-        self.run_button.state(['!disabled'])
-        self.cancel_button.state(['disabled'])
-        self.progress_bar.stop()
-        self.search_process = None
-        self.search_thread = None
-        
-        count = self.result_count
-        
-        if error:
-            self._append_stderr(error)
-            self.status_var.set(f'Search FAILED: {error}')
-        elif self.temp_stderr or (return_code is not None and return_code != 0):
-            self._append_stderr(self.temp_stderr or f"Process exited with code: {return_code}")
-            self.status_var.set(f'Completed with {count} results. Errors occurred (see stderr box).')
-        elif count == 0:
-            self.status_var.set('Search complete. NO RESULTS FOUND.')
-        else:
-            self.status_var.set(f'Search complete. Found {count} results.')
-        
-        self.temp_stderr = ""
+        threading.Thread(target=target, daemon=True).start()
 
     def _cancel_search(self):
         if self.search_process and self.search_process.poll() is None:
             try:
                 self.search_process.terminate()
-                self.status_var.set('Search CANCELLED by user.')
+                self.status_var.set('Cancelled')
             except Exception as e:
                 self._append_stderr(str(e))
         else:
@@ -453,7 +355,28 @@ class MyEverythingApp(ttk.Frame):
             self.tree.delete(row)
         self.result_count = 0
 
+    def _populate_results(self, lines):
+        # lines are file paths; split into folder + name + file metadata
+        for i, path in enumerate(lines):
+            path = path.strip()
+            if not path:
+                continue
+            folder, name = os.path.split(path)
+            try:
+                stat = os.stat(path)
+                size = self._human_readable_size(stat.st_size)
+                mtime = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                atime = datetime.datetime.fromtimestamp(stat.st_atime).strftime('%Y-%m-%d %H:%M:%S')
+                ctime = datetime.datetime.fromtimestamp(stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                size = ''
+                mtime = atime = ctime = ''
+            tag = 'even' if (self.result_count % 2 == 0) else 'odd'
+            self.tree.insert('', 'end', values=(name, folder, size, mtime, atime, ctime), tags=(tag,))
+            self.result_count += 1
+
     def _human_readable_size(self, n):
+        # simple human readable
         for unit in ['B','K','M','G','T']:
             if n < 1024.0:
                 return "%3.1f%s" % (n, unit)
@@ -471,6 +394,7 @@ class MyEverythingApp(ttk.Frame):
         name, folder = vals[0], vals[1]
         full = os.path.join(folder, name)
         if os.path.exists(full):
+            # open with macOS 'open'
             try:
                 subprocess.Popen(['open', "-R", full])
             except Exception as e:
@@ -479,6 +403,7 @@ class MyEverythingApp(ttk.Frame):
             messagebox.showerror('Not Found', full + ' does not exist')
 
     def _sort_by(self, col, descending):
+        # simple sort for the shown values
         data = [(self.tree.set(child, col), child) for child in self.tree.get_children('')]
         try:
             data.sort(key=lambda t: float(t[0]), reverse=descending)
@@ -486,6 +411,7 @@ class MyEverythingApp(ttk.Frame):
             data.sort(reverse=descending)
         for index, (val, child) in enumerate(data):
             self.tree.move(child, '', index)
+        # reverse sort next time
         self.tree.heading(col, command=lambda c=col: self._sort_by(c, not descending))
 
 def main():
