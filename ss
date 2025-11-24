@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Change to the root web development directory using the HOME variable
-cd "$HOME/Documents/MywebsiteGIT/Scripts"
+cd "$HOME/repos/scripts"
 
 # Replace the current shell process with a new instance of the interactive shell.
 # This is the trick that ensures the directory change (cd) persists 

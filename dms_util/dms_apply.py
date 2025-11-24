@@ -149,7 +149,7 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
     return 0
 
 def find_scripts_dir() -> Path:
-    """Return the Scripts directory (2 levels up from this utility file)"""
+    """Return the scripts directory (2 levels up from this utility file)"""
     return Path(__file__).parent.parent
 
 def main():

@@ -164,9 +164,9 @@ class MyEverythingApp(ttk.Frame):
             '-name "*.pyc" -o -name "*.log"',
             r'-exec chmod 644 {} \;',
             '-print0 | xargs -0 grep -l "search_string"',
-            '-print0 | xargs -0 grep -l "MyWebsiteGIT" > /tmp/results.txt',
-            '-not -name "*.pyc" -print0 | xargs -0 grep -l "MyWebsiteGIT"',
-            r'-not \( -name "*.pyc" -or -name "*.txt" -or -name "*.md" \) -print0 | xargs -0 grep -l "MyWebsiteGIT"'
+            '-print0 | xargs -0 grep -l "repos" > /tmp/results.txt',
+            '-not -name "*.pyc" -print0 | xargs -0 grep -l "repos"',
+            r'-not \( -name "*.pyc" -or -name "*.txt" -or -name "*.md" \) -print0 | xargs -0 grep -l "repos"'
             ]
  
         def insert_snippet(event=None):

@@ -19,7 +19,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 # IMPORTANT MODIFICATION: 
 # The REPO_ROOT_DIR is now a fixed path (relative to the user's home directory ~)
 # This allows the script to be run from ~/bin or anywhere else.
-REPO_ROOT_DIR="$HOME/Documents/MywebsiteGIT"
+REPO_ROOT_DIR="$HOME/repos"
 #
 START_DIR=$(pwd)
 ERROR_COUNT=0
