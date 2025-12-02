@@ -2,7 +2,7 @@
   "metadata": {
     "created": "2025-11-20T16:31:34.392771",
     "last_scan": null,
-    "last_apply": "2025-12-01T13:19:03.025877"
+    "last_apply": "2025-12-02T11:56:50.740324"
   },
   "categories": [
     "Guides",
@@ -140,6 +140,16 @@
       "title": "Git Command Line Workflow Cheatsheet",
       "last_processed": "2025-11-22T01:15:40.226726",
       "file_mtime": "2025-11-02T18:04:31.421817"
+    },
+    "./embed-workflow documentation.pdf": {
+      "hash": "sha256:ea78a1cabccd7dff130f3ec266aecda2172ff5e84c3de033ac99e7a26775e312",
+      "category": "Scripts",
+      "summary": "A Python script for embedding ComfyUI workflow JSON data into PNG image metadata, allowing for the creation of reproducible images.",
+      "summary_approved": true,
+      "title": "embed-workflow documentation",
+      "last_processed": "2025-12-02T11:56:50.740287",
+      "file_mtime": "2025-12-02T11:51:35.151825",
+      "readable_version": "./md_outputs/embed-workflow documentation.md"
     }
   }
 }

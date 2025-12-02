@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo # CRITICAL: Import PngInfo for correct metadata handling
+import json
+import argparse
+import os
+
+def embed_comfyui_workflow(input_image_path, input_json_path, output_image_path):
+    """
+    Loads an image and a separate ComfyUI workflow JSON file, embeds the JSON 
+    into the image's metadata using the PngInfo class, and saves the result 
+    as a new PNG image file.
+    
+    Args:
+        input_image_path (str): The path to the base image file (must be PNG).
+        input_json_path (str): The path to the JSON file containing the ComfyUI workflow.
+        output_image_path (str): The path where the new image with embedded metadata will be saved.
+    """
+    # 1. Validate Input Paths
+    if not os.path.exists(input_image_path):
+        print(f"❌ Error: Input image file not found at '{input_image_path}'")
+        return
+    if not os.path.exists(input_json_path):
+        print(f"❌ Error: Input JSON file not found at '{input_json_path}'")
+        return
+
+    print(f"Loading image from: **{input_image_path}**")
+    print(f"Loading workflow from: **{input_json_path}**")
+
+    # 2. Load the Workflow JSON
+    try:
+        with open(input_json_path, 'r') as f:
+            workflow_data = json.load(f)
+        
+        # Convert the workflow data back into a JSON string for embedding
+        embedded_workflow_json_string = json.dumps(workflow_data)
+        
+    except json.JSONDecodeError:
+        print(f"❌ Error: The file '{input_json_path}' is not a valid JSON file.")
+        return
+    except Exception as e:
+        print(f"❌ An error occurred while loading the JSON file: {e}")
+        return
+
+    # 3. Load the Image and Prepare Metadata using PngInfo
+    try:
+        # Load the base image
+        img = Image.open(input_image_path)
+        
+        # Initialize the PngInfo object to hold all metadata chunks
+        pnginfo = PngInfo()
+        
+        # Preserve existing text metadata (like creation date, other tools' data)
+        # by adding them to the PngInfo object
+        for key, value in img.info.items():
+            if isinstance(value, str):
+                pnginfo.add_text(key, value)
+        
+        # Embed the NEW ComfyUI workflow string 
+        # The key "comfyui_workflow" is what ComfyUI looks for.
+        pnginfo.add_text("comfyui_workflow", embedded_workflow_json_string)
+
+        # 4. Save the New Image with Embedded Metadata
+        img.save(
+            output_image_path, 
+            format="PNG",  
+            pnginfo=pnginfo # CRITICAL: Use the PngInfo object here
+        )
+        
+        print("---")
+        print(f"✅ Workflow successfully embedded and saved to: **{output_image_path}**")
+        print("---")
+        print(f"Check the output file: {output_image_path}")
+        
+    except Exception as e:
+        print(f"❌ An error occurred while processing or saving the image: {e}")
+        print("Hint: Ensure your input image is a PNG file and not corrupted.")
+
+if __name__ == "__main__":
+    # Setup argument parsing
+    parser = argparse.ArgumentParser(
+        description="Embeds a ComfyUI workflow JSON file into the metadata of an input PNG image and saves it as a new file."
+    )
+    
+    # Argument 1: Input Image
+    parser.add_argument(
+        "input_image_path",
+        type=str,
+        help="The path to the input PNG image file (e.g., base.png)."
+    )
+    
+    # Argument 2: Input JSON Workflow
+    parser.add_argument(
+        "input_json_path",
+        type=str,
+        help="The path to the input JSON file containing the ComfyUI workflow."
+    )
+    
+    # Argument 3: Output Image
+    parser.add_argument(
+        "output_image_path",
+        type=str,
+        help="The path where the new PNG image with the embedded workflow will be saved (e.g., result.png)."
+    )
+    
+    args = parser.parse_args()
+    
+    # Call the main function with all three provided arguments
+    embed_comfyui_workflow(
+        args.input_image_path, 
+        args.input_json_path, 
+        args.output_image_path
+    )

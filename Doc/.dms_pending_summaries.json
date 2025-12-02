@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-12-02T11:56:36.935277",
+  "summaries": [
+    {
+      "file": {
+        "path": "./embed-workflow documentation.pdf",
+        "hash": "sha256:ea78a1cabccd7dff130f3ec266aecda2172ff5e84c3de033ac99e7a26775e312",
+        "size": 53795,
+        "readable_version": "./md_outputs/embed-workflow documentation.md"
+      },
+      "summary": "A Python script for embedding ComfyUI workflow JSON data into PNG image metadata, allowing for the creation of reproducible images.",
+      "category": "Scripts",
+      "is_new_category": false,
+      "title": "embed-workflow documentation",
+      "timestamp": "2025-12-02T11:56:36.935236"
+    }
+  ]
+}
