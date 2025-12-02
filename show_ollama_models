@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""
+Fetch and display ollama models from the API.
+Self-contained - no dependencies on other scripts.
+"""
+import requests
+import datetime
+import urllib3 
+from typing import List, Dict, Any, Optional
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+API_URL = 'https://ollama.ldmathes.cc/v1/models'
+
+def format_date(timestamp: Optional[int]) -> str:
+    """Formats a Unix timestamp to a readable date."""
+    if not timestamp:
+        return 'N/A'
+    try:
+        dt = datetime.datetime.fromtimestamp(timestamp)
+        return dt.strftime('%Y-%m-%d %H:%M')
+    except (ValueError, OSError):
+        return 'Invalid Date'
+
+def categorize_model(model: Dict[str, Any]) -> str:
+    """Categorizes models into 'Cloud' or 'Local' based on name."""
+    name = (model.get('id', '') or '').lower()
+    if 'cloud' in name or '480b' in name or '671b' in name:
+        return 'Cloud'
+    return 'Local'
+
+def fetch_and_display():
+    """Fetch and display models from API."""
+    print(f"Attempting to fetch live model list from: {API_URL}")
+    print("-" * 80)
+
+    try:
+        response = requests.get(API_URL, timeout=5, verify=False) 
+        response.raise_for_status()
+        live_models = response.json().get('data', [])
+        
+        if not live_models:
+            print(f"⚠️ API returned empty model list.")
+            return
+            
+        print(f"✅ Successfully fetched {len(live_models)} live models.")
+        print("-" * 80)
+        
+    except requests.exceptions.RequestException as e:
+        print(f"🚨 ERROR: API connection failed ({type(e).__name__}).")
+        return
+
+    # Categorize
+    cloud_models = [m for m in live_models if categorize_model(m) == 'Cloud']
+    local_models = [m for m in live_models if categorize_model(m) == 'Local']
+
+    def print_category(models_list: List[Dict[str, Any]], title: str, icon: str):
+        print(f"\n{icon} {title} ({len(models_list)} models)")
+        print("-" * 80)
+        header = "{:<45} | {:<15}"
+        print(header.format("MODEL ID", "CREATED"))
+        print("-" * 80)
+        
+        for model in sorted(models_list, key=lambda x: x.get('id', '')):
+            name = model.get('id', 'N/A')[:44]
+            created = format_date(model.get('created'))
+            print(f"{name:<45} | {created:<15}")
+        print("-" * 80)
+
+    print_category(cloud_models, "CLOUD MODELS (High-Capacity)", "🚀")
+    print_category(local_models, "LOCAL & SPECIALTY MODELS", "💻")
+
+if __name__ == "__main__":
+    fetch_and_display()

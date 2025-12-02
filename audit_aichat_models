@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""
+Audit aichat config against available ollama models.
+Shows three categories:
+  1. Current: Models in both config and API
+  2. Missing: Models available but not in config
+  3. Stale: Models in config but not on API
+Usage: audit_aichat_models [--output]
+  --output  Show only suggested config entries (for piping to file)
+Self-contained - no external script dependencies.
+"""
+import requests
+import re
+from pathlib import Path
+import urllib3
+import sys
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+API_URL = 'https://ollama.ldmathes.cc/v1/models'
+OUTPUT_ONLY = '--output' in sys.argv
+
+def fetch_models():
+    """Fetch models from API."""
+    try:
+        response = requests.get(API_URL, timeout=5, verify=False)
+        response.raise_for_status()
+        return response.json().get('data', [])
+    except requests.exceptions.RequestException as e:
+        print(f"🚨 ERROR: Failed to fetch models ({type(e).__name__})", file=sys.stderr)
+        return []
+
+def parse_config_models(config_path):
+    """Extract model names from aichat config."""
+    models = set()
+    try:
+        with open(config_path, 'r') as f:
+            content = f.read()
+        
+        pattern = r'^\s*-?\s*name:\s*["\']?([a-z0-9\-_./:]+:[a-z0-9\-_.]+)["\']?'
+        for line in content.split('\n'):
+            match = re.match(pattern, line)
+            if match:
+                models.add(match.group(1))
+    except FileNotFoundError:
+        print(f"Error: Config file not found at {config_path}", file=sys.stderr)
+        return set()
+    except Exception as e:
+        print(f"Error reading config: {e}", file=sys.stderr)
+        return set()
+    
+    return models
+
+def format_display_name(model_id):
+    """Create a readable display name from model ID."""
+    base_name = model_id.replace(':latest', '').replace(':cloud', '')
+    parts = [p.capitalize() for p in base_name.split('-')]
+    
+    if ':cloud' in model_id:
+        return f"{' '.join(parts)} (Cloud)"
+    elif ':latest' in model_id or ':' not in model_id:
+        return ' '.join(parts)
+    else:
+        name, variant = model_id.split(':', 1)
+        return f"{' '.join([p.capitalize() for p in name.split('-')])} ({variant})"
+
+def audit_models():
+    """Audit config against available models."""
+    api_models = {m.get('id') for m in fetch_models()}
+    
+    if not api_models:
+        print("Error: No models found from API", file=sys.stderr)
+        sys.exit(1)
+    
+    config_path = Path.home() / "Library/Application Support/aichat/config.yaml"
+    config_models = parse_config_models(config_path)
+    
+    if not config_models:
+        print("Warning: No models found in aichat config", file=sys.stderr)
+    
+    # Categorize
+    current = api_models & config_models
+    missing = api_models - config_models
+    stale = config_models - api_models
+    
+    if OUTPUT_ONLY:
+        # Output only suggested entries
+        if not missing:
+            return
+        
+        cloud = sorted([m for m in missing if ':cloud' in m])
+        local = sorted([m for m in missing if ':cloud' not in m])
+        
+        if cloud:
+            print("      # --- Cloud Models (Missing) ---")
+            for model in cloud:
+                print(f"      - name: {format_display_name(model)}")
+                print(f"        display_name: {format_display_name(model)}\n")
+        
+        if local:
+            if cloud:
+                print()
+            print("      # --- Local Models (Missing) ---")
+            for model in local:
+                print(f"      - name: {model}")
+                print(f"        display_name: {format_display_name(model)}\n")
+        return
+    
+    # AUDIT MODE (default - full output)
+    # Print summary
+    print("\n" + "="*80)
+    print("AICHAT CONFIG AUDIT")
+    print("="*80)
+    print(f"\n📊 Summary:")
+    print(f"   ✅ Current (in both):  {len(current)}")
+    print(f"   ⚠️  Missing (add):     {len(missing)}")
+    print(f"   ❌ Stale (remove):     {len(stale)}")
+    print(f"   Total in config:       {len(config_models)}")
+    print(f"   Total available:       {len(api_models)}")
+    
+    # Current models
+    if current:
+        print(f"\n✅ CURRENT MODELS ({len(current)} - in both config and API):")
+        print("-" * 80)
+        for model in sorted(current):
+            print(f"   {model}")
+    
+    # Missing models
+    if missing:
+        cloud = sorted([m for m in missing if ':cloud' in m])
+        local = sorted([m for m in missing if ':cloud' not in m])
+        
+        print(f"\n⚠️  MISSING MODELS ({len(missing)} - available but not in config):")
+        print("-" * 80)
+        
+        if cloud:
+            print(f"\n   Cloud Models ({len(cloud)}):")
+            for model in cloud:
+                print(f"      {model}")
+        
+        if local:
+            print(f"\n   Local Models ({len(local)}):")
+            for model in local:
+                print(f"      {model}")
+        
+        print(f"\n📝 SUGGESTED CONFIG ENTRIES:")
+        print("-" * 80)
+        
+        if cloud:
+            print("      # --- Cloud Models (Missing) ---")
+            for model in cloud:
+                print(f"      - name: {format_display_name(model)}")
+                print(f"        display_name: {format_display_name(model)}\n")
+        
+        if local:
+            if cloud:
+                print()
+            print("      # --- Local Models (Missing) ---")
+            for model in local:
+                print(f"      - name: {model}")
+                print(f"        display_name: {format_display_name(model)}\n")
+    
+    # Stale models
+    if stale:
+        print(f"\n❌ STALE MODELS ({len(stale)} - in config but NOT on API):")
+        print("-" * 80)
+        print("   These should be reviewed and removed if they're no longer needed:\n")
+        for model in sorted(stale):
+            print(f"   {model}")
+    
+    print("\n" + "="*80)
+    print("💡 TIP: Use 'audit_aichat_models --output > suggestions.yaml' to save entries to file")
+    print("="*80 + "\n")
+
+if __name__ == "__main__":
+    audit_models()

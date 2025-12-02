@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""
+List ollama models from API.
+Self-contained - no dependencies on other scripts.
+"""
+import requests
+import sys
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+API_URL = 'https://ollama.ldmathes.cc/v1/models'
+
+def fetch_and_list():
+    """Fetch and list models from API."""
+    try:
+        response = requests.get(API_URL, timeout=5, verify=False)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error: Failed to fetch models ({type(e).__name__})", file=sys.stderr)
+        return
+
+    if 'data' not in data or not isinstance(data['data'], list):
+        print("Error: Unexpected API response format", file=sys.stderr)
+        return
+
+    llms = [item.get('id') for item in data['data'] if 'id' in item]
+    
+    if not llms:
+        print("No models found", file=sys.stderr)
+        return
+    
+    print(f"Found {len(llms)} ollama active LLMs:")
+    for i, llm in enumerate(llms, 1):
+        print(f"{i}. {llm}")
+
+if __name__ == "__main__":
+    fetch_and_list()

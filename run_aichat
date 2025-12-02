@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# --- AI Chat Model Selector Script ---
+# This script dynamically lists available aichat models and allows the user to
+# select one to launch the aichat REPL in interactive mode.
+
+# --- Instructions for using aichat within this environment/script ---
+
+echo "To list all models using a direct command:"
+echo "    aichat --list-models"
+echo ""
+echo "To list and select models from *within* the interactive aichat prompt:"
+echo "1. Start aichat in interactive mode:"
+echo "    aichat"
+echo "2. At the 'aichat>' prompt, type '.model ' (with a space)."
+echo "3. Press the TAB key to display all available options."
+echo ""
+echo "================================================================================"
+echo ""
+
+# 1. Dynamically retrieve the list of available models
+echo "Attempting to retrieve model list using 'aichat --list-models'..."
+
+# Use a compatible 'while read' loop to capture the output into the MODELS array.
+# This avoids the 'mapfile' command which is often missing in older macOS Bash versions.
+MODELS=() # Initialize the array
+while IFS= read -r LINE; do
+    # Only add non-empty lines to the array
+    [[ -n "$LINE" ]] && MODELS+=("$LINE")
+done < <(aichat --list-models 2>/dev/null)
+
+# Check if any models were returned
+if [ ${#MODELS[@]} -eq 0 ]; then
+    # If the array is empty, we assume the command failed or returned nothing.
+    echo "Error: Could not retrieve a list of models. Please ensure 'aichat' is installed and configured correctly."
+    exit 1
+fi
+
+# 2. Display the list of models
+echo "--- Available AI Chat Models (Live List) ---"
+echo ""
+
+# Loop through the array and display each model with a number
+for i in "${!MODELS[@]}"; do
+    # Add 1 because arrays are 0-indexed
+    printf "%2d) %s\n" "$((i + 1))" "${MODELS[$i]}"
+done
+
+echo ""
+
+# 3. Prompt the user for their choice
+read -rp "Enter the number of the model you want to use: " CHOICE
+
+# 4. Input validation
+# Check if the input is a valid number within the range of the array
+MAX_INDEX=${#MODELS[@]}
+if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -lt 1 ] || [ "$CHOICE" -gt "$MAX_INDEX" ]; then
+    echo "Error: Invalid selection. Please enter a number between 1 and $MAX_INDEX."
+    exit 1
+fi
+
+# 5. Execute aichat with the selected model
+# Convert the 1-indexed choice back to a 0-indexed array position
+MODEL_INDEX=$((CHOICE - 1))
+SELECTED_MODEL="${MODELS[$MODEL_INDEX]}"
+
+echo ""
+echo "--- Launching aichat with: $SELECTED_MODEL ---"
+echo ""
+
+# Execute the aichat command in REPL mode
+# The exec command replaces the current shell process with the aichat process.
+# This is usually desired behavior for a launcher script.
+exec aichat --model "$SELECTED_MODEL"

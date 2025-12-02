@@ -1,0 +1,211 @@
+#!/bin/bash
+
+# Audit and sync Continue config with available ollama models
+# Shows config health (current/missing/stale) and can generate config entries
+# Usage: audit_continue_models [--output] [config_file] [ollama_base] [--debug]
+#
+# Examples:
+#   audit_continue_models                          # Full audit
+#   audit_continue_models --output > suggestions.yaml
+#   audit_continue_models --debug                  # With debug output
+#   audit_continue_models ~/.continue/config.yaml  # Custom config path
+
+OUTPUT_ONLY=false
+SYNC_MODE=false
+DEBUG=false
+CONFIG_FILE=""
+OLLAMA_BASE="https://ollama.ldmathes.cc"
+
+# Parse arguments
+for arg in "$@"; do
+    case "$arg" in
+        --output) OUTPUT_ONLY=true ;;
+        --sync) SYNC_MODE=true ;;
+        --debug) DEBUG=true ;;
+        https://* | http://*) OLLAMA_BASE="$arg" ;;
+        *) CONFIG_FILE="$arg" ;;
+    esac
+done
+
+CONFIG_FILE="${CONFIG_FILE:-$HOME/.continue/config.yaml}"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Config file '$CONFIG_FILE' not found" >&2
+    exit 1
+fi
+
+echo "Fetching available models from $OLLAMA_BASE..."
+
+# Try native Ollama API first, fall back to OpenAI-compatible API
+AVAILABLE_MODELS=$(curl -s "$OLLAMA_BASE/api/tags" | jq -r '.models[].name' 2>/dev/null | sort)
+
+# If that fails, try OpenAI-compatible endpoint
+if [ -z "$AVAILABLE_MODELS" ]; then
+    AVAILABLE_MODELS=$(curl -s "$OLLAMA_BASE/v1/models" | jq -r '.data[].id' 2>/dev/null | sort)
+fi
+
+if [ -z "$AVAILABLE_MODELS" ]; then
+    echo "Error: No models found or unable to connect to Ollama server" >&2
+    exit 1
+fi
+
+# Extract model names from config.yaml
+CONFIGURED_MODELS=$(grep -E '^\s+model:\s*' "$CONFIG_FILE" | sed -E 's/.*model:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/' | sort)
+
+# Find differences
+CURRENT_MODELS=$(comm -12 <(echo "$AVAILABLE_MODELS" | sort -u) <(echo "$CONFIGURED_MODELS" | sort -u))
+MISSING_MODELS=$(comm -23 <(echo "$AVAILABLE_MODELS" | sort -u) <(echo "$CONFIGURED_MODELS" | sort -u))
+STALE_MODELS=$(comm -13 <(echo "$AVAILABLE_MODELS" | sort -u) <(echo "$CONFIGURED_MODELS" | sort -u))
+
+# If sync mode, generate config entries
+if [ "$SYNC_MODE" = true ] || [ "$OUTPUT_ONLY" = true ]; then
+    if [ "$OUTPUT_ONLY" = false ]; then
+        echo ""
+        echo "================================================================================"
+        echo "CONTINUE CONFIG GENERATION"
+        echo "================================================================================"
+        echo ""
+    fi
+    
+    if [ -z "$MISSING_MODELS" ]; then
+        if [ "$OUTPUT_ONLY" = false ]; then
+            echo "All available models are already in config!"
+        fi
+        exit 0
+    fi
+    
+    if [ "$OUTPUT_ONLY" = false ]; then
+        echo "# Generated config entries for missing models"
+        echo "# Add these to your config.yaml models section"
+        echo ""
+    fi
+    
+    while IFS= read -r model; do
+        [ -z "$model" ] && continue
+        
+        friendly_name=$(echo "$model" | sed 's/:/ /g; s/-/ /g; s/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+        is_cloud=""
+        if echo "$model" | grep -q "cloud"; then
+            is_cloud=" (Cloud)"
+        fi
+        
+        echo "  - name: $friendly_name$is_cloud"
+        echo "    provider: ollama"
+        echo "    model: \"$model\""
+        echo "    apiBase: $OLLAMA_BASE"
+        echo "    baseUrl: $OLLAMA_BASE"
+        echo "    roles:"
+        echo "      - chat"
+        
+        if echo "$model" | grep -qiE "coder|code|codestral|starcoder|wizardcoder|deepseek|qwen|mistral|claude|gpt"; then
+            echo "      - edit"
+        fi
+        
+        if echo "$model" | grep -qiE "llama|qwen|deepseek|gpt|glm|mistral|mixtral|phi|gemma|command|claude|yi|falcon|vicuna|orca|openchat|nous|hermes|solar|starling|wizard|neural|intelligence|reasoning|think"; then
+            echo "    capabilities:"
+            echo "      - tool_use"
+        fi
+        
+        echo "    requestOptions:"
+        echo "      timeout: 300000"
+        echo "      keepAlive: 300000"
+        echo ""
+    done <<< "$MISSING_MODELS"
+    
+    exit 0
+fi
+
+# AUDIT MODE (default)
+echo ""
+echo "================================================================================"
+echo "CONTINUE CONFIG AUDIT"
+echo "================================================================================"
+echo ""
+echo "📊 Summary:"
+CURRENT_COUNT=$(echo "$CURRENT_MODELS" | grep -c . || echo 0)
+MISSING_COUNT=$(echo "$MISSING_MODELS" | grep -c . || echo 0)
+STALE_COUNT=$(echo "$STALE_MODELS" | grep -c . || echo 0)
+CONFIG_COUNT=$(echo "$CONFIGURED_MODELS" | grep -c . || echo 0)
+AVAILABLE_COUNT=$(echo "$AVAILABLE_MODELS" | grep -c . || echo 0)
+
+echo "   ✅ Current (in both):  $CURRENT_COUNT"
+echo "   ⚠️  Missing (add):     $MISSING_COUNT"
+echo "   ❌ Stale (remove):     $STALE_COUNT"
+echo "   Total in config:       $CONFIG_COUNT"
+echo "   Total available:       $AVAILABLE_COUNT"
+
+if [ "$DEBUG" = true ]; then
+    echo ""
+    echo "=== DEBUG: Configured models ==="
+    echo "$CONFIGURED_MODELS"
+    echo ""
+    echo "=== DEBUG: Available models ==="
+    echo "$AVAILABLE_MODELS"
+    echo ""
+fi
+
+# Current models
+if [ -n "$CURRENT_MODELS" ]; then
+    echo ""
+    echo "✅ CURRENT MODELS ($CURRENT_COUNT - in both config and API):"
+    echo "--------------------------------------------------------------------------------"
+    echo "$CURRENT_MODELS" | sed 's/^/   /'
+fi
+
+# Missing models
+if [ -n "$MISSING_MODELS" ]; then
+    echo ""
+    echo "⚠️  MISSING MODELS ($MISSING_COUNT - available but not in config):"
+    echo "--------------------------------------------------------------------------------"
+    echo "$MISSING_MODELS" | sed 's/^/   /'
+    echo ""
+    echo "📝 SUGGESTED CONFIG ENTRIES:"
+    echo "--------------------------------------------------------------------------------"
+    
+    while IFS= read -r model; do
+        [ -z "$model" ] && continue
+        
+        friendly_name=$(echo "$model" | sed 's/:/ /g; s/-/ /g; s/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+        is_cloud=""
+        if echo "$model" | grep -q "cloud"; then
+            is_cloud=" (Cloud)"
+        fi
+        
+        echo "  - name: $friendly_name$is_cloud"
+        echo "    provider: ollama"
+        echo "    model: \"$model\""
+        echo "    apiBase: $OLLAMA_BASE"
+        echo "    baseUrl: $OLLAMA_BASE"
+        echo "    roles:"
+        echo "      - chat"
+        
+        if echo "$model" | grep -qiE "coder|code|codestral|starcoder|wizardcoder|deepseek|qwen|mistral|claude|gpt"; then
+            echo "      - edit"
+        fi
+        
+        if echo "$model" | grep -qiE "llama|qwen|deepseek|gpt|glm|mistral|mixtral|phi|gemma|command|claude|yi|falcon|vicuna|orca|openchat|nous|hermes|solar|starling|wizard|neural|intelligence|reasoning|think"; then
+            echo "    capabilities:"
+            echo "      - tool_use"
+        fi
+        
+        echo "    requestOptions:"
+        echo "      timeout: 300000"
+        echo "      keepAlive: 300000"
+        echo ""
+    done <<< "$MISSING_MODELS"
+fi
+
+# Stale models
+if [ -n "$STALE_MODELS" ]; then
+    echo ""
+    echo "❌ STALE MODELS ($STALE_COUNT - in config but NOT on API):"
+    echo "   These should be reviewed and removed if no longer needed:"
+    echo "--------------------------------------------------------------------------------"
+    echo "$STALE_MODELS" | sed 's/^/   /'
+fi
+
+echo ""
+echo "================================================================================"
+echo "💡 TIP: Use 'audit_continue_models --output > suggestions.yaml' to save entries"
+echo "================================================================================"
+echo ""
