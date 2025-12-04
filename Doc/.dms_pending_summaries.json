@@ -1,18 +1,18 @@
 {
-  "timestamp": "2025-12-02T11:56:36.935277",
+  "timestamp": "2025-12-04T19:52:32.574161",
   "summaries": [
     {
       "file": {
-        "path": "./embed-workflow documentation.pdf",
-        "hash": "sha256:ea78a1cabccd7dff130f3ec266aecda2172ff5e84c3de033ac99e7a26775e312",
-        "size": 53795,
-        "readable_version": "./md_outputs/embed-workflow documentation.md"
+        "path": "./Here are the most commonly used find parameters on macOS.docx",
+        "hash": "sha256:7fe0c9dcd3639de37a2385038665b44f722f673b830c969c43197f7298261fa9",
+        "size": 20209,
+        "readable_version": "./md_outputs/Here are the most commonly used find parameters on macOS.md"
       },
-      "summary": "A Python script for embedding ComfyUI workflow JSON data into PNG image metadata, allowing for the creation of reproducible images.",
-      "category": "Scripts",
+      "summary": "This document provides a concise list of commonly used 'find' command parameters and actions for macOS and Unix systems, aimed at practical daily use scenarios.",
+      "category": "QuickRefs",
       "is_new_category": false,
-      "title": "embed-workflow documentation",
-      "timestamp": "2025-12-02T11:56:36.935236"
+      "title": "Here are the most commonly used find parameters on macOS",
+      "timestamp": "2025-12-04T19:52:32.574106"
     }
   ]
 }

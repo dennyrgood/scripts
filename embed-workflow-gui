@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import os
+from pathlib import Path
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
+import json
+
+class EmbedWorkflowApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Embed ComfyUI Workflow")
+        self.root.geometry("500x300")
+        
+        self.image_file = None
+        self.json_file = None
+        
+        # Drop zone for image
+        self.image_frame = tk.Frame(root, bg="lightblue", relief="sunken", bd=2)
+        self.image_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        self.image_label = tk.Label(
+            self.image_frame,
+            text="Drop PNG image here",
+            bg="lightblue",
+            font=("Arial", 12),
+            fg="darkblue"
+        )
+        self.image_label.pack(fill=tk.BOTH, expand=True)
+        self.image_frame.bind("<Button-1>", lambda e: self.select_image())
+        self.image_label.bind("<Button-1>", lambda e: self.select_image())
+        
+        # Drop zone for JSON
+        self.json_frame = tk.Frame(root, bg="lightgreen", relief="sunken", bd=2)
+        self.json_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        self.json_label = tk.Label(
+            self.json_frame,
+            text="Drop JSON workflow here",
+            bg="lightgreen",
+            font=("Arial", 12),
+            fg="darkgreen"
+        )
+        self.json_label.pack(fill=tk.BOTH, expand=True)
+        self.json_frame.bind("<Button-1>", lambda e: self.select_json())
+        self.json_label.bind("<Button-1>", lambda e: self.select_json())
+        
+        # Embed button
+        self.embed_button = tk.Button(
+            root,
+            text="Embed Workflow",
+            command=self.embed,
+            font=("Arial", 12),
+            bg="orange",
+            fg="white",
+            padx=20,
+            pady=10
+        )
+        self.embed_button.pack(pady=10)
+        
+        # Enable drag and drop
+        self.setup_drag_drop()
+    
+    def setup_drag_drop(self):
+        try:
+            import tkinterdnd2 as tkdnd
+            self.root.tk.call('package', 'require', 'tkdnd')
+            self.image_frame.drop_target_register(tkdnd.DND_FILES)
+            self.image_frame.dnd_bind('<<Drop>>', self.drop_image)
+            self.json_frame.drop_target_register(tkdnd.DND_FILES)
+            self.json_frame.dnd_bind('<<Drop>>', self.drop_json)
+        except (ImportError, tk.TclError):
+            # Drag and drop not available, fall back to click to select
+            pass
+    
+    def drop_image(self, event):
+        files = self.root.tk.splitlist(event.data)
+        if files:
+            self.image_file = files[0].strip('{}')
+            if self.image_file.lower().endswith('.png'):
+                self.image_label.config(text=f"✓ {Path(self.image_file).name}")
+            else:
+                messagebox.showerror("Error", "Please select a PNG file")
+                self.image_file = None
+    
+    def drop_json(self, event):
+        files = self.root.tk.splitlist(event.data)
+        if files:
+            self.json_file = files[0].strip('{}')
+            if self.json_file.lower().endswith('.json'):
+                self.json_label.config(text=f"✓ {Path(self.json_file).name}")
+            else:
+                messagebox.showerror("Error", "Please select a JSON file")
+                self.json_file = None
+    
+    def select_image(self):
+        file = filedialog.askopenfilename(filetypes=[("PNG files", "*.png")])
+        if file:
+            self.image_file = file
+            self.image_label.config(text=f"✓ {Path(self.image_file).name}")
+    
+    def select_json(self):
+        file = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
+        if file:
+            self.json_file = file
+            self.json_label.config(text=f"✓ {Path(self.json_file).name}")
+    
+    def embed(self):
+        if not self.image_file:
+            messagebox.showerror("Error", "Please select a PNG image")
+            return
+        if not self.json_file:
+            messagebox.showerror("Error", "Please select a JSON workflow")
+            return
+        
+        # Generate output filename
+        image_path = Path(self.image_file)
+        output_path = image_path.parent / f"{image_path.stem}_e{image_path.suffix}"
+        
+        try:
+            # Load JSON
+            with open(self.json_file, 'r') as f:
+                workflow_data = json.load(f)
+            embedded_workflow_json_string = json.dumps(workflow_data)
+            
+            # Load image and embed
+            img = Image.open(self.image_file)
+            pnginfo = PngInfo()
+            
+            # Preserve existing metadata
+            for key, value in img.info.items():
+                if isinstance(value, str):
+                    pnginfo.add_text(key, value)
+            
+            # Add workflow
+            pnginfo.add_text("comfyui_workflow", embedded_workflow_json_string)
+            
+            # Save
+            img.save(str(output_path), format="PNG", pnginfo=pnginfo)
+            
+            messagebox.showinfo("Success", f"Workflow embedded!\n\nSaved to:\n{output_path}")
+        except json.JSONDecodeError:
+            messagebox.showerror("Error", f"Invalid JSON file: {self.json_file}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred:\n{e}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = EmbedWorkflowApp(root)
+    root.mainloop()
