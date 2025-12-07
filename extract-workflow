@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+
+import argparse
+from PIL import Image
+import json
+import sys
+
+def extract_comfyui_workflow(image_path):
+    """
+    Extracts and pretty-prints the 'workflow' JSON from a ComfyUI PNG.
+    """
+    try:
+        # Open the image file
+        image = Image.open(image_path)
+        # Load is necessary for PNG metadata in some Pillow versions
+        image.load() 
+
+        # ComfyUI stores the workflow in a tEXt chunk with the key 'workflow'
+        metadata = image.info
+        
+        if 'workflow' in metadata:
+            workflow_json_str = metadata['workflow']
+            # Parse the JSON string into a Python object for formatting
+            workflow_data = json.loads(workflow_json_str)
+            
+            # Print the formatted JSON in a user-friendly way
+            # use json.dumps with indent=4 for pretty printing
+            print(json.dumps(workflow_data, indent=4))
+            
+            # Optionally, you can also print the 'prompt' (API format) if desired
+            # if 'prompt' in metadata:
+            #     print("\n--- API Prompt Data ---\n")
+            #     prompt_data = json.loads(metadata['prompt'])
+            #     print(json.dumps(prompt_data, indent=4))
+
+        else:
+            print(f"Error: No 'workflow' metadata found in {image_path}")
+            sys.exit(1)
+
+    except FileNotFoundError:
+        print(f"Error: File not found at '{image_path}'")
+        sys.exit(1)
+    except json.JSONDecodeError:
+        print(f"Error: Could not decode JSON from the image metadata.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Extracts ComfyUI workflow JSON from a PNG image.")
+    parser.add_argument("image_path", type=str, help="Path to the ComfyUI-generated PNG file.")
+    args = parser.parse_args()
+    
+    extract_comfyui_workflow(args.image_path)
+
