@@ -112,6 +112,11 @@ def cmd_render(args, scripts_dir: Path, config: dict):
     print("==> Regenerating index.html...")
     return run_dms_script("dms_util/dms_render.py", ["--doc", "Doc"], scripts_dir)
 
+def cmd_render_iphone(args, scripts_dir: Path, config: dict):
+    """Regenerate index_iphone.html from .dms_state.json"""
+    print("==> Regenerating index_iphone.html...")
+    return run_dms_script("dms_util/dms_render_iphone.py", ["--doc", "Doc"], scripts_dir)
+
 def cmd_auto(args, scripts_dir: Path, config: dict):
     """Run full workflow"""
     print("==> Running full DMS workflow...\n")
@@ -233,6 +238,9 @@ def main():
     # render
     subparsers.add_parser("render", help="Regenerate index.html from .dms_state.json")
     
+    # render-iphone
+    subparsers.add_parser("render-iphone", help="Regenerate index_iphone.html from .dms_state.json")
+    
     # auto
     subparsers.add_parser("auto", help="Run full workflow (scan → process → summarize → review → apply)")
     
@@ -294,6 +302,7 @@ def main():
         "scan": cmd_scan,
         "image-to-text": cmd_process_images,
         "render": cmd_render,
+        "render-iphone": cmd_render_iphone,
         "summarize": cmd_summarize,
         "review": cmd_review,
         "apply": cmd_apply,
