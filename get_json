@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+
+
+
+from PIL import Image
+import json
+import sys
+from pathlib import Path
+import glob
+
+# Get all arguments (skip script name at index 0)
+args = sys.argv[1:] if len(sys.argv) > 1 else ['*.*']
+
+# Collect all matching files
+files = []
+for pattern in args:
+    # Use glob to expand each pattern
+    matched = glob.glob(pattern)
+    files.extend(matched)
+
+# Remove duplicates and filter for image files
+files = list(set(files))
+files = [f for f in files if Path(f).is_file() and f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+
+if not files:
+    print(f'No matching image files found')
+    sys.exit(0)
+
+processed = 0
+extracted = 0
+
+for filename in sorted(files):
+    try:
+        # Load the image file
+        img = Image.open(filename)
+        
+        # Extract the workflow from metadata
+        workflow = img.info.get('workflow')
+        
+        if workflow:
+            # Parse the workflow
+            workflow_data = json.loads(workflow)
+            
+            # Create output filename (same name but .json extension)
+            base_name = Path(filename).stem
+            output_filename = f'{base_name}.json'
+            
+            # Save as JSON
+            with open(output_filename, 'w') as f:
+                json.dump(workflow_data, f, indent=2)
+            
+            print(f'✓ Extracted workflow from {filename}')
+            extracted += 1
+        else:
+            print(f'✗ No workflow found in {filename}')
+        
+        processed += 1
+            
+    except Exception as e:
+        print(f'✗ Error processing {filename}: {str(e)}')
+
+print(f'\nProcessing complete! Processed {processed} files, extracted {extracted} workflows.')

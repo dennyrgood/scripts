@@ -73,7 +73,7 @@ echo "Committing staged changes..."
 git commit -m "$COMMIT_MESSAGE"
 COMMIT_STATUS=$? # Save commit result
 
-if [ "$COMMIT_STATUS" -ne 0 ]; then
+if [ "$COMMIT_STATUS" -ne 0 ] && [ -n "$(git status --porcelain)" ]; then
     echo "Warning: No new local changes were committed."
 fi
 

@@ -1,6 +1,7 @@
 {
   "ignored_files": [
     "index.html",
+    "index_iphone.html",
     "DMS_*",
     "ARCHIVE_*",
     "CLEANUP_*"

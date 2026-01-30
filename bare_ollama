@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+
+import requests
+import json
+import sys
+
+# Configuration
+config = {
+    'ollama_host': 'https://ollama.ldmathes.cc',
+    'ollama_model': 'qwen2.5:14b'
+}
+
+def preload_ollama_model(host: str, model: str) -> bool:
+    """Preload model into Ollama to avoid slow first request
+    
+    This sends a dummy prompt to Ollama to ensure the model is loaded
+    into memory. Prevents timeouts on the first actual summarization request.
+    """
+    try:
+        resp = requests.post(
+            f"{host}/api/generate",
+            json={
+                "model": model,
+                "prompt": "test",
+                "stream": False
+            },
+            timeout=600  # 10 minutes for model load
+        )
+        
+        if resp.status_code == 200:
+            print(f"  ✓ Model ready")
+            return True
+        else:
+            print(f"  âš  Model preload returned HTTP {resp.status_code}, continuing...", file=sys.stderr)
+            return False
+            
+    except requests.exceptions.Timeout:
+        print(f"  âš  Model still loading. Will use extended timeout for first file...", file=sys.stderr)
+        return False
+
+def generate_description(host: str, model: str, prompt: str) -> dict:
+    """Generate a description using Ollama"""
+    try:
+        resp = requests.post(
+            f"{host}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=600  # 10 minutes for model load
+        )
+        
+        if resp.status_code == 200:
+            return resp.json()
+        else:
+            print(f"  âš  Ollama error: HTTP {resp.status_code}")
+            return None
+            
+    except requests.exceptions.RequestException as e:
+        print(f"  âš  Request exception: {e}")
+        return None
+
+def main():
+    if not preload_ollama_model(config['ollama_host'], config['ollama_model']):
+        print("Failed to preload Ollama model.")
+        return
+    
+    default_prompt = "What is the meaning of life, the universe, and everything? Max 50 words."
+    user_input = input(f"Enter prompt [{default_prompt}]: ").strip()
+    prompt = user_input if user_input else default_prompt
+    
+    description = generate_description(config['ollama_host'], config['ollama_model'], prompt)
+    
+    if description:
+        print(f"Prompt: {prompt}")
+        print(f"Response: {description['response']}")
+
+if __name__ == "__main__":
+    main()
