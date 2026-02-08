@@ -109,10 +109,6 @@ def convert_pdf_to_markdown(pdf_path: str, doc_dir: Path, md_dir: Path) -> bool:
     output_filename = f"{Path(pdf_path).stem}.md"
     output_path = md_dir / output_filename
     
-    if output_path.exists():
-        print(f"  ✓ Already converted: {output_filename}")
-        return True
-    
     try:
         # Use pdftotext to extract text from PDF
         result = subprocess.run(
@@ -161,10 +157,6 @@ def convert_docx_to_markdown(docx_path: str, doc_dir: Path, md_dir: Path) -> boo
     # Create output filename
     output_filename = f"{Path(docx_path).stem}.md"
     output_path = md_dir / output_filename
-    
-    if output_path.exists():
-        print(f"  ✓ Already converted: {output_filename}")
-        return True
     
     try:
         # Use pandoc to convert DOCX to markdown

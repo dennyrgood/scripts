@@ -483,8 +483,8 @@ def main():
     print(f"  Run: dms review")
     
     # Prompt to continue
-    choice = input(f"\nStart 'dms review' now? [y/N]: ").strip().lower()
-    if choice == 'y':
+    choice = input(f"\nStart 'dms review' now? [Y/n]: ").strip().lower()
+    if choice != 'n':
         result = subprocess.run(['dms', 'review'])
         return result.returncode
     

@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+
+import csv
+import sys
+import os
+from collections import defaultdict
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: ./generate_yaml_files.py <input_csv_file>")
+        sys.exit(1)
+    
+    csv_file = sys.argv[1]
+    
+    if not os.path.exists(csv_file):
+        print(f"Error: File '{csv_file}' not found")
+        sys.exit(1)
+    
+    # Read CSV and group entries by filename
+    from collections import defaultdict
+    file_entries = defaultdict(list)
+    
+    with open(csv_file, 'r', encoding='utf-8-sig') as f:  # utf-8-sig removes BOM if present
+        reader = csv.reader(f)
+        
+        for row in reader:
+            if len(row) < 3:
+                print(f"Warning: Skipping invalid row (need at least 3 columns): {row}")
+                continue
+            
+            # Use only the first 3 columns, ignore any extra columns
+            filename, name, prompt = row[0], row[1], row[2]
+            
+            # Strip whitespace
+            filename = filename.strip()
+            name = name.strip()
+            prompt = prompt.strip()
+            
+            # Ensure filename ends with .yaml
+            if not filename.endswith('.yaml'):
+                filename += '.yaml'
+            
+            file_entries[filename].append((name, prompt))
+    
+    # Create YAML files with all entries
+    for filename, entries in file_entries.items():
+        # Prepare the YAML content
+        yaml_content = """# Ensure that the formatting is kept the same as in this file.
+# Indents in YAML are critical. Ensure proper indentation, as incorrect spacing can cause errors.
+#
+# Best approach is to copy a block of name, negative_prompt and a prompt and then replace their values
+# Note that your text_positive will be added in this part {prompt}
+
+- name: none
+
+- name: random
+
+"""
+        
+        # Add all custom entries for this file
+        for name, prompt in entries:
+            yaml_content += f"- name: {name}\n"
+            yaml_content += f"  prompt: {prompt}\n"
+            if (name, prompt) != entries[-1]:  # Add blank line between entries except after the last one
+                yaml_content += "\n"
+        
+        # Write to file
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(yaml_content)
+        
+        print(f"Created: {filename} ({len(entries)} entries)")
+    
+    print(f"\nAll YAML files generated successfully! ({len(file_entries)} files)")
+
+if __name__ == "__main__":
+    main()

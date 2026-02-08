@@ -1,0 +1,559 @@
+#!/usr/bin/env python3
+"""
+ComfyUI Workflow Generator
+Generates a complete ComfyUI workflow JSON from a list of prompts.
+
+Input format (CSV): category,title,prompt
+Example:
+    Formal,Classic Tux,"Classic Hollywood black-tie tuxedo..."
+    Formal,Evening Gown,"Couture evening gown with structured bodice..."
+    Editorial,Runway,"Runway editorial fashion, bold silhouette..."
+"""
+
+import json
+import sys
+from collections import defaultdict
+from typing import List, Dict, Tuple
+import argparse
+
+
+class WorkflowGenerator:
+    """Generates ComfyUI workflow JSON from prompt data."""
+    
+    # Color scheme for different categories
+    COLORS = {
+        'default': '#3f789e',
+        'FORMAL': '#3f789e',
+        'EDITORIAL': '#8f4e8b',
+        'CASUAL': '#a1887f',
+        'POWER': '#546e7a',
+        'MUSIC': '#e91e63',
+        'MUSIC_POP': '#e91e63',
+        'MUSIC_ROCK': '#c62828',
+        'MUSIC_HIPHOP': '#6a1b9a',
+        'MUSIC_INDIE': '#00796b',
+        'FILM': '#ff9800',
+        'MODIFIER': '#546e7a',
+    }
+    
+    # Layout constants
+    PROMPT_NODE_WIDTH = 400
+    PROMPT_NODE_HEIGHT = 88
+    PROMPT_VERTICAL_SPACING = 120
+    CATEGORY_HORIZONTAL_SPACING = 500
+    SWITCH_Y_OFFSET = 50  # Below last prompt in category
+    SWITCH_WIDTH = 305
+    SWITCH_HEIGHT = 106
+    GROUP_PADDING = 25
+    GROUP_HEADER = 75
+    BYPASSER_X = -3450
+    BYPASSER_START_Y = -1200
+    BYPASSER_SPACING = 100
+    CONCAT_NODE_HEIGHT = 576
+    
+    def __init__(self):
+        self.node_id = 100
+        self.link_id = 1
+        self.order_counter = 0
+        self.nodes = []
+        self.links = []
+        self.groups = []
+        self.group_id = 1
+        self.category_data = defaultdict(list)  # {category: [(title, prompt), ...]}
+        
+    def parse_input(self, input_file: str) -> None:
+        """Parse input CSV file and organize by category."""
+        with open(input_file, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                # Skip header line (case-insensitive check for common headers)
+                if line_num == 1 or line.lower().startswith('category,'):
+                    continue
+                    
+                parts = line.split(',', 2)
+                if len(parts) != 3:
+                    print(f"Warning: Skipping malformed line {line_num}: {line}")
+                    continue
+                
+                category, title, prompt = parts
+                category = category.strip().upper()
+                title = title.strip()
+                prompt = prompt.strip().strip('"').strip("'")
+                
+                # Skip if any field is empty or looks like a header
+                if not category or not title or not prompt:
+                    continue
+                if category.upper() == 'CATEGORY' or title.lower() == 'title':
+                    continue
+                
+                self.category_data[category].append((title, prompt))
+        
+        print(f"Parsed {sum(len(v) for v in self.category_data.values())} prompts")
+        print(f"Categories: {', '.join(self.category_data.keys())}")
+    
+    def get_color(self, category: str) -> str:
+        """Get color for a category."""
+        # Try exact match first
+        if category in self.COLORS:
+            return self.COLORS[category]
+        # Try prefix match
+        for key in self.COLORS:
+            if category.startswith(key):
+                return self.COLORS[key]
+        return self.COLORS['default']
+    
+    def create_prompt_node(self, title: str, prompt: str, x: int, y: int, category: str) -> Tuple[int, int]:
+        """Create a primitive string node for a prompt. Returns (node_id, output_link_id)."""
+        node_id = self.node_id
+        link_id = self.link_id
+        
+        node = {
+            "id": node_id,
+            "type": "PrimitiveStringMultiline",
+            "pos": [x, y],
+            "size": [self.PROMPT_NODE_WIDTH, self.PROMPT_NODE_HEIGHT],
+            "flags": {},
+            "order": self.order_counter,
+            "mode": 4,  # Muted by default
+            "inputs": [{
+                "localized_name": "value",
+                "name": "value",
+                "type": "STRING",
+                "widget": {"name": "value"},
+                "link": None
+            }],
+            "outputs": [{
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [link_id]
+            }],
+            "title": f"LIB: {category} - {title}",
+            "properties": {
+                "cnr_id": "comfy-core",
+                "ver": "0.9.2",
+                "Node name for S&R": "PrimitiveStringMultiline"
+            },
+            "widgets_values": [prompt]
+        }
+        
+        self.nodes.append(node)
+        self.node_id += 1
+        self.link_id += 1
+        self.order_counter += 1
+        
+        return node_id, link_id
+    
+    def create_switch_node(self, category: str, input_links: List[int], x: int, y: int) -> Tuple[int, int]:
+        """Create an Any Switch node. Returns (node_id, output_link_id)."""
+        node_id = self.node_id
+        output_link_id = self.link_id
+        
+        # Prepare inputs (max 5 per switch)
+        switch_inputs = []
+        for i in range(5):
+            if i < len(input_links):
+                switch_inputs.append({
+                    "dir": 3,
+                    "name": f"any_0{i+1}",
+                    "type": "STRING",
+                    "link": input_links[i]
+                })
+            else:
+                switch_inputs.append({
+                    "dir": 3,
+                    "name": f"any_0{i+1}",
+                    "type": "STRING",
+                    "link": None
+                })
+        
+        node = {
+            "id": node_id,
+            "type": "Any Switch (rgthree)",
+            "pos": [x, y],
+            "size": [self.SWITCH_WIDTH, self.SWITCH_HEIGHT],
+            "flags": {},
+            "order": self.order_counter,
+            "mode": 0,
+            "inputs": switch_inputs,
+            "outputs": [{
+                "dir": 4,
+                "label": "STRING",
+                "name": "*",
+                "shape": 3,
+                "type": "STRING",
+                "links": [output_link_id]
+            }],
+            "title": f"Any Switch (rgthree) - {category}",
+            "properties": {
+                "cnr_id": "rgthree-comfy",
+                "ver": "8ff50e4521881eca1fe26aec9615fc9362474931"
+            },
+            "widgets_values": []
+        }
+        
+        self.nodes.append(node)
+        
+        # Create links from inputs to this switch
+        for i, input_link in enumerate(input_links[:5]):
+            # Find the source node for this link
+            for link in self.links:
+                if link[0] == input_link:
+                    # Update: this link goes to our switch
+                    link[3] = node_id
+                    link[4] = i
+                    break
+        
+        self.node_id += 1
+        self.link_id += 1
+        self.order_counter += 1
+        
+        return node_id, output_link_id
+    
+    def create_group(self, title: str, x: int, y: int, width: int, height: int, color: str) -> None:
+        """Create a visual group box."""
+        group = {
+            "id": self.group_id,
+            "title": title,
+            "bounding": [
+                x - self.GROUP_PADDING,
+                y - self.GROUP_HEADER,
+                width + 2 * self.GROUP_PADDING,
+                height + self.GROUP_HEADER + self.GROUP_PADDING
+            ],
+            "color": color,
+            "font_size": 24,
+            "flags": {}
+        }
+        
+        self.groups.append(group)
+        self.group_id += 1
+    
+    def create_bypasser(self, category: str, y_pos: int) -> None:
+        """Create a Fast Groups Bypasser for a category."""
+        node = {
+            "id": self.node_id,
+            "type": "Fast Groups Bypasser (rgthree)",
+            "pos": [self.BYPASSER_X, y_pos],
+            "size": [395, 82],
+            "flags": {},
+            "order": self.order_counter,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [{
+                "name": "OPT_CONNECTION",
+                "type": "*",
+                "links": None
+            }],
+            "properties": {
+                "matchColors": "",
+                "matchTitle": f"{category} -",
+                "showNav": True,
+                "showAllGraphs": True,
+                "sort": "position",
+                "customSortAlphabet": "",
+                "toggleRestriction": "default"
+            }
+        }
+        
+        self.nodes.append(node)
+        self.node_id += 1
+        self.order_counter += 1
+    
+    def create_concat_node(self, input_links: List[int], x: int, y: int, title: str = None) -> Tuple[int, int]:
+        """Create a text concatenation node. Returns (node_id, output_link_id)."""
+        node_id = self.node_id
+        output_link_id = self.link_id
+        
+        # Prepare inputs (max 7 text inputs + delimiter)
+        concat_inputs = []
+        for i in range(7):
+            if i < len(input_links):
+                concat_inputs.append({
+                    "localized_name": f"text{i+1}",
+                    "name": f"text{i+1}",
+                    "type": "STRING",
+                    "widget": {"name": f"text{i+1}"},
+                    "link": input_links[i]
+                })
+            else:
+                concat_inputs.append({
+                    "localized_name": f"text{i+1}",
+                    "name": f"text{i+1}",
+                    "type": "STRING",
+                    "widget": {"name": f"text{i+1}"},
+                    "link": None
+                })
+        
+        # Delimiter input
+        concat_inputs.append({
+            "localized_name": "delimiter",
+            "name": "delimiter",
+            "type": "STRING",
+            "widget": {"name": "delimiter"},
+            "link": None
+        })
+        
+        # Prepare outputs
+        concat_outputs = []
+        for i in range(7):
+            concat_outputs.append({
+                "localized_name": f"text{i+1}",
+                "name": f"text{i+1}",
+                "type": "STRING",
+                "links": None
+            })
+        
+        concat_outputs.append({
+            "localized_name": "concat",
+            "name": "concat",
+            "type": "STRING",
+            "links": [output_link_id]
+        })
+        
+        node = {
+            "id": node_id,
+            "type": "ttN text7BOX_concat",
+            "pos": [x, y],
+            "size": [400, self.CONCAT_NODE_HEIGHT],
+            "flags": {"collapsed": False},
+            "order": self.order_counter,
+            "mode": 0,
+            "inputs": concat_inputs,
+            "outputs": concat_outputs,
+            "properties": {
+                "cnr_id": "comfyui_tinyterranodes",
+                "ver": "2.0.10",
+                "Node name for S&R": "ttN text7BOX_concat"
+            },
+            "widgets_values": ["", "", "", "", "", "", "", ", "]
+        }
+        
+        if title:
+            node["title"] = title
+        
+        self.nodes.append(node)
+        
+        # Create links from inputs to this concat
+        for i, input_link in enumerate(input_links[:7]):
+            # Find and update the source link
+            for link in self.links:
+                if link[0] == input_link:
+                    link[3] = node_id
+                    link[4] = i
+                    break
+        
+        self.node_id += 1
+        self.link_id += 1
+        self.order_counter += 1
+        
+        return node_id, output_link_id
+    
+    def generate_workflow(self) -> Dict:
+        """Generate the complete workflow structure."""
+        if not self.category_data:
+            raise ValueError("No data to generate workflow from")
+        
+        # Calculate layout
+        categories = sorted(self.category_data.keys())
+        start_x = -3000
+        start_y = -1400
+        
+        switch_output_links = []
+        bypasser_y = self.BYPASSER_START_Y
+        
+        # Process each category
+        for cat_idx, category in enumerate(categories):
+            prompts = self.category_data[category]
+            
+            # Calculate position for this category column
+            cat_x = start_x + (cat_idx * self.CATEGORY_HORIZONTAL_SPACING)
+            color = self.get_color(category)
+            
+            # If category has more than 5 prompts, split into multiple groups
+            num_groups = (len(prompts) + 4) // 5  # Ceiling division
+            
+            for group_idx in range(num_groups):
+                group_start_idx = group_idx * 5
+                group_end_idx = min(group_start_idx + 5, len(prompts))
+                group_prompts = prompts[group_start_idx:group_end_idx]
+                
+                # Position for this group
+                group_y_offset = group_idx * (5 * self.PROMPT_VERTICAL_SPACING + 200)
+                prompt_links = []
+                
+                # Create prompt nodes for this group
+                for prompt_idx, (title, prompt) in enumerate(group_prompts):
+                    prompt_y = start_y + group_y_offset + (prompt_idx * self.PROMPT_VERTICAL_SPACING)
+                    node_id, link_id = self.create_prompt_node(title, prompt, cat_x, prompt_y, category)
+                    prompt_links.append(link_id)
+                    
+                    # Create placeholder link entry
+                    self.links.append([link_id, node_id, 0, -1, -1, "STRING"])
+                    
+                    # Create group for this prompt
+                    self.create_group(
+                        f"{category} - {title}",
+                        cat_x,
+                        prompt_y,
+                        self.PROMPT_NODE_WIDTH,
+                        self.PROMPT_NODE_HEIGHT,
+                        color
+                    )
+                
+                # Create switch for this group
+                switch_y = start_y + group_y_offset + (len(group_prompts) * self.PROMPT_VERTICAL_SPACING) + self.SWITCH_Y_OFFSET
+                switch_x = cat_x + 800
+                
+                suffix = f" {group_idx + 1}" if num_groups > 1 else ""
+                switch_node_id, switch_output_link = self.create_switch_node(
+                    f"{category}{suffix}",
+                    prompt_links,
+                    switch_x,
+                    switch_y
+                )
+                
+                # Create placeholder for switch output
+                self.links.append([switch_output_link, switch_node_id, 0, -1, -1, "STRING"])
+                
+                # ALL switches go to main concat, not just the last one
+                # This allows users to use any switch from split categories
+                switch_output_links.append(switch_output_link)
+            
+            # Create bypasser for this category
+            self.create_bypasser(category, bypasser_y)
+            bypasser_y += self.BYPASSER_SPACING
+        
+        # Create main concatenation structure
+        final_concat_x = -1100
+        final_concat_y = 100
+        
+        if len(switch_output_links) <= 7:
+            # Single concat is enough
+            final_node_id, final_output_link = self.create_concat_node(
+                switch_output_links,
+                final_concat_x,
+                final_concat_y,
+                "Main Output Concatenation"
+            )
+        else:
+            # Need multiple concat levels
+            concat_groups = []
+            for i in range(0, len(switch_output_links), 7):
+                group = switch_output_links[i:i+7]
+                concat_groups.append(group)
+            
+            # Create first-level concats
+            level1_outputs = []
+            for idx, group in enumerate(concat_groups):
+                concat_x = final_concat_x - 400
+                concat_y = final_concat_y + (idx * (self.CONCAT_NODE_HEIGHT + 100))
+                
+                concat_id, concat_output = self.create_concat_node(
+                    group,
+                    concat_x,
+                    concat_y,
+                    f"Concat Group {idx + 1}"
+                )
+                level1_outputs.append(concat_output)
+                self.links.append([concat_output, concat_id, 7, -1, -1, "STRING"])
+            
+            # Create final merger concat
+            final_node_id, final_output_link = self.create_concat_node(
+                level1_outputs,
+                final_concat_x,
+                final_concat_y,
+                "Main Output Concatenation"
+            )
+        
+        # Create the main container group
+        self.create_group(
+            "PROMPT LIBRARY",
+            start_x - 100,
+            start_y - 200,
+            (len(categories) * self.CATEGORY_HORIZONTAL_SPACING) + 1000,
+            max(5000, len(max(self.category_data.values(), key=len)) * self.PROMPT_VERTICAL_SPACING + 1000),
+            "#443355"
+        )
+        
+        # Assemble final workflow
+        workflow = {
+            "id": "generated-workflow",
+            "revision": 0,
+            "last_node_id": self.node_id - 1,
+            "last_link_id": self.link_id - 1,
+            "nodes": self.nodes,
+            "links": self.links,
+            "groups": self.groups,
+            "config": {},
+            "extra": {
+                "workflowRendererVersion": "LG",
+                "ds": {
+                    "scale": 0.5,
+                    "offset": [3500, 1000]
+                }
+            },
+            "version": 0.4
+        }
+        
+        return workflow
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Generate ComfyUI workflow JSON from prompt list',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Input file format (CSV):
+  category,title,prompt text
+
+Example:
+  Formal,Classic Tux,"Classic Hollywood black-tie tuxedo, satin lapels"
+  Formal,Evening Gown,"Couture evening gown with structured bodice"
+  Editorial,Runway,"Runway editorial fashion, bold silhouette"
+  
+The script will create:
+  - Prompt nodes for each entry
+  - Switch nodes for each category (max 5 prompts per switch)
+  - Group boxes for organization
+  - Bypasser nodes for easy enable/disable
+  - Concatenation chain connecting everything
+        """
+    )
+    
+    parser.add_argument('input_file', help='Input CSV file with prompts')
+    parser.add_argument('-o', '--output', default='workflow.json', 
+                       help='Output JSON file (default: workflow.json)')
+    parser.add_argument('--pretty', action='store_true',
+                       help='Pretty-print JSON output')
+    
+    args = parser.parse_args()
+    
+    try:
+        generator = WorkflowGenerator()
+        generator.parse_input(args.input_file)
+        
+        workflow = generator.generate_workflow()
+        
+        with open(args.output, 'w', encoding='utf-8') as f:
+            if args.pretty:
+                json.dump(workflow, f, indent=2)
+            else:
+                json.dump(workflow, f)
+        
+        print(f"\n✓ Workflow generated successfully!")
+        print(f"✓ Output: {args.output}")
+        print(f"✓ Nodes: {len(workflow['nodes'])}")
+        print(f"✓ Categories: {len(generator.category_data)}")
+        print(f"✓ Total prompts: {sum(len(v) for v in generator.category_data.values())}")
+        
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

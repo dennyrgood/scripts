@@ -181,6 +181,7 @@ def scan_directory(doc_dir: Path, state: dict, ignore_list: set = None) -> tuple
                 if old_hash and old_hash != file_hash:
                     changed_files.append({
                         "path": rel_path,
+                        "hash": file_hash,
                         "old_hash": old_hash,
                         "new_hash": file_hash
                     })
@@ -205,6 +206,7 @@ def scan_directory(doc_dir: Path, state: dict, ignore_list: set = None) -> tuple
             if old_hash and old_hash != file_hash:
                 changed_files.append({
                     "path": rel_path,
+                    "hash": file_hash,
                     "old_hash": old_hash,
                     "new_hash": file_hash
                 })
@@ -350,7 +352,7 @@ def main():
         print(f"✓ Cleared old {deletion_pending.name}")
     
     # Check for files that need conversion
-    convertible = check_for_convertible_files(new_files)
+    convertible = check_for_convertible_files(new_files + changed_files)
     images_found = convertible['images']
     pdfs_found = convertible['pdfs']
     docx_found = convertible['docx']
@@ -393,8 +395,8 @@ def main():
     else:
         next_cmd = "summarize"
     
-    choice = input(f"\nStart 'dms {next_cmd}' now? [y/N]: ").strip().lower()
-    if choice == 'y':
+    choice = input(f"\nStart 'dms {next_cmd}' now? [Y/n]: ").strip().lower()
+    if choice != 'n':
         result = subprocess.run(['dms', next_cmd])
         return result.returncode
     

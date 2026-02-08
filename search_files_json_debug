@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+
+import json
+import glob
+import argparse
+from pathlib import Path
+from PIL import Image
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Search for a string in PNG metadata and JSON files."
+    )
+    
+    # Positional: list of files or glob patterns
+    parser.add_argument(
+        'files', 
+        nargs='*', 
+        default=['**/*.*'],
+        help="Files or glob patterns. Default is '**/*.*' (recursive search)"
+    )
+    
+    # Required search string
+    parser.add_argument(
+        '-s', '--search',
+        type=str,
+        required=True,
+        help="Search for this string in PNG metadata or JSON file contents"
+    )
+    
+    # Debug mode
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        help="Show debug information for each file processed"
+    )
+
+    args = parser.parse_args()
+
+    # 1. Collect all potential files
+    all_files = []
+    for pattern in args.files:
+        matched = glob.glob(pattern, recursive=True)
+        all_files.extend(matched)
+
+    # 2. Filter for PNG and JSON files
+    candidate_files = sorted(list(set(
+        f for f in all_files 
+        if Path(f).is_file() and f.lower().endswith(('.png', '.json'))
+    )))
+
+    if not candidate_files:
+        print("No PNG or JSON files found.")
+        return
+
+    if args.debug:
+        print(f"Processing {len(candidate_files)} files...\n")
+
+    # 3. Search through files
+    matched_files = []
+    search_term = args.search.lower()
+
+    for filename in candidate_files:
+        try:
+            if filename.lower().endswith('.png'):
+                # Search in PNG metadata
+                img = Image.open(filename)
+                
+                # Check all metadata fields, not just workflow/prompt
+                metadata_found = []
+                for key, value in img.info.items():
+                    if isinstance(value, str) and search_term in value.lower():
+                        metadata_found.append(key)
+                
+                if metadata_found:
+                    matched_files.append(filename)
+                    if args.debug:
+                        print(f"✓ MATCH: {filename}")
+                        print(f"  Found in metadata fields: {', '.join(metadata_found)}")
+                elif args.debug:
+                    print(f"✗ NO MATCH: {filename}")
+                    print(f"  Available metadata keys: {list(img.info.keys())}")
+                    
+            elif filename.lower().endswith('.json'):
+                # Search in JSON file contents
+                with open(filename, 'r', encoding='utf-8') as f:
+                    json_content = f.read()
+                    
+                if search_term in json_content.lower():
+                    matched_files.append(filename)
+                    if args.debug:
+                        print(f"✓ MATCH: {filename}")
+                else:
+                    if args.debug:
+                        print(f"✗ NO MATCH: {filename}")
+                        print(f"  File size: {len(json_content)} bytes")
+                    
+        except Exception as e:
+            if args.debug:
+                print(f"✗ ERROR: {filename}")
+                print(f"  {str(e)}")
+            continue
+
+    # 4. Display results
+    if args.debug:
+        print("\n" + "="*50 + "\n")
+        
+    if not matched_files:
+        print(f"No files found containing: '{args.search}'")
+        return
+
+    print(f"Found {len(matched_files)} files containing '{args.search}':")
+    for f in matched_files:
+        print(f"  {f}")
+
+if __name__ == "__main__":
+    main()

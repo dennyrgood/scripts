@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+import json
+import csv
+import unicodedata
+import re
+
+INPUT_JSON = "Fredy27_max.json"
+OUTPUT_CSV = "prompts_by_category.csv"
+
+# Padding used to detect if a node is "inside" a group box
+PADDING = 20
+
+
+# -------------------------------------------------
+# Helpers
+# -------------------------------------------------
+def contains(bbox, x, y, pad=0):
+    if not bbox or len(bbox) < 4:
+        return False
+    bx, by, bw, bh = bbox
+    return (
+        bx - pad <= x <= bx + bw + pad and
+        by - pad <= y <= by + bh + pad
+    )
+
+
+def area(bbox):
+    return bbox[2] * bbox[3]
+
+
+def strip_emojis(text):
+    if not text:
+        return ""
+    # Strip Symbols (S), Controls (C), and Marks (M) to remove [?] glitches
+    return "".join(
+        c for c in text
+        if unicodedata.category(c)[0] not in ("S", "C", "M") or c.isalnum() or c.isspace()
+    )
+
+
+def remove_number_prefix(text):
+    return re.sub(r"^\s*\d+\.\s*", "", text)
+
+
+def normalize_bilingual(text):
+    if "(" in text:
+        return text.split("(", 1)[0]
+    return text
+
+
+def clean_text(text):
+    t = strip_emojis(text)
+    t = remove_number_prefix(t)
+    t = normalize_bilingual(t)
+    t = re.sub(r"\s+", " ", t)
+    return t.strip()
+
+
+# -------------------------------------------------
+# Data Extraction
+# -------------------------------------------------
+with open(INPUT_JSON, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+rows = []
+all_groups = []
+
+def collect_groups(obj):
+    """Recursively find all groups in the JSON structure."""
+    if isinstance(obj, dict):
+        if "groups" in obj and isinstance(obj["groups"], list):
+            all_groups.extend(obj["groups"])
+        for v in obj.values():
+            collect_groups(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_groups(item)
+
+# Collect every group defined anywhere in the file
+collect_groups(data)
+
+def process_node_list(nodes):
+    if not nodes:
+        return
+    
+    # Handle both list and dict formats for nodes
+    node_iterable = nodes.values() if isinstance(nodes, dict) else nodes
+
+    for n in node_iterable:
+        if n.get("type") != "PrimitiveStringMultiline":
+            continue
+
+        widgets = n.get("widgets_values")
+        if not widgets or not isinstance(widgets, list) or len(widgets) == 0:
+            continue
+
+        # Get node position and size
+        pos = n.get("pos", [0, 0])
+        size = n.get("size", [100, 100])
+        
+        # Node center point for boundary checking
+        cx = pos[0] + (size[0] / 2)
+        cy = pos[1] + (size[1] / 2)
+
+        # Check against all collected groups
+        containing = [
+            g for g in all_groups
+            if g.get("bounding") and contains(g["bounding"], cx, cy, PADDING)
+        ]
+
+        if containing:
+            # Smallest group is usually the specific category
+            best_group = min(containing, key=lambda g: area(g["bounding"]))
+            group_raw = best_group.get("title", "Untitled Group")
+        else:
+            group_raw = "UNGROUPED"
+
+        group_stripped = strip_emojis(group_raw).strip()
+        group_normalized = normalize_bilingual(group_stripped).strip()
+        group_clean = clean_text(group_raw)
+
+        title_raw = n.get("title") or n.get("properties", {}).get("Node name for S&R") or "Untitled"
+        title_clean = clean_text(title_raw)
+
+        rows.append([
+            group_raw,
+            group_stripped,
+            group_normalized,
+            group_clean,
+            title_raw,
+            title_clean,
+            widgets[0]
+        ])
+
+def hunt_nodes(obj):
+    """Recursively search for node containers and process them."""
+    if isinstance(obj, dict):
+        if "nodes" in obj:
+            process_node_list(obj["nodes"])
+        for k, v in obj.items():
+            # Skip keys that definitely don't contain our nodes to save time
+            if k not in ("links", "groups"):
+                hunt_nodes(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            hunt_nodes(item)
+
+# Start the deep hunt
+hunt_nodes(data)
+
+# -------------------------------------------------
+# Output
+# -------------------------------------------------
+with open(OUTPUT_CSV, "w", encoding="utf-8-sig", newline="") as f:
+    writer = csv.writer(f, quoting=csv.QUOTE_ALL, lineterminator="\n")
+    writer.writerow([
+        "group_raw",
+        "group_stripped",
+        "group_normalized",
+        "group_clean",
+        "prompt_title_raw",
+        "prompt_title_clean",
+        "value"
+    ])
+    writer.writerows(rows)
+
+print(f"Finished: Found {len(rows)} nodes. Saved to {OUTPUT_CSV}")

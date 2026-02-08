@@ -16,7 +16,7 @@
   ],
   "documents": {
     "./Prompt.copilot.resume.edits.txt": {
-      "hash": "",
+      "hash": "sha256:22523d39c303cc80936c9fd1c3383366d87dd7d6f051b159648b289f12b40599",
       "category": "Workflows",
       "summary": "Describes a Document Management System for git repos with scripts for scanning, OCRing images and PDFs, summarizing text, and maintaining state files.",
       "summary_approved": true,
@@ -25,7 +25,7 @@
       "file_mtime": "2025-11-25T00:16:22.487813"
     },
     "./DMS_CODE_EVALUATION.md": {
-      "hash": "",
+      "hash": "sha256:0632895443f40ab48d5287cb45f07c702d925c05de0976b3ef999db1d1167567",
       "category": "Workflows",
       "summary": "This document evaluates the architecture and functionality of a Document Management System, highlighting its strengths and areas for improvement with a grading system.",
       "summary_approved": true,
@@ -97,7 +97,7 @@
       "file_mtime": "2025-11-21T11:32:17.756438"
     },
     "./NewRepoSetup.txt": {
-      "hash": "",
+      "hash": "sha256:09b31b9d50c71cc914630538e29234c8349fbe5c568a6725c92666349176c19f",
       "category": "Guides",
       "summary": "This document provides step-by-step instructions for creating and syncing a new GitHub repository using HTTPS on macOS.",
       "summary_approved": true,
