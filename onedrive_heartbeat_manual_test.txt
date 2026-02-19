@@ -1,0 +1,18 @@
+# Current UTC (should NOT alert)
+echo "$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" > ~/OneDrive/_sync_monitor/heartbeat_server.txt
+
+# Stale UTC (SHOULD alert)
+echo "2026-02-19T00:00:00+00:00" > ~/OneDrive/_sync_monitor/heartbeat_server.txt
+
+
+
+
+
+# 1. Write a stale timestamp so the alert fires
+echo "2026-02-19T00:00:00+00:00" > ~/OneDrive/_sync_monitor/heartbeat_server.txt 
+
+# 2. Submit the one-shot launchd job
+launchctl submit -l com.test.heartbeat -- /usr/bin/python3 /Users/dennishmathes/repos/scripts/onedrive_heartbeat_checker_macos.py
+zsh: command not found: #
+zsh: command not found: #
+dennishmathes@Denniss-MacBook-Air scripts % launchctl remove com.test.heartbeat dennishmathes@Denniss-MacBook-Air scripts % `
