@@ -423,10 +423,9 @@ def _generate_category_section(category, docs):
                     icon = "📄"
                     label = "View PDF Text"
                 elif file_path.lower().endswith(('.docx', '.doc')):
-                    # For DOCX: link in summary downloads the DOCX file
-                    icon = "📋"
-                    label = "Download Document"
-                    original_link = f'<br><small><a href="{path_escaped}" download style="color:var(--accent-2)">{icon} {label}</a></small>'
+                    # For DOCX: view the markdown version like PDFs
+                    icon = "📄"
+                    label = "View Document"
                 else:
                     icon = "📄"
                     label = "View Markdown"
@@ -437,9 +436,8 @@ def _generate_category_section(category, docs):
                 icon = "📄"
                 label = "View Converted"
             
-            # For DOCX, we already set the link above, so skip the normal assignment
-            if not (file_path.lower().endswith(('.docx', '.doc')) and readable_path.lower().endswith('.md')):
-                original_link = f'<br><small><a href="#{readable_path}" style="color:var(--accent-2)">{icon} {label}</a></small>'
+            # Assign the link
+            original_link = f'<br><small><a href="#{readable_path}" style="color:var(--accent-2)">{icon} {label}</a></small>'
         
         li = f"""            <li class="file" data-path="{path_escaped}" data-link="{path_escaped}" data-mtime="{doc_data.get('file_mtime', '')}">
       <div class="meta">

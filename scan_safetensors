@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+
+import json
+import csv
+import argparse
+from pathlib import Path
+from datetime import datetime
+from PIL import Image
+from typing import List, Dict, Tuple
+
+def extract_workflow_from_png(png_path: Path) -> dict:
+    """Extract workflow JSON from ComfyUI PNG metadata."""
+    try:
+        img = Image.open(png_path)
+        workflow_raw = img.info.get('workflow') or img.info.get('prompt')
+        
+        if workflow_raw:
+            return json.loads(workflow_raw)
+    except Exception as e:
+        print(f"Warning: Could not extract workflow from {png_path}: {e}")
+    
+    return None
+
+def extract_workflow_from_json(json_path: Path) -> dict:
+    """Load workflow JSON from a .json file."""
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load JSON from {json_path}: {e}")
+    
+    return None
+
+def find_safetensor_references(workflow: dict) -> List[Tuple[str, str]]:
+    """
+    Find all safetensor references in a ComfyUI workflow.
+    Returns list of tuples: (node_title/type, safetensor_filename)
+    """
+    references = []
+    
+    if not workflow:
+        return references
+    
+    # ComfyUI workflows can have different structures
+    # Check if it has a 'nodes' key (newer format)
+    nodes_list = None
+    if 'nodes' in workflow:
+        nodes_list = workflow['nodes']
+    # Or if it's a dict with node IDs as keys (older format)
+    elif isinstance(workflow, dict):
+        # Check if values look like node objects
+        first_val = next(iter(workflow.values()), None)
+        if isinstance(first_val, dict) and 'class_type' in first_val:
+            nodes_list = workflow.values()
+    
+    if not nodes_list:
+        return references
+    
+    # Process each node
+    for node_data in nodes_list:
+        if not isinstance(node_data, dict):
+            continue
+        
+        # Get node class/type
+        node_class = node_data.get('class_type') or node_data.get('type', 'Unknown')
+        node_title = node_data.get('_meta', {}).get('title', node_class)
+        if not node_title or node_title == node_class:
+            node_title = node_data.get('title', node_class)
+        
+        # Check widgets_values for safetensor references (newer format)
+        widgets_values = node_data.get('widgets_values', [])
+        if isinstance(widgets_values, list):
+            for value in widgets_values:
+                if isinstance(value, str) and '.safetensors' in value:
+                    references.append((f"{node_title} ({node_class})", value))
+        
+        # Check inputs for safetensor references (older format and some nodes)
+        inputs = node_data.get('inputs', {})
+        
+        # Common ComfyUI nodes that reference models
+        model_keys = [
+            'ckpt_name',           # CheckpointLoaderSimple
+            'lora_name',           # LoraLoader
+            'model_name',          # Various model loaders
+            'vae_name',            # VAELoader
+            'control_net_name',    # ControlNetLoader
+            'embedding_name',      # Various embedding loaders
+            'unet_name',           # UNETLoader
+            'clip_name',           # CLIPLoader
+            'clip_name1',          # DualCLIPLoader
+            'clip_name2',          # DualCLIPLoader
+            'ipadapter_file',      # IPAdapter
+            'file',                # Generic file inputs
+            'model',               # Generic model inputs
+        ]
+        
+        for key in model_keys:
+            if key in inputs:
+                value = inputs[key]
+                
+                # Check if it's a safetensor file
+                if isinstance(value, str) and '.safetensors' in value:
+                    references.append((f"{node_title} ({node_class})", value))
+    
+    return references
+
+def get_file_info(file_path: Path) -> Tuple[str, str, str]:
+    """Get filename, directory, and modification date."""
+    try:
+        stat = file_path.stat()
+        mod_time = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+    except:
+        mod_time = 'Unknown'
+    
+    return (
+        file_path.name,
+        str(file_path.parent),
+        mod_time
+    )
+
+def scan_directory(directory: Path, recursive: bool = True) -> List[Dict]:
+    """
+    Scan directory for PNG and JSON files and extract safetensor references.
+    Returns list of dicts with all the information needed for CSV.
+    """
+    results = []
+    
+    # Find all PNG and JSON files
+    if recursive:
+        png_files = list(directory.rglob('*.png'))
+        json_files = list(directory.rglob('*.json'))
+    else:
+        png_files = list(directory.glob('*.png'))
+        json_files = list(directory.glob('*.json'))
+    
+    all_files = png_files + json_files
+    
+    print(f"Found {len(png_files)} PNG files and {len(json_files)} JSON files")
+    
+    for file_path in all_files:
+        print(f"Processing: {file_path}")
+        
+        # Extract workflow based on file type
+        if file_path.suffix.lower() == '.png':
+            workflow = extract_workflow_from_png(file_path)
+        elif file_path.suffix.lower() == '.json':
+            workflow = extract_workflow_from_json(file_path)
+        else:
+            continue
+        
+        if not workflow:
+            continue
+        
+        # Find safetensor references
+        references = find_safetensor_references(workflow)
+        
+        if references:
+            filename, directory_path, mod_date = get_file_info(file_path)
+            
+            # Create a row for each reference
+            for node_name, safetensor_file in references:
+                results.append({
+                    'filename': filename,
+                    'directory': directory_path,
+                    'file_date': mod_date,
+                    'safetensor_file': safetensor_file,
+                    'node_name': node_name
+                })
+                print(f"  Found: {node_name} -> {safetensor_file}")
+    
+    return results
+
+def write_csv(results: List[Dict], output_file: Path):
+    """Write results to CSV file."""
+    if not results:
+        print("No safetensor references found.")
+        return
+    
+    fieldnames = ['filename', 'directory', 'file_date', 'safetensor_file', 'node_name']
+    
+    with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+    
+    print(f"\nWrote {len(results)} references to {output_file}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Scan ComfyUI workflow files for safetensor model references and generate CSV report."
+    )
+    
+    parser.add_argument(
+        'directory',
+        type=Path,
+        help="Directory to scan for PNG and JSON files"
+    )
+    
+    parser.add_argument(
+        '-o', '--output',
+        type=Path,
+        default=Path('safetensor_references.csv'),
+        help="Output CSV file (default: safetensor_references.csv)"
+    )
+    
+    parser.add_argument(
+        '--no-recursive',
+        action='store_true',
+        help="Don't scan subdirectories recursively"
+    )
+    
+    args = parser.parse_args()
+    
+    if not args.directory.exists():
+        print(f"Error: Directory '{args.directory}' does not exist.")
+        return
+    
+    if not args.directory.is_dir():
+        print(f"Error: '{args.directory}' is not a directory.")
+        return
+    
+    print(f"Scanning directory: {args.directory}")
+    print(f"Recursive: {not args.no_recursive}")
+    print("-" * 60)
+    
+    # Scan directory
+    results = scan_directory(args.directory, recursive=not args.no_recursive)
+    
+    # Write CSV
+    write_csv(results, args.output)
+    
+    print("\nDone!")
+
+if __name__ == "__main__":
+    main()

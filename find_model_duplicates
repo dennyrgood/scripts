@@ -1,0 +1,364 @@
+#!/usr/bin/env python3
+
+import csv
+import argparse
+from pathlib import Path
+from typing import Dict, List, Set
+from collections import defaultdict
+
+def load_models_inventory(csv_path: Path) -> List[Dict]:
+    """Load models from the inventory CSV."""
+    models = []
+    
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                models.append({
+                    'filename': row.get('filename', ''),
+                    'directory': row.get('directory', ''),
+                    'file_date': row.get('file_date', ''),
+                    'size_bytes': int(row.get('size_bytes', 0)) if row.get('size_bytes', '').isdigit() else 0,
+                    'size_mb': float(row.get('size_mb', 0)) if row.get('size_mb', '').replace('.', '', 1).isdigit() else 0,
+                    'size_gb': float(row.get('size_gb', 0)) if row.get('size_gb', '').replace('.', '', 1).isdigit() else 0,
+                    'safetensor_file': row.get('safetensor_file', row.get('filename', ''))
+                })
+    except Exception as e:
+        print(f"Error reading models inventory: {e}")
+        return []
+    
+    return models
+
+def find_duplicates_by_name(models: List[Dict]) -> Dict[str, List[Dict]]:
+    """Find models with the same filename in different directories."""
+    by_name = defaultdict(list)
+    
+    for model in models:
+        filename = model['filename'].lower()
+        by_name[filename].append(model)
+    
+    # Keep only duplicates (2 or more instances)
+    duplicates = {name: instances for name, instances in by_name.items() if len(instances) > 1}
+    
+    return duplicates
+
+def find_duplicates_by_size(models: List[Dict]) -> Dict[int, List[Dict]]:
+    """Find models with the same size (likely true duplicates)."""
+    by_size = defaultdict(list)
+    
+    for model in models:
+        size = model['size_bytes']
+        if size > 0:  # Ignore zero-byte files
+            by_size[size].append(model)
+    
+    # Keep only duplicates (2 or more instances)
+    duplicates = {size: instances for size, instances in by_size.items() if len(instances) > 1}
+    
+    return duplicates
+
+def find_duplicates_by_name_and_size(models: List[Dict]) -> Dict[str, List[Dict]]:
+    """Find models with the same filename AND size (confirmed duplicates)."""
+    by_name_size = defaultdict(list)
+    
+    for model in models:
+        filename = model['filename'].lower()
+        size = model['size_bytes']
+        key = f"{filename}:{size}"
+        by_name_size[key].append(model)
+    
+    # Keep only duplicates (2 or more instances)
+    duplicates = {key: instances for key, instances in by_name_size.items() if len(instances) > 1}
+    
+    return duplicates
+
+def write_name_duplicates_report(duplicates: Dict[str, List[Dict]], output_path: Path):
+    """Write report of models with same name in different directories."""
+    if not duplicates:
+        print(f"\n✓ No filename duplicates found!")
+        return
+    
+    fieldnames = ['filename', 'directory', 'file_date', 'size_gb', 'duplicate_group']
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        group_num = 1
+        total_instances = 0
+        
+        for filename, instances in sorted(duplicates.items()):
+            for model in instances:
+                writer.writerow({
+                    'filename': model['filename'],
+                    'directory': model['directory'],
+                    'file_date': model['file_date'],
+                    'size_gb': model['size_gb'],
+                    'duplicate_group': group_num
+                })
+                total_instances += 1
+            group_num += 1
+    
+    print(f"\n📁 Filename duplicates report: {output_path}")
+    print(f"   Found {len(duplicates)} unique filenames with duplicates")
+    print(f"   Total instances: {total_instances} ({total_instances - len(duplicates)} extra copies)")
+
+def write_size_duplicates_report(duplicates: Dict[int, List[Dict]], output_path: Path):
+    """Write report of models with the same size."""
+    if not duplicates:
+        print(f"\n✓ No size duplicates found!")
+        return
+    
+    fieldnames = ['filename', 'directory', 'file_date', 'size_gb', 'size_bytes', 'duplicate_group']
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        group_num = 1
+        total_instances = 0
+        wasted_gb = 0
+        
+        for size_bytes, instances in sorted(duplicates.items(), key=lambda x: x[0], reverse=True):
+            # Calculate wasted space (all copies after the first)
+            if len(instances) > 1:
+                wasted_gb += instances[0]['size_gb'] * (len(instances) - 1)
+            
+            for model in instances:
+                writer.writerow({
+                    'filename': model['filename'],
+                    'directory': model['directory'],
+                    'file_date': model['file_date'],
+                    'size_gb': model['size_gb'],
+                    'size_bytes': model['size_bytes'],
+                    'duplicate_group': group_num
+                })
+                total_instances += 1
+            group_num += 1
+    
+    print(f"\n💾 Size duplicates report: {output_path}")
+    print(f"   Found {len(duplicates)} unique file sizes with duplicates")
+    print(f"   Total instances: {total_instances}")
+    print(f"   Potential space savings: {wasted_gb:.2f} GB (if you keep only one copy of each)")
+
+def write_exact_duplicates_report(duplicates: Dict[str, List[Dict]], output_path: Path):
+    """Write report of exact duplicates (same name AND size)."""
+    if not duplicates:
+        print(f"\n✓ No exact duplicates found!")
+        return
+    
+    fieldnames = ['filename', 'directory', 'file_date', 'size_gb', 'duplicate_group', 'instances']
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        group_num = 1
+        total_instances = 0
+        wasted_gb = 0
+        
+        for key, instances in sorted(duplicates.items(), key=lambda x: x[1][0]['size_gb'], reverse=True):
+            # Calculate wasted space
+            if len(instances) > 1:
+                wasted_gb += instances[0]['size_gb'] * (len(instances) - 1)
+            
+            for model in instances:
+                writer.writerow({
+                    'filename': model['filename'],
+                    'directory': model['directory'],
+                    'file_date': model['file_date'],
+                    'size_gb': model['size_gb'],
+                    'duplicate_group': group_num,
+                    'instances': len(instances)
+                })
+                total_instances += 1
+            group_num += 1
+    
+    print(f"\n🎯 Exact duplicates report: {output_path}")
+    print(f"   Found {len(duplicates)} files with exact duplicates (same name AND size)")
+    print(f"   Total instances: {total_instances} ({total_instances - len(duplicates)} extra copies)")
+    print(f"   Wasted space: {wasted_gb:.2f} GB")
+
+def write_summary_report(models: List[Dict], name_dups: Dict, size_dups: Dict, 
+                        exact_dups: Dict, output_path: Path):
+    """Write a text summary report."""
+    
+    total_models = len(models)
+    total_size_gb = sum(m['size_gb'] for m in models)
+    
+    # Calculate wasted space from exact duplicates
+    exact_wasted_gb = 0
+    exact_instances = 0
+    for instances in exact_dups.values():
+        if len(instances) > 1:
+            exact_wasted_gb += instances[0]['size_gb'] * (len(instances) - 1)
+            exact_instances += len(instances)
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write("=" * 70 + "\n")
+        f.write("ComfyUI Models Duplicate Detection Report\n")
+        f.write("=" * 70 + "\n\n")
+        
+        f.write("INVENTORY SUMMARY\n")
+        f.write("-" * 70 + "\n")
+        f.write(f"Total models scanned:             {total_models}\n")
+        f.write(f"Total storage used:               {total_size_gb:.2f} GB\n\n")
+        
+        f.write("DUPLICATE ANALYSIS\n")
+        f.write("-" * 70 + "\n")
+        f.write(f"Filename duplicates:              {len(name_dups)} unique names\n")
+        f.write(f"Size duplicates:                  {len(size_dups)} unique sizes\n")
+        f.write(f"Exact duplicates (name + size):   {len(exact_dups)} files\n")
+        
+        if exact_dups:
+            f.write(f"\nExact duplicate instances:        {exact_instances}\n")
+            f.write(f"Extra copies:                     {exact_instances - len(exact_dups)}\n")
+            f.write(f"Wasted space:                     {exact_wasted_gb:.2f} GB\n")
+            f.write(f"Potential savings:                {(exact_wasted_gb/total_size_gb)*100:.1f}% of total storage\n")
+        
+        if exact_dups:
+            f.write("\n" + "=" * 70 + "\n")
+            f.write("TOP SPACE WASTERS (Exact Duplicates)\n")
+            f.write("=" * 70 + "\n\n")
+            
+            # Sort by wasted space (size * extra copies)
+            sorted_dups = sorted(
+                exact_dups.items(), 
+                key=lambda x: x[1][0]['size_gb'] * (len(x[1]) - 1),
+                reverse=True
+            )
+            
+            for i, (key, instances) in enumerate(sorted_dups[:20], 1):
+                filename = instances[0]['filename']
+                size_gb = instances[0]['size_gb']
+                count = len(instances)
+                wasted = size_gb * (count - 1)
+                
+                f.write(f"{i}. {filename}\n")
+                f.write(f"   Size: {size_gb:.2f} GB  |  Copies: {count}  |  Wasted: {wasted:.2f} GB\n")
+                f.write(f"   Locations:\n")
+                for inst in instances:
+                    f.write(f"     • {inst['directory']}\n")
+                f.write("\n")
+        
+        if name_dups and not exact_dups:
+            f.write("\n" + "=" * 70 + "\n")
+            f.write("FILENAME DUPLICATES (Different sizes - possibly different versions)\n")
+            f.write("=" * 70 + "\n\n")
+            
+            for i, (filename, instances) in enumerate(sorted(name_dups.items())[:10], 1):
+                f.write(f"{i}. {instances[0]['filename']}\n")
+                f.write(f"   Found in {len(instances)} locations:\n")
+                for inst in instances:
+                    f.write(f"     • {inst['directory']} ({inst['size_gb']} GB)\n")
+                f.write("\n")
+    
+    print(f"\n📄 Summary report: {output_path}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Find duplicate models in ComfyUI inventory by filename and/or size."
+    )
+    
+    parser.add_argument(
+        'models_csv',
+        type=Path,
+        help="CSV file from scan_models.py (models inventory)"
+    )
+    
+    parser.add_argument(
+        '-o', '--output-dir',
+        type=Path,
+        default=Path('.'),
+        help="Output directory for reports (default: current directory)"
+    )
+    
+    parser.add_argument(
+        '-t', '--type',
+        choices=['name', 'size', 'exact', 'all'],
+        default='all',
+        help="Type of duplicates to find: name, size, exact, or all (default: all)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Validate input file
+    if not args.models_csv.exists():
+        print(f"Error: Models inventory file '{args.models_csv}' not found.")
+        return
+    
+    # Create output directory if needed
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("=" * 70)
+    print("ComfyUI Models Duplicate Detection")
+    print("=" * 70)
+    print(f"\nModels inventory:  {args.models_csv}")
+    print(f"Output directory:  {args.output_dir}")
+    print(f"Detection type:    {args.type}")
+    print("\n" + "-" * 70)
+    
+    # Load models
+    print("\nLoading models inventory...")
+    models = load_models_inventory(args.models_csv)
+    
+    if not models:
+        print("Error: No models loaded from inventory file.")
+        return
+    
+    print(f"  Loaded {len(models)} models")
+    total_gb = sum(m['size_gb'] for m in models)
+    print(f"  Total size: {total_gb:.2f} GB")
+    
+    # Find duplicates
+    print("\nAnalyzing duplicates...")
+    
+    name_dups = {}
+    size_dups = {}
+    exact_dups = {}
+    
+    if args.type in ['name', 'all']:
+        name_dups = find_duplicates_by_name(models)
+        print(f"  Found {len(name_dups)} filename duplicates")
+    
+    if args.type in ['size', 'all']:
+        size_dups = find_duplicates_by_size(models)
+        print(f"  Found {len(size_dups)} size duplicates")
+    
+    if args.type in ['exact', 'all']:
+        exact_dups = find_duplicates_by_name_and_size(models)
+        print(f"  Found {len(exact_dups)} exact duplicates (same name AND size)")
+    
+    # Generate reports
+    print("\nGenerating reports...")
+    
+    if args.type in ['name', 'all'] and name_dups:
+        write_name_duplicates_report(name_dups, args.output_dir / 'duplicates_by_name.csv')
+    
+    if args.type in ['size', 'all'] and size_dups:
+        write_size_duplicates_report(size_dups, args.output_dir / 'duplicates_by_size.csv')
+    
+    if args.type in ['exact', 'all'] and exact_dups:
+        write_exact_duplicates_report(exact_dups, args.output_dir / 'exact_duplicates.csv')
+    
+    # Always write summary if we found any duplicates
+    if name_dups or size_dups or exact_dups:
+        write_summary_report(models, name_dups, size_dups, exact_dups, 
+                           args.output_dir / 'duplicates_summary.txt')
+    
+    print("\n" + "=" * 70)
+    print("Analysis Complete!")
+    print("=" * 70)
+    
+    if exact_dups:
+        exact_instances = sum(len(instances) for instances in exact_dups.values())
+        exact_wasted = sum(
+            instances[0]['size_gb'] * (len(instances) - 1) 
+            for instances in exact_dups.values()
+        )
+        print(f"\n💡 You have {exact_instances - len(exact_dups)} extra copies of {len(exact_dups)} files")
+        print(f"   Delete duplicates to save {exact_wasted:.2f} GB of disk space!")
+    
+    print(f"\nAll reports saved to: {args.output_dir}")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,384 @@
+#!/usr/bin/env python3
+
+import csv
+import argparse
+from pathlib import Path
+from typing import Set, List, Dict
+from collections import defaultdict
+
+def load_models_inventory(csv_path: Path) -> Dict[str, Dict]:
+    """
+    Load models from the inventory CSV.
+    Returns dict with normalized filename as key and full info as value.
+    """
+    models = {}
+    
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Get the safetensor filename
+                filename = row.get('safetensor_file') or row.get('filename', '')
+                
+                # Normalize the filename (handle both forward and backslash paths)
+                normalized = normalize_path(filename)
+                
+                models[normalized] = {
+                    'filename': filename,
+                    'directory': row.get('directory', ''),
+                    'file_date': row.get('file_date', ''),
+                    'size_gb': row.get('size_gb', 'N/A')
+                }
+    except Exception as e:
+        print(f"Error reading models inventory: {e}")
+        return {}
+    
+    return models
+
+def load_workflow_references(csv_path: Path) -> Dict[str, List[Dict]]:
+    """
+    Load workflow references from CSV.
+    Returns dict with normalized filename as key and list of workflow references as value.
+    """
+    references = defaultdict(list)
+    
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Get the safetensor filename
+                filename = row.get('safetensor_file', '')
+                
+                # Normalize the filename
+                normalized = normalize_path(filename)
+                
+                references[normalized].append({
+                    'workflow_file': row.get('filename', ''),
+                    'workflow_dir': row.get('directory', ''),
+                    'node_name': row.get('node_name', ''),
+                    'original_reference': filename
+                })
+    except Exception as e:
+        print(f"Error reading workflow references: {e}")
+        return {}
+    
+    return dict(references)
+
+def normalize_path(path: str) -> str:
+    """
+    Normalize a path for comparison.
+    - Convert backslashes to forward slashes
+    - Convert to lowercase
+    - Extract just the filename if it's a full path
+    """
+    if not path:
+        return ""
+    
+    # Replace backslashes with forward slashes
+    normalized = path.replace('\\', '/')
+    
+    # Convert to lowercase for case-insensitive comparison
+    normalized = normalized.lower()
+    
+    return normalized
+
+def find_basename_match(reference: str, available_models: Dict[str, Dict]) -> str:
+    """
+    Try to find a match based on just the basename (filename without path).
+    Returns the matching key or empty string.
+    """
+    # Get just the basename from the reference
+    ref_basename = reference.split('/')[-1]
+    
+    # Check if any available model ends with this basename
+    for model_key in available_models.keys():
+        if model_key.endswith(ref_basename):
+            return model_key
+    
+    return ""
+
+def generate_reports(models: Dict[str, Dict], references: Dict[str, List[Dict]], 
+                     output_dir: Path, fuzzy_match: bool = True):
+    """Generate various cross-reference reports."""
+    
+    # Find missing models (referenced but not in inventory)
+    missing_models = {}
+    for ref_key, ref_list in references.items():
+        if ref_key not in models:
+            # Try fuzzy matching if enabled
+            if fuzzy_match:
+                match = find_basename_match(ref_key, models)
+                if match:
+                    continue  # Found a match, not missing
+            
+            missing_models[ref_key] = ref_list
+    
+    # Find unused models (in inventory but never referenced)
+    unused_models = {}
+    for model_key, model_info in models.items():
+        # Check exact match first
+        if model_key not in references:
+            # Try fuzzy matching if enabled
+            is_used = False
+            if fuzzy_match:
+                # Check if any reference might match this model
+                model_basename = model_key.split('/')[-1]
+                for ref_key in references.keys():
+                    ref_basename = ref_key.split('/')[-1]
+                    if ref_basename == model_basename:
+                        is_used = True
+                        break
+            
+            if not is_used:
+                unused_models[model_key] = model_info
+    
+    # Find used models (for reference)
+    used_models = {}
+    for ref_key, ref_list in references.items():
+        if ref_key in models:
+            used_models[ref_key] = {
+                'model_info': models[ref_key],
+                'references': ref_list
+            }
+        elif fuzzy_match:
+            match = find_basename_match(ref_key, models)
+            if match:
+                used_models[match] = {
+                    'model_info': models[match],
+                    'references': ref_list
+                }
+    
+    # Write missing models report
+    write_missing_models_report(missing_models, output_dir / 'missing_models.csv')
+    
+    # Write unused models report
+    write_unused_models_report(unused_models, output_dir / 'unused_models.csv')
+    
+    # Write used models report
+    write_used_models_report(used_models, output_dir / 'used_models.csv')
+    
+    # Write summary report
+    write_summary_report(models, references, missing_models, unused_models, 
+                        used_models, output_dir / 'summary.txt')
+    
+    return {
+        'total_models': len(models),
+        'total_references': sum(len(refs) for refs in references.values()),
+        'unique_referenced': len(references),
+        'missing_count': len(missing_models),
+        'unused_count': len(unused_models),
+        'used_count': len(used_models)
+    }
+
+def write_missing_models_report(missing_models: Dict, output_path: Path):
+    """Write report of models referenced in workflows but not in inventory."""
+    if not missing_models:
+        print(f"\n✓ No missing models - all workflow references found in inventory!")
+        return
+    
+    fieldnames = ['referenced_file', 'workflow_file', 'workflow_directory', 'node_name']
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for ref_key, ref_list in sorted(missing_models.items()):
+            for ref in ref_list:
+                writer.writerow({
+                    'referenced_file': ref['original_reference'],
+                    'workflow_file': ref['workflow_file'],
+                    'workflow_directory': ref['workflow_dir'],
+                    'node_name': ref['node_name']
+                })
+    
+    print(f"\n⚠ Missing models report: {output_path}")
+    print(f"   Found {len(missing_models)} models referenced in workflows but NOT in inventory")
+
+def write_unused_models_report(unused_models: Dict, output_path: Path):
+    """Write report of models in inventory but never referenced in workflows."""
+    if not unused_models:
+        print(f"\n✓ No unused models - all models in inventory are referenced!")
+        return
+    
+    fieldnames = ['filename', 'directory', 'file_date', 'size_gb']
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for model_key, model_info in sorted(unused_models.items()):
+            writer.writerow({
+                'filename': model_info['filename'],
+                'directory': model_info['directory'],
+                'file_date': model_info['file_date'],
+                'size_gb': model_info['size_gb']
+            })
+    
+    # Calculate total size of unused models
+    total_gb = 0
+    for model_info in unused_models.values():
+        try:
+            total_gb += float(model_info['size_gb'])
+        except (ValueError, KeyError):
+            pass
+    
+    print(f"\n📊 Unused models report: {output_path}")
+    print(f"   Found {len(unused_models)} models in inventory but NOT referenced in workflows")
+    print(f"   Total size of unused models: {total_gb:.2f} GB")
+
+def write_used_models_report(used_models: Dict, output_path: Path):
+    """Write report of models that are in inventory AND referenced in workflows."""
+    if not used_models:
+        print(f"\n⚠ No used models found!")
+        return
+    
+    fieldnames = ['filename', 'directory', 'size_gb', 'reference_count', 'workflows']
+    
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for model_key, data in sorted(used_models.items()):
+            model_info = data['model_info']
+            ref_list = data['references']
+            
+            # Get unique workflow files
+            workflows = set(ref['workflow_file'] for ref in ref_list)
+            
+            writer.writerow({
+                'filename': model_info['filename'],
+                'directory': model_info['directory'],
+                'size_gb': model_info['size_gb'],
+                'reference_count': len(ref_list),
+                'workflows': ', '.join(sorted(workflows))
+            })
+    
+    print(f"\n✓ Used models report: {output_path}")
+    print(f"   Found {len(used_models)} models actively used in workflows")
+
+def write_summary_report(models: Dict, references: Dict, missing_models: Dict, 
+                        unused_models: Dict, used_models: Dict, output_path: Path):
+    """Write a text summary report."""
+    
+    total_refs = sum(len(refs) for refs in references.values())
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write("=" * 70 + "\n")
+        f.write("ComfyUI Models Cross-Reference Summary\n")
+        f.write("=" * 70 + "\n\n")
+        
+        f.write("INVENTORY STATISTICS\n")
+        f.write("-" * 70 + "\n")
+        f.write(f"Total models in inventory:        {len(models)}\n")
+        f.write(f"Models used in workflows:         {len(used_models)}\n")
+        f.write(f"Models never referenced:          {len(unused_models)}\n\n")
+        
+        f.write("WORKFLOW STATISTICS\n")
+        f.write("-" * 70 + "\n")
+        f.write(f"Unique models referenced:         {len(references)}\n")
+        f.write(f"Total model references:           {total_refs}\n")
+        f.write(f"Models referenced but missing:    {len(missing_models)}\n\n")
+        
+        if unused_models:
+            # Calculate unused size
+            total_unused_gb = sum(
+                float(info['size_gb']) for info in unused_models.values() 
+                if info['size_gb'] != 'N/A'
+            )
+            f.write("STORAGE ANALYSIS\n")
+            f.write("-" * 70 + "\n")
+            f.write(f"Space used by unused models:      {total_unused_gb:.2f} GB\n\n")
+        
+        if missing_models:
+            f.write("MISSING MODELS (Referenced but not in inventory)\n")
+            f.write("-" * 70 + "\n")
+            for ref_key in sorted(missing_models.keys()):
+                f.write(f"  • {missing_models[ref_key][0]['original_reference']}\n")
+            f.write("\n")
+        
+        if unused_models and len(unused_models) <= 20:
+            f.write("UNUSED MODELS (In inventory but never referenced)\n")
+            f.write("-" * 70 + "\n")
+            for model_info in sorted(unused_models.values(), 
+                                   key=lambda x: x['filename']):
+                size = model_info['size_gb']
+                f.write(f"  • {model_info['filename']} ({size} GB)\n")
+        elif unused_models:
+            f.write(f"UNUSED MODELS: {len(unused_models)} models\n")
+            f.write(f"(See unused_models.csv for full list)\n")
+    
+    print(f"\n📄 Summary report: {output_path}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Cross-reference ComfyUI models inventory with workflow references."
+    )
+    
+    parser.add_argument(
+        'models_csv',
+        type=Path,
+        help="CSV file from scan_models.py (models inventory)"
+    )
+    
+    parser.add_argument(
+        'workflows_csv',
+        type=Path,
+        help="CSV file from scan_safetensors.py (workflow references)"
+    )
+    
+    parser.add_argument(
+        '-o', '--output-dir',
+        type=Path,
+        default=Path('.'),
+        help="Output directory for reports (default: current directory)"
+    )
+    
+    parser.add_argument(
+        '--no-fuzzy-match',
+        action='store_true',
+        help="Disable fuzzy matching (require exact path matches)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Validate input files
+    if not args.models_csv.exists():
+        print(f"Error: Models inventory file '{args.models_csv}' not found.")
+        return
+    
+    if not args.workflows_csv.exists():
+        print(f"Error: Workflow references file '{args.workflows_csv}' not found.")
+        return
+    
+    # Create output directory if needed
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("=" * 70)
+    print("ComfyUI Models Cross-Reference Analysis")
+    print("=" * 70)
+    print(f"\nModels inventory:     {args.models_csv}")
+    print(f"Workflow references:  {args.workflows_csv}")
+    print(f"Output directory:     {args.output_dir}")
+    print(f"Fuzzy matching:       {'Disabled' if args.no_fuzzy_match else 'Enabled'}")
+    print("\n" + "-" * 70)
+    
+    # Load data
+    print("\nLoading data...")
+    models = load_models_inventory(args.models_csv)
+    references = load_workflow_references(args.workflows_csv)
+    
+    print(f"  Loaded {len(models)} models from inventory")
+    print(f"  Loaded {len(references)} unique model references from workflows")
+    
+    # Generate reports
+    print("\nGenerating reports...")
+    stats = generate_reports(models, references, args.output_dir, 
+                            fuzzy_match=not args.no_fuzzy_match)
+    
+    print("\n" + "=" * 70)
+    print("Analysis Complete!")
+    print("=" * 70)
+    print(f"\nAll reports saved to: {args.output_dir}")
+
+if __name__ == "__main__":
+    main()

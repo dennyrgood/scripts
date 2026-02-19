@@ -106,7 +106,11 @@ def apply_changes(state_path: Path, pending_path: Path, scripts_dir: Path) -> in
     # Update metadata
     state['metadata']['last_apply'] = datetime.now().isoformat()
     
-    # Save updated state
+    # Save updated state (with backup)
+    backup_path = state_path.parent / f"{state_path.name}.backup"
+    if state_path.exists():
+        backup_path.write_text(state_path.read_text(encoding='utf-8'))
+    
     state_path.write_text(json.dumps(state, indent=2), encoding='utf-8')
     print(f"\n✓ Updated {state_path}")
     

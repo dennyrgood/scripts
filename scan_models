@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+
+import csv
+import re
+import argparse
+from pathlib import Path
+from typing import List, Dict
+
+def parse_windows_dir_listing(file_path: Path) -> List[Dict]:
+    """
+    Parse a Windows 'dir /s' output file and extract safetensor file information.
+    Returns list of dicts with filename, directory, file_date, and safetensor_filename.
+    """
+    results = []
+    current_directory = None
+    
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+        for line in f:
+            line = line.rstrip()
+            
+            # Match directory header: " Directory of C:\path\to\directory"
+            dir_match = re.match(r'\s*Directory of (.+)$', line)
+            if dir_match:
+                current_directory = dir_match.group(1)
+                continue
+            
+            # Skip empty lines and non-file lines
+            if not line.strip() or '<DIR>' in line:
+                continue
+            
+            # Match file lines with date, time, size, and filename
+            # Format: MM/DD/YYYY  HH:MM AM/PM    SIZE filename
+            # Example: 01/16/2026  02:30 PM    11,901,540,704 flux1-kontext-dev-fp8-e4m3fn.safetensors
+            file_match = re.match(
+                r'\s*(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2}\s+[AP]M)\s+([\d,]+)\s+(.+)$',
+                line
+            )
+            
+            if file_match and current_directory:
+                date_str = file_match.group(1)
+                time_str = file_match.group(2)
+                size_str = file_match.group(3)
+                filename = file_match.group(4).strip()
+                
+                # Only process .safetensors files
+                if '.safetensors' in filename.lower():
+                    # Combine date and time
+                    file_datetime = f"{date_str} {time_str}"
+                    
+                    # Remove commas from size and convert to int
+                    size_bytes = int(size_str.replace(',', ''))
+                    
+                    results.append({
+                        'filename': filename,
+                        'directory': current_directory,
+                        'file_date': file_datetime,
+                        'size_bytes': size_bytes,
+                        'size_mb': round(size_bytes / (1024 * 1024), 2),
+                        'size_gb': round(size_bytes / (1024 * 1024 * 1024), 2),
+                        'safetensor_file': filename  # Same as filename for this use case
+                    })
+    
+    return results
+
+def write_csv(results: List[Dict], output_file: Path):
+    """Write results to CSV file."""
+    if not results:
+        print("No safetensor files found.")
+        return
+    
+    fieldnames = ['filename', 'directory', 'file_date', 'size_bytes', 'size_mb', 'size_gb', 'safetensor_file']
+    
+    with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+    
+    # Calculate total size
+    total_bytes = sum(r['size_bytes'] for r in results)
+    total_gb = round(total_bytes / (1024 * 1024 * 1024), 2)
+    
+    print(f"\nWrote {len(results)} safetensor files to {output_file}")
+    print(f"Total size: {total_gb} GB ({total_bytes:,} bytes)")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Parse Windows directory listing (dir /s output) and extract safetensor file information to CSV."
+    )
+    
+    parser.add_argument(
+        'input_file',
+        type=Path,
+        help="Input file containing Windows 'dir /s' output (e.g., models_lst.txt)"
+    )
+    
+    parser.add_argument(
+        '-o', '--output',
+        type=Path,
+        default=Path('models_inventory.csv'),
+        help="Output CSV file (default: models_inventory.csv)"
+    )
+    
+    args = parser.parse_args()
+    
+    if not args.input_file.exists():
+        print(f"Error: Input file '{args.input_file}' does not exist.")
+        return
+    
+    print(f"Parsing directory listing: {args.input_file}")
+    print("-" * 60)
+    
+    # Parse the directory listing
+    results = parse_windows_dir_listing(args.input_file)
+    
+    # Display summary
+    print(f"\nFound {len(results)} .safetensors files")
+    
+    # Show sample of results
+    if results:
+        print("\nSample entries:")
+        for result in results[:5]:
+            print(f"  {result['filename']}")
+            print(f"    Dir: {result['directory']}")
+            print(f"    Date: {result['file_date']}")
+            print(f"    Size: {result['size_gb']} GB ({result['size_mb']} MB)")
+            print()
+    
+    # Write CSV
+    write_csv(results, args.output)
+    
+    print("\nDone!")
+
+if __name__ == "__main__":
+    main()
