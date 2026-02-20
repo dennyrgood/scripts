@@ -1,19 +1,10 @@
 import os
-import time
-import json
-import socket
 import ctypes
 import subprocess
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-# ================= CONFIG =================
-
-STALE_THRESHOLD_MINUTES = 10
-REPEAT_ALERT_EVERY_MINUTES = 10
-CHECK_INTERVAL_SECONDS = 60
-
-# ==========================================
+# ── CONFIG ────────────────────────────────────────────────────────────────────
 
 BASE_PATH = Path("D:/OneDrive")
 if not BASE_PATH.exists():
@@ -23,46 +14,41 @@ if not BASE_PATH.exists():
         or Path.home() / "OneDrive"
     )
 
-HEARTBEAT_FILE = BASE_PATH / "onedrive_heartbeat.json"
-MACHINE_NAME = socket.gethostname()
+HEARTBEAT_FILE = BASE_PATH / "_sync_monitor" / "heartbeat_server.txt"
+STALE_THRESHOLD_MINUTES = 5
 
-last_alert_time = None
-alert_active = False
+# ── TOAST (Persistent Action Center) ─────────────────────────────────────────
 
+def send_toast(title: str, message: str) -> None:
+    safe_title = title.replace('"', '\\"')
+    safe_message = message.replace('"', '\\"').replace('\n', ' ')
 
-# ---------- Toast Notification ----------
-
-def send_toast(title, message):
-    ps_script = f"""
-    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-    $template = @"
-    <toast>
-        <visual>
-            <binding template="ToastGeneric">
-                <text>{title}</text>
-                <text>{message}</text>
-            </binding>
-        </visual>
-    </toast>
-"@
-    $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-    $xml.LoadXml($template)
-    $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("OneDriveMonitor")
-    $notifier.Show($toast)
-    """
-    subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps_script],
-        capture_output=True
+    ps = (
+        '[Windows.UI.Notifications.ToastNotificationManager, '
+        'Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;'
+        '$xml = [Windows.UI.Notifications.ToastNotificationManager]::'
+        'GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);'
+        '$textNodes = $xml.GetElementsByTagName("text");'
+        f'$textNodes.Item(0).AppendChild($xml.CreateTextNode("{safe_title}")) | Out-Null;'
+        f'$textNodes.Item(1).AppendChild($xml.CreateTextNode("{safe_message}")) | Out-Null;'
+        '$toast = [Windows.UI.Notifications.ToastNotification]::new($xml);'
+        '[Windows.UI.Notifications.ToastNotificationManager]::'
+        'CreateToastNotifier("OneDrive Monitor").Show($toast);'
     )
 
+    try:
+        subprocess.run(["powershell", "-Command", ps], capture_output=True)
+    except Exception:
+        pass  # Silent fail — modal will still show
 
-# ---------- Modal Popup ----------
 
-def show_modal(title, message):
+# ── MODAL (In-Your-Face) ─────────────────────────────────────────────────────
+
+def show_modal(title: str, message: str) -> None:
     MB_ICONWARNING = 0x30
     MB_SYSTEMMODAL = 0x1000
     MB_TOPMOST = 0x00040000
+
     ctypes.windll.user32.MessageBoxW(
         0,
         message,
@@ -71,67 +57,58 @@ def show_modal(title, message):
     )
 
 
-# ---------- Heartbeat Logic ----------
+# ── CHECK ─────────────────────────────────────────────────────────────────────
 
-def read_heartbeat():
+def run_check():
+    machine = os.environ.get("COMPUTERNAME", "this machine")
+
+    # File missing
     if not HEARTBEAT_FILE.exists():
-        raise FileNotFoundError("Heartbeat file missing")
+        msg = (
+            f"Heartbeat file missing on {machine}.\n\n"
+            f"Expected:\n{HEARTBEAT_FILE}"
+        )
+        send_toast("⚠ OneDrive Sync Problem", msg)
+        show_modal("ONEDRIVE CRITICAL", msg)
+        return
 
-    content = HEARTBEAT_FILE.read_text().strip()
-    if not content:
-        raise ValueError("Heartbeat file empty")
+    raw = HEARTBEAT_FILE.read_text().strip()
 
-    data = json.loads(content)
-    return datetime.fromisoformat(data["timestamp"])
+    # Empty file
+    if not raw:
+        msg = (
+            f"Heartbeat file is empty on {machine}.\n\n"
+            f"File:\n{HEARTBEAT_FILE}"
+        )
+        send_toast("⚠ OneDrive Heartbeat Empty", msg)
+        show_modal("ONEDRIVE WARNING", msg)
+        return
 
-
-def heartbeat_age_minutes(timestamp):
-    now = datetime.now(timezone.utc)
-    delta = now - timestamp
-    return delta.total_seconds() / 60
-
-
-# ---------- Main Loop ----------
-
-while True:
+    # Parse timestamp
     try:
-        ts = read_heartbeat()
-        age = heartbeat_age_minutes(ts)
-
-        if age > STALE_THRESHOLD_MINUTES:
-            now = time.time()
-
-            if (
-                not alert_active
-                or last_alert_time is None
-                or (now - last_alert_time)
-                > REPEAT_ALERT_EVERY_MINUTES * 60
-            ):
-                message = (
-                    f"Machine: {MACHINE_NAME}\n"
-                    f"Heartbeat stale: {int(age)} minutes old\n"
-                    f"File: {HEARTBEAT_FILE}"
-                )
-
-                send_toast("OneDrive Sync Problem", message)
-                show_modal("ONEDRIVE CRITICAL", message)
-
-                last_alert_time = now
-                alert_active = True
-
-        else:
-            # If previously in alert state, notify recovery
-            if alert_active:
-                send_toast(
-                    "OneDrive Sync Restored",
-                    f"{MACHINE_NAME} heartbeat healthy again."
-                )
-                alert_active = False
-                last_alert_time = None
-
+        server_time = datetime.fromisoformat(raw)
+        if server_time.tzinfo is None:
+            server_time = server_time.replace(tzinfo=timezone.utc)
     except Exception as e:
-        send_toast("MONITOR SCRIPT ERROR", str(e))
-        show_modal("MONITOR SCRIPT ERROR", str(e))
-        alert_active = True
+        msg = (
+            f"Could not parse heartbeat on {machine}.\n\n"
+            f"Content:\n{raw}\n\nError: {e}"
+        )
+        send_toast("⚠ OneDrive Monitor Error", msg)
+        show_modal("MONITOR ERROR", msg)
+        return
 
-    time.sleep(CHECK_INTERVAL_SECONDS)
+    age = datetime.now(timezone.utc) - server_time
+    age_mins = int(age.total_seconds() / 60)
+
+    if age > timedelta(minutes=STALE_THRESHOLD_MINUTES):
+        msg = (
+            f"Server heartbeat is {age_mins} minute(s) old on {machine}.\n\n"
+            f"Last server write: {server_time.strftime('%H:%M:%S')} UTC"
+        )
+        send_toast("⚠ OneDrive Sync Appears Stuck", msg)
+        show_modal("ONEDRIVE CRITICAL", msg)
+
+
+if __name__ == "__main__":
+    run_check()
