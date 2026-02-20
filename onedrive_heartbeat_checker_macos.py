@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Library/Frameworks/Python.framework/Versions/3.13/bin/python3
 """
 heartbeat_checker_macos.py
 Run as a Login Item — loops forever, checks every 5 minutes.
@@ -17,8 +17,9 @@ from datetime import datetime, timedelta, timezone
 
 ONEDRIVE_PATH   = Path.home() / "OneDrive"
 HEARTBEAT_FILE  = ONEDRIVE_PATH / "_sync_monitor" / "heartbeat_server.txt"
-STALE_THRESHOLD = 5    # minutes
-CHECK_INTERVAL  = 300  # seconds (5 minutes)
+STALE_THRESHOLD      = 5    # minutes
+CHECK_INTERVAL       = 300  # seconds (5 minutes)
+TERMINAL_NOTIFIER    = "/opt/homebrew/bin/terminal-notifier"  # full path required for Login Item context
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ def is_online() -> bool:
 def notify(title: str, message: str) -> None:
     try:
         subprocess.run(
-            ["terminal-notifier",
+            [TERMINAL_NOTIFIER,
              "-title", title,
              "-message", message,
              "-sound", "Basso",
@@ -46,7 +47,7 @@ def notify(title: str, message: str) -> None:
             timeout=5
         )
     except FileNotFoundError:
-        # Fallback if terminal-notifier not installed
+        # Fallback if terminal-notifier not found
         safe_title = title.replace('"', '\\"')
         safe_msg   = message.replace('"', '\\"')
         subprocess.run([

@@ -34,29 +34,36 @@ STALE_THRESHOLD_MINUTES = 5
 # ── NOTIFY ────────────────────────────────────────────────────────────────────
 
 def notify(title: str, message: str) -> None:
-    # Use Windows ToastNotifier — persistent, stays in Action Center
-    safe_title = title.replace('"', '\\"')
-    safe_message = message.replace('"', '\\"').replace('\n', ' ')
-    ps = (
-        '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;'
-        '$template = [Windows.UI.Notifications.ToastTemplateType]::ToastText02;'
-        '$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent($template);'
-        '$text = $xml.GetElementsByTagName("text");'
-        f'$text[0].InnerText = "{safe_title}";'
-        f'$text[1].InnerText = "{safe_message}";'
-        '$toast = [Windows.UI.Notifications.ToastNotification]::new($xml);'
-        '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("OneDrive Monitor").Show($toast);'
-    )
     try:
-        subprocess.run(["powershell", "-Command", ps], capture_output=True)
+        from plyer import notification
+        notification.notify(
+            title=title,
+            message=message,
+            app_name="OneDrive Monitor",
+            timeout=30,
+        )
     except Exception:
-        # Last resort: tkinter
-        import tkinter as tk
-        from tkinter import messagebox
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showwarning(title, message)
-        root.destroy()
+        # Fallback: PowerShell toast
+        try:
+            ps = (
+                f'Add-Type -AssemblyName System.Windows.Forms;'
+                f'$n = New-Object System.Windows.Forms.NotifyIcon;'
+                f'$n.Icon = [System.Drawing.SystemIcons]::Warning;'
+                f'$n.Visible = $true;'
+                f'$n.ShowBalloonTip(10000, "{title}", "{message}", '
+                f'[System.Windows.Forms.ToolTipIcon]::Warning);'
+                f'Start-Sleep -Seconds 10;'
+                f'$n.Dispose();'
+            )
+            subprocess.run(["powershell", "-Command", ps], capture_output=True)
+        except Exception:
+            # Last resort: tkinter
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showwarning(title, message)
+            root.destroy()
 
 # ── CHECK ─────────────────────────────────────────────────────────────────────
 
