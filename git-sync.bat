@@ -1,5 +1,4 @@
 @echo off
-:: Check if we are actually in a git repo before starting
 if not exist ".git\" (
     echo [ERROR] This folder is not a Git repository.
     pause
@@ -8,15 +7,19 @@ if not exist ".git\" (
 
 echo Syncing repository in: %cd%
 
+:: 1. Force back to main in case a previous sync failed mid-way
+git checkout main
+
+:: 2. Stage changes
 git add .
 
-:: Only commit if there are actually changes to save
+:: 3. Only commit if there are actually changes
 git diff-index --quiet HEAD || git commit -m "Sync: %date% %time%"
 
-:: Pull the online changes
-git pull --rebase
+:: 4. Explicitly pull from origin main to avoid "Not on a branch" errors
+git pull origin main --rebase
 
-:: Push your local changes
+:: 5. Push local changes
 git push origin main
 
 echo ---------------------------------------
