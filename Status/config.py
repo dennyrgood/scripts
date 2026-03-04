@@ -21,7 +21,7 @@ STATUS_DIR = ONEDRIVE_PATH / "_sync_monitor"
 MASTER_STATUS_FILE = STATUS_DIR / "server_status_all.json"
 
 # Which machine is running this checker instance
-CHECKER_HOST = "amsterdamdesktop"
+CHECKER_HOST = os.environ.get("FLEET_CHECKER_HOST") or os.environ.get("COMPUTERNAME", "unknown").lower()
 
 # ---------------------------------------------------------------------------
 # Polling / timeout settings
