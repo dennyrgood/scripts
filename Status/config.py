@@ -28,9 +28,9 @@ CHECKER_HOST = "amsterdamdesktop"
 # ---------------------------------------------------------------------------
 
 POLL_INTERVAL_SECONDS = 30
-TIMEOUT_TCP_MS = 500          # Layer 1 host reachability
-TIMEOUT_HTTP_MS = 2000        # Layer 2 Tailscale service checks
-TIMEOUT_PUBLIC_MS = 5000      # Layer 3 public endpoint checks
+TIMEOUT_TCP_MS = 3000         # Layer 1 host reachability
+TIMEOUT_HTTP_MS = 1500        # Layer 2 Tailscale service checks
+TIMEOUT_PUBLIC_MS = 3000      # Layer 3 public endpoint checks
 
 # ---------------------------------------------------------------------------
 # Fleet definition
@@ -42,6 +42,10 @@ TIMEOUT_PUBLIC_MS = 5000      # Layer 3 public endpoint checks
 #   "openwebui" — OpenWebUI health (/health)
 #   "flask"     — Flask alive (GET /)
 #
+# probe_port: port used for Layer 1 TCP host reachability check.
+#             Pick the most reliably open port on that machine.
+#             Port 22 (SSH) is NOT used — most machines are Windows without SSH.
+#
 # public_url: present = Layer 3 check runs; null = Tailscale only
 
 FLEET = [
@@ -50,6 +54,7 @@ FLEET = [
         "tailscale_name": "imagebeast",
         "tailscale_ip": "100.107.247.38",
         "primary_role": "ComfyUI Primary",
+        "probe_port": 8188,
         "services": [
             {
                 "name": "ComfyUI",
@@ -79,6 +84,7 @@ FLEET = [
         "tailscale_name": "chatworkhorse",
         "tailscale_ip": "100.124.162.73",
         "primary_role": "Ollama Primary",
+        "probe_port": 11434,
         "services": [
             {
                 "name": "ComfyUI",
@@ -99,7 +105,7 @@ FLEET = [
                 "port": 8080,
                 "priority": "P",
                 "check_type": "openwebui",
-                "public_url": "https://chat.ldmathes.cc",
+                "public_url": None,
             },
         ],
     },
@@ -108,6 +114,7 @@ FLEET = [
         "tailscale_name": "travelbeast",
         "tailscale_ip": "100.73.82.42",
         "primary_role": "Mobile/Travel",
+        "probe_port": 8188,
         "services": [
             {
                 "name": "ComfyUI",
@@ -130,6 +137,7 @@ FLEET = [
         "tailscale_name": "amsterdamdesktop",
         "tailscale_ip": "100.125.37.114",
         "primary_role": "Flask / OpenWebUI Primary",
+        "probe_port": 5000,
         "services": [
             {
                 "name": "ComfyUI",
@@ -187,6 +195,7 @@ FLEET = [
         "tailscale_name": "denniss-macbook-air",
         "tailscale_ip": "100.72.187.19",
         "primary_role": "Ollama B99",
+        "probe_port": 11434,
         "services": [
             {
                 "name": "Ollama",
@@ -202,6 +211,7 @@ FLEET = [
         "tailscale_name": "denniss-2nd-macbook-air",
         "tailscale_ip": "100.84.152.110",
         "primary_role": "Ollama B99",
+        "probe_port": 11434,
         "services": [
             {
                 "name": "Ollama",

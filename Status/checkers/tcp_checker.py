@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone
 
 
-def check(tailscale_name: str, timeout_ms: int, port: int = 80) -> dict:
+def check(host: str, timeout_ms: int, port: int = 80) -> dict:
     """
     Attempt a TCP connect to tailscale_name on the given port.
     Any successful connect OR connection refused = host reachable (port refused
@@ -22,7 +22,13 @@ def check(tailscale_name: str, timeout_ms: int, port: int = 80) -> dict:
     detail = None
 
     try:
-        with socket.create_connection((tailscale_name, port), timeout=timeout_s):
+        # Force IPv4 to avoid IPv6 fallback delay on Windows
+        addr_info = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        family, socktype, proto, canonname, sockaddr = addr_info[0]
+        sock = socket.socket(family, socktype, proto)
+        sock.settimeout(timeout_s)
+        with sock:
+            sock.connect(sockaddr)
             pass
         status = "up"
     except ConnectionRefusedError:

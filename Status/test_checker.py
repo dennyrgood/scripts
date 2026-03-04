@@ -161,7 +161,8 @@ def test_tcp(machines):
         display = m["display_name"]
         try:
             probe_port = m.get("probe_port", 80)
-            result = tcp_checker.check(name, TIMEOUT_TCP_MS, port=probe_port)
+            probe_host = "127.0.0.1" if name == CHECKER_HOST else name
+            result = tcp_checker.check(probe_host, TIMEOUT_TCP_MS, port=probe_port)
             status = result["status"]
             ms = result["response_time_ms"]
             detail = result.get("detail") or ""
@@ -191,7 +192,9 @@ def test_services(machines):
 
         # First confirm host is reachable
         probe_port = m.get("probe_port", 80)
-        host = tcp_checker.check(name, TIMEOUT_TCP_MS, port=probe_port)
+        probe_host = "127.0.0.1" if name == CHECKER_HOST else name
+        host = tcp_checker.check(probe_host, TIMEOUT_TCP_MS, port=probe_port)
+
         if host["status"] != "up":
             print(f"\n  {display} — host unreachable, skipping service checks")
             continue

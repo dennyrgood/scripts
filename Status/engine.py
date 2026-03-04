@@ -84,8 +84,11 @@ def _check_machine(machine_cfg: dict, cycle_timestamp: str) -> dict:
     tailscale_name = machine_cfg["tailscale_name"]
 
     # --- Layer 1: Host reachability ---
+
     probe_port = machine_cfg.get("probe_port", 80)
-    host_result = tcp_checker.check(tailscale_name, TIMEOUT_TCP_MS, port=probe_port)
+    probe_host = "127.0.0.1" if tailscale_name == CHECKER_HOST else tailscale_name
+    host_result = tcp_checker.check(probe_host, TIMEOUT_TCP_MS, port=probe_port)
+
     host_up = host_result["status"] == "up"
 
     service_results = []
