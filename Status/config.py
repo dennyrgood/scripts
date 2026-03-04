@@ -85,7 +85,7 @@ FLEET = [
                 "port": 8188,
                 "priority": "B2",
                 "check_type": "comfyui",
-                "public_url": "https://clip.ldmathes.cc",
+                "public_url": "https://clips.ldmathes.cc",
             },
             {
                 "name": "Ollama",
