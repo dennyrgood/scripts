@@ -17,7 +17,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 # Ensure imports resolve from this directory
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import (
     STATUS_DIR, CHECKER_HOST, FLEET,
@@ -160,7 +160,8 @@ def test_tcp(machines):
         name = m["tailscale_name"]
         display = m["display_name"]
         try:
-            result = tcp_checker.check(name, TIMEOUT_TCP_MS)
+            probe_port = m.get("probe_port", 80)
+            result = tcp_checker.check(name, TIMEOUT_TCP_MS, port=probe_port)
             status = result["status"]
             ms = result["response_time_ms"]
             detail = result.get("detail") or ""
@@ -189,7 +190,8 @@ def test_services(machines):
         display = m["display_name"]
 
         # First confirm host is reachable
-        host = tcp_checker.check(name, TIMEOUT_TCP_MS)
+        probe_port = m.get("probe_port", 80)
+        host = tcp_checker.check(name, TIMEOUT_TCP_MS, port=probe_port)
         if host["status"] != "up":
             print(f"\n  {display} — host unreachable, skipping service checks")
             continue
@@ -200,7 +202,7 @@ def test_services(machines):
             check_type = svc["check_type"]
 
             if check_type == "tcp":
-                result = tcp_checker.check(name, TIMEOUT_TCP_MS)
+                result = tcp_checker.check(name, TIMEOUT_TCP_MS, port=svc["port"])
             else:
                 mod = checker_map.get(check_type)
                 if mod is None:
