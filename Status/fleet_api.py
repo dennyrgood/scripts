@@ -27,17 +27,14 @@ def get_file_age(filepath):
         return None
 
 def add_custom_headers(data, status_code=200):
-    """Wraps the response with the required CORS and Identity headers."""
     response = make_response(jsonify(data), status_code)
     
-    # Required Phase 2 Headers
-    response.headers['Access-Control-Allow-Origin'] = 'https://www.ldmathes.cc'
-    response.headers['X-Checker-Host'] = getattr(config, 'CHECKER_HOST', 'unknown')
+    # This is the "Magic Line" that fixes the HTML connection
+    response.headers['Access-Control-Allow-Origin'] = '*'
     
-    # Calculate and add data age
+    response.headers['X-Checker-Host'] = getattr(config, 'CHECKER_HOST', 'unknown')
     age = get_file_age(STATUS_FILE)
     response.headers['X-Data-Age'] = str(age) if age is not None else "unknown"
-    
     return response
 
 @app.route('/health', methods=['GET'])
