@@ -11,17 +11,19 @@ from pathlib import Path
 # OneDrive / output paths
 # ---------------------------------------------------------------------------
 
+# Which machine is running this checker instance
+CHECKER_HOST = os.environ.get("FLEET_CHECKER_HOST") or os.environ.get("COMPUTERNAME", "unknown").lower()
+
 ONEDRIVE_PATH = Path(
     os.environ.get("OneDriveConsumer")
     or os.environ.get("OneDrive")
     or Path.home() / "OneDrive"
 )
 
-STATUS_DIR = ONEDRIVE_PATH / "_sync_monitor"
+STATUS_DIR = ONEDRIVE_PATH / "_sync_monitor" / CHECKER_HOST
 MASTER_STATUS_FILE = STATUS_DIR / "server_status_all.json"
 
-# Which machine is running this checker instance
-CHECKER_HOST = os.environ.get("FLEET_CHECKER_HOST") or os.environ.get("COMPUTERNAME", "unknown").lower()
+
 
 # ---------------------------------------------------------------------------
 # Polling / timeout settings
