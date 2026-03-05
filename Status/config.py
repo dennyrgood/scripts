@@ -71,14 +71,7 @@ FLEET = [
                 "priority": "B2",
                 "check_type": "ollama",
                 "public_url": None,
-            },
-            {
-                "name": "OpenWebUI",
-                "port": 8080,
-                "priority": "B2",
-                "check_type": "openwebui",
-                "public_url": None,
-            },
+            },    
         ],
     },
     {
