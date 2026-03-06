@@ -176,13 +176,6 @@ FLEET = [
                 "check_type": "flask",
                 "public_url": "https://fleet.ldmathes.cc",
             },
-            {
-                "name": "ComfyUI",
-                "port": 8188,
-                "priority": "B9",
-                "check_type": "comfyui",
-                "public_url": "https://stills.ldmathes.cc",
-            },
         ],
     },
     {
