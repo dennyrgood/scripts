@@ -102,6 +102,13 @@ FLEET = [
                 "check_type": "openwebui",
                 "public_url": "https://talk.ldmathes.cc",
             },
+                        {
+                "name": "Fleet API",
+                "port": 5010,
+                "priority": "P",
+                "check_type": "flask",
+                "public_url": "https://fleet-bkp.ldmathes.cc",
+            },
         ],
     },
     {
