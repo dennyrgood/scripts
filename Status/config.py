@@ -146,7 +146,7 @@ FLEET = [
                 "port": 11434,
                 "priority": "B9",
                 "check_type": "ollama",
-                "public_url": "ollama-lite.ldmathes.cc",
+                "public_url": "https://ollama-lite.ldmathes.cc",
             },
             {
                 "name": "Flask/API",
