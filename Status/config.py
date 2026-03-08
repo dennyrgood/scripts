@@ -82,13 +82,6 @@ FLEET = [
         "probe_port": 11434,
         "services": [
             {
-                "name": "ComfyUI",
-                "port": 8188,
-                "priority": "B2",
-                "check_type": "comfyui",
-                "public_url": "https://clips.ldmathes.cc",
-            },
-            {
                 "name": "Ollama",
                 "port": 11434,
                 "priority": "P",
@@ -102,7 +95,14 @@ FLEET = [
                 "check_type": "openwebui",
                 "public_url": "https://talk.ldmathes.cc",
             },
-                        {
+            {
+                "name": "ComfyUI",
+                "port": 8188,
+                "priority": "B2",
+                "check_type": "comfyui",
+                "public_url": "https://clips.ldmathes.cc",
+            },
+            {
                 "name": "Fleet API",
                 "port": 5010,
                 "priority": "P",
@@ -142,11 +142,11 @@ FLEET = [
         "probe_port": 5000,
         "services": [
             {
-                "name": "Ollama",
-                "port": 11434,
-                "priority": "B9",
-                "check_type": "ollama",
-                "public_url": "https://ollama-lite.ldmathes.cc",
+                "name": "OpenWebUI",
+                "port": 8080,
+                "priority": "P",
+                "check_type": "openwebui",
+                "public_url": "https://chat.ldmathes.cc",
             },
             {
                 "name": "Flask/API",
@@ -170,11 +170,11 @@ FLEET = [
                 "public_url": "https://weatherproxy.ldmathes.cc",
             },
             {
-                "name": "OpenWebUI",
-                "port": 8080,
-                "priority": "P",
-                "check_type": "openwebui",
-                "public_url": "https://chat.ldmathes.cc",
+                "name": "Ollama",
+                "port": 11434,
+                "priority": "B9",
+                "check_type": "ollama",
+                "public_url": "https://ollama-lite.ldmathes.cc",
             },
             {
                 "name": "Fleet API",
