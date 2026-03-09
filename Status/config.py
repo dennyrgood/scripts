@@ -70,7 +70,7 @@ FLEET = [
                 "port": 11434,
                 "priority": "B2",
                 "check_type": "ollama",
-                "public_url": none,
+                "public_url": None,
             },    
         ],
     },
@@ -86,7 +86,7 @@ FLEET = [
                 "port": 11434,
                 "priority": "P",
                 "check_type": "ollama",
-                "public_url": none,
+                "public_url": None,
             },
             {
                 "name": "OpenWebUI",
@@ -174,7 +174,7 @@ FLEET = [
                 "port": 11434,
                 "priority": "B9",
                 "check_type": "ollama",
-                "public_url": none,
+                "public_url": None,
             },
             {
                 "name": "Fleet API",
