@@ -70,7 +70,7 @@ FLEET = [
                 "port": 11434,
                 "priority": "B2",
                 "check_type": "ollama",
-                "public_url": "https://ollama-max.ldmathes.cc",
+                "public_url": none,
             },    
         ],
     },
@@ -86,7 +86,7 @@ FLEET = [
                 "port": 11434,
                 "priority": "P",
                 "check_type": "ollama",
-                "public_url": "https://ollama.ldmathes.cc",
+                "public_url": none,
             },
             {
                 "name": "OpenWebUI",
@@ -174,7 +174,7 @@ FLEET = [
                 "port": 11434,
                 "priority": "B9",
                 "check_type": "ollama",
-                "public_url": "https://ollama-lite.ldmathes.cc",
+                "public_url": none,
             },
             {
                 "name": "Fleet API",
