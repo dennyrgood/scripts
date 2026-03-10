@@ -5,10 +5,16 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 # Which machine is running this checker instance
-CHECKER_HOST = os.environ.get("FLEET_CHECKER_HOST") or os.environ.get("COMPUTERNAME", "unknown").lower()
 
+hostname_map = {
+    "amsterdamdeskto": "amsterdamdesktop",
+}
 
-#print(f"DEBUG: CHECKER_HOST detected: {CHECKER_HOST}", file=sys.stderr)
+CHECKER_HOST_IN = os.environ.get("COMPUTERNAME", "unknown").lower()
+
+CHECKER_HOST = hostname_map.get(CHECKER_HOST_IN, CHECKER_HOST_IN)
+
+print(f"DEBUG: CHECKER_HOST detected: {CHECKER_HOST}", file=sys.stderr)
 
 ONEDRIVE_PATH = Path(
     os.environ.get("OneDriveConsumer")
