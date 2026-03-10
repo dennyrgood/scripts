@@ -14,7 +14,7 @@ CHECKER_HOST_IN = os.environ.get("COMPUTERNAME", "unknown").lower()
 
 CHECKER_HOST = hostname_map.get(CHECKER_HOST_IN, CHECKER_HOST_IN)
 
-print(f"DEBUG: CHECKER_HOST detected: {CHECKER_HOST}", file=sys.stderr)
+#print(f"DEBUG: CHECKER_HOST detected: {CHECKER_HOST}", file=sys.stderr)
 
 ONEDRIVE_PATH = Path(
     os.environ.get("OneDriveConsumer")
