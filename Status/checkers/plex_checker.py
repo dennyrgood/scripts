@@ -73,7 +73,45 @@ def check(tailscale_name: str, port: int, timeout_ms: int) -> dict:
         remote_status = "ACTIVE" if plex.myPlexMappingState == "mapped" else "DISABLED"
         sections = len(plex.library.sections())
 
-        detail = f"{friendly_name} v{version} • Remote: {remote_status} • {sections} libraries"
+        # Get active streams info
+        sessions = plex.sessions()
+        stream_count = len(sessions)
+        stream_details = []
+
+        for session in sessions:
+            user = list(session.usernames)[0] if session.usernames else "Unknown"
+            title_type = session.type.capitalize() if session.type else "Unknown"
+            grandparent = f"{session.grandparentTitle} - " if getattr(session, 'grandparentTitle', None) else ""
+            full_title = grandparent
+            if session.type == 'episode':
+                full_title += f"{session.parentTitle} — {session.title}"
+            elif session.type == 'movie':
+                full_title += f"{session.title} ({session.year})"
+            else:
+                full_title += session.title
+
+            # Get player state if available
+            try:
+                state = list(session.players)[0].state if session.players else "playing"
+            except (IndexError, AttributeError):
+                state = "unknown"
+
+            stream_details.append(f"{user}: {full_title} [{state}]")
+
+        # Build detail with streams info
+        parts = [f"{friendly_name} v{version}", f"Remote: {remote_status}"]
+        parts.append(f"{sections} libraries")
+
+        if stream_count > 0:
+            parts.append(f"{stream_count} active streams")
+            detail_base = " • ".join(parts)
+            details_str = detail_base + "\n"
+            for sd in stream_details[:3]:  # Show max 3 streams
+                details_str += f"    - {sd}\n"
+            detail = details_str.strip()
+        else:
+            parts.append("No active streams")
+            detail = " • ".join(parts)
         elapsed = round((time.monotonic() - start_time) * 1000)
 
         return _result(
