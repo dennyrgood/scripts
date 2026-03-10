@@ -46,17 +46,19 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
             elapsed_ms = round((time.monotonic() - start) * 1000)
             
             # Parse response time from tailscale ping output
-            # Expected formats:
-            #   "pong from imagebeast (100.107.247.38) via ... in 81ms" (current)
-            #   "imagebeast 81ms (at 100.a.b.c)" (older format)
+            # Various formats:
+            #   "pong from imagebeast (100.107.247.38) via ... in 81ms" (remote host)
+            #   "pong from denniss-macbook-air (100.72.187.19) via DERP(mad) in 86ms" (local/DERP relay)
+            #   "100.72.187.19 is local Tailscale IP" or other variations
             detail = None
             try:
                 # Try to extract the ms value from output
                 if "ms" in output:
-                    # Look for pattern like "in 81ms" or "X.XXXms"
                     import re
+                    # Look for pattern like "in 86ms" (handles both direct and DERP relay)
                     ms_match = re.search(r'in\s+([\d.]+)ms', output)
                     if not ms_match:
+                        # Fallback: any number followed by ms
                         ms_match = re.search(r'(\d+(?:\.\d+)?)ms', output)
                     if ms_match:
                         ms_value = ms_match.group(1)
