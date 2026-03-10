@@ -71,12 +71,14 @@ SYNCTHING_CONFIG = {
 #   "comfyui"   — ComfyUI API (/system_stats + /queue)
 #   "openwebui" — OpenWebUI health (/health)
 #   "flask"     — Flask alive (GET /)
+#   "onedrive_heartbeat" — OneDrive sync heartbeat check (requires check_params: {target_host})
 #
 # probe_port: port used for Layer 1 TCP host reachability check.
 #             Pick the most reliably open port on that machine.
 #             Port 22 (SSH) is NOT used — most machines are Windows without SSH.
 #
 # public_url: present = Layer 3 check runs; null = Tailscale only
+# check_params: optional dict of extra arguments for checker modules
 
 FLEET = [
     {
@@ -136,6 +138,14 @@ FLEET = [
                 "priority": "P",
                 "check_type": "flask",
                 "public_url": "https://fleet-bkp.ldmathes.cc",
+            },
+            {
+                "name": "Amsterdam Desktop Heartbeat Check",
+                "port": 0,  # Not applicable for heartbeat check
+                "priority": "B99",
+                "check_type": "onedrive_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "amsterdamdesktop"}
             },
         ],
     },
@@ -211,6 +221,14 @@ FLEET = [
                 "check_type": "flask",
                 "public_url": "https://fleet.ldmathes.cc",
             },
+            {
+                "name": "ChatWorkhorse Heartbeat Check",
+                "port": 0,  # Not applicable for heartbeat check
+                "priority": "B99",
+                "check_type": "onedrive_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "chatworkhorse"}
+            },
         ],
     },
     {
@@ -226,6 +244,22 @@ FLEET = [
                 "priority": "B99",
                 "check_type": "ollama",
                 "public_url": None,
+            },
+            {
+                "name": "Amsterdam Desktop Heartbeat Check",
+                "port": 0,
+                "priority": "B99",
+                "check_type": "onedrive_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "amsterdamdesktop"}
+            },
+            {
+                "name": "ChatWorkhorse Heartbeat Check",
+                "port": 0,
+                "priority": "B99",
+                "check_type": "onedrive_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "chatworkhorse"}
             },
         ],
     },
@@ -274,6 +308,22 @@ FLEET = [
                 "priority": "B99",
                 "check_type": "ollama",
                 "public_url": None,
+            },
+            {
+                "name": "Amsterdam Desktop Heartbeat Check",
+                "port": 0,
+                "priority": "B99",
+                "check_type": "onedrive_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "amsterdamdesktop"}
+            },
+            {
+                "name": "ChatWorkhorse Heartbeat Check",
+                "port": 0,
+                "priority": "B99",
+                "check_type": "onedrive_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "chatworkhorse"}
             },
         ],
     },
