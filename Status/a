@@ -1,0 +1,96 @@
+Fleet Checker — Diagnostic Test
+Checker host : unknown
+Status dir   : /Users/dennishmathes/OneDrive/_sync_monitor/unknown
+Timestamp    : 2026-03-10T15:26:11.110988Z
+
+── Path & Config ─────────────────────────────────────────
+  [PASS] STATUS_DIR resolves — /Users/dennishmathes/OneDrive/_sync_monitor/unknown
+  [PASS] CHECKER_HOST set — unknown
+  [PASS] FLEET has machines — 8 machines defined
+  [PASS] OneDrive parent exists — /Users/dennishmathes/OneDrive/_sync_monitor
+
+── File Write ────────────────────────────────────────────
+  [PASS] STATUS_DIR created/exists — /Users/dennishmathes/OneDrive/_sync_monitor/unknown
+  [PASS] Write test file — /Users/dennishmathes/OneDrive/_sync_monitor/unknown/test_write.tmp
+  [PASS] Read back test file — fleet checker test
+  [PASS] Cleanup test file
+
+── JSON Reporter (dry run) ───────────────────────────────
+  [PASS] Master JSON written — /Users/dennishmathes/OneDrive/_sync_monitor/unknown/server_status_all.json
+  [PASS] Per-machine JSON written — /Users/dennishmathes/OneDrive/_sync_monitor/unknown/server_status_testmachine.json
+  [PASS] Log file written — /Users/dennishmathes/OneDrive/_sync_monitor/unknown/checker_unknown.log
+  [PASS] Master JSON parses correctly
+
+── Layer 1: TCP Host Reachability ────────────────────────
+  [PASS] TCP ImageBeast (imagebeast) — up 86ms
+  [PASS] TCP ChatWorkhorse (chatworkhorse) — up 82ms
+  [PASS] TCP TravelBeast (travelbeast) — up 147ms
+  [PASS] TCP Amsterdam (amsterdamdesktop) — up 94ms
+  [PASS] TCP MacBook Air Prime (denniss-macbook-air) — up 4ms
+  [PASS] TCP Plex Server GC (surface3-gc) — up 20ms
+  [PASS] TCP Plex Server AMS (mathes-mac-mini) — up 80ms
+  [FAIL] TCP MacBook Air 2 (denniss-2nd-macbook-air) — down 3004ms Connection timeout
+
+── Layer 2: Tailscale Service Checks ─────────────────────
+
+  ImageBeast:
+  [PASS]     ComfyUI :8188 [comfyui] — up 389ms — VRAM: 2.5GB / 31.8GB · GPU: cuda:0 NVIDIA GeForce RTX 5090 : cudaMallocAsync · Queue: idle
+  [PASS]     Ollama :11434 [ollama] — up 350ms — 4 models available · qwen3.5:35b-a3b active in VRAM
+
+  ChatWorkhorse:
+  [PASS]     Ollama :11434 [ollama] — up 339ms — 4 models available · none active
+  [PASS]     OpenWebUI :8080 [openwebui] — up 169ms — healthy
+  [PASS]     ComfyUI :8188 [comfyui] — up 319ms — VRAM: 1.0GB / 12.0GB · GPU: cuda:0 NVIDIA GeForce RTX 3060 : cudaMallocAsync · Queue: idle
+  [PASS]     Fleet API :5010 [flask] — up 166ms — HTTP 200
+
+  TravelBeast:
+  [PASS]     ComfyUI :8188 [comfyui] — up 640ms — VRAM: 1.1GB / 8.0GB · GPU: cuda:0 NVIDIA GeForce RTX 5060 Laptop GPU : cudaMallocAsync · Queue: idle
+  [PASS]     Ollama :11434 [ollama] — up 569ms — 4 models available · none active
+
+  Amsterdam:
+  [PASS]     OpenWebUI :8080 [openwebui] — up 173ms — healthy
+  [PASS]     Flask/API :5000 [flask] — up 196ms — HTTP 404 — service alive
+  [PASS]     Flask/API-Edit :5001 [flask] — up 191ms — HTTP 404 — service alive
+  [PASS]     Flask/Weather :5005 [flask] — up 179ms — HTTP 400 — service alive
+  [PASS]     Ollama :11434 [ollama] — up 370ms — 8 models available · none active
+  [PASS]     Fleet API :5010 [flask] — up 164ms — HTTP 200
+
+  MacBook Air Prime:
+  [PASS]     Ollama :11434 [ollama] — up 21ms — 2 models available · none active
+
+  Plex Server GC:
+  [FAIL]     Plex :32400 [plex] — down 0ms — No Plex configuration for surface3-gc
+
+  Plex Server AMS:
+  [FAIL]     Plex :32400 [plex] — down 0ms — No Plex configuration for mathes-mac-mini
+
+  MacBook Air 2 — host unreachable, skipping service checks
+
+── Layer 3: Public Endpoint Checks ───────────────────────
+  [FAIL] ImageBeast / ComfyUI → https://image.ldmathes.cc — HTTP None 423ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] ChatWorkhorse / OpenWebUI → https://talk.ldmathes.cc — HTTP None 470ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] ChatWorkhorse / ComfyUI → https://clips.ldmathes.cc — HTTP None 403ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] ChatWorkhorse / Fleet API → https://fleet-bkp.ldmathes.cc — HTTP None 291ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] Amsterdam / OpenWebUI → https://chat.ldmathes.cc — HTTP None 1568ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] Amsterdam / Flask/API → https://api.ldmathes.cc — HTTP None 417ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] Amsterdam / Flask/API-Edit → https://api-edit.ldmathes.cc — HTTP None 341ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] Amsterdam / Flask/Weather → https://weatherproxy.ldmathes.cc — HTTP None 466ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+  [FAIL] Amsterdam / Fleet API → https://fleet.ldmathes.cc — HTTP None 474ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+
+── Summary ───────────────────────────────────────────────
+  34/46 passed  (12 FAILED)
+
+  Failed tests:
+      [FAIL] TCP MacBook Air 2 (denniss-2nd-macbook-air) — down 3004ms Connection timeout
+      [FAIL]     Plex :32400 [plex] — down 0ms — No Plex configuration for surface3-gc
+      [FAIL]     Plex :32400 [plex] — down 0ms — No Plex configuration for mathes-mac-mini
+      [FAIL] ImageBeast / ComfyUI → https://image.ldmathes.cc — HTTP None 423ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] ChatWorkhorse / OpenWebUI → https://talk.ldmathes.cc — HTTP None 470ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] ChatWorkhorse / ComfyUI → https://clips.ldmathes.cc — HTTP None 403ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] ChatWorkhorse / Fleet API → https://fleet-bkp.ldmathes.cc — HTTP None 291ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] Amsterdam / OpenWebUI → https://chat.ldmathes.cc — HTTP None 1568ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] Amsterdam / Flask/API → https://api.ldmathes.cc — HTTP None 417ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] Amsterdam / Flask/API-Edit → https://api-edit.ldmathes.cc — HTTP None 341ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] Amsterdam / Flask/Weather → https://weatherproxy.ldmathes.cc — HTTP None 466ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+      [FAIL] Amsterdam / Fleet API → https://fleet.ldmathes.cc — HTTP None 474ms — Connection error: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)
+

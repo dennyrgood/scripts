@@ -24,7 +24,7 @@ from config import (
     TIMEOUT_TCP_MS, TIMEOUT_HTTP_MS, TIMEOUT_PUBLIC_MS,
 )
 from checkers import tcp_checker, http_checker
-from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker
+from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker
 from reporters import json_reporter
 
 PASS = "  [PASS]"
@@ -184,6 +184,7 @@ def test_services(machines):
         "comfyui": comfyui_checker,
         "openwebui": openwebui_checker,
         "flask": flask_checker,
+        "plex": plex_checker,
     }
 
     for m in machines:

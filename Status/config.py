@@ -34,6 +34,24 @@ TIMEOUT_TCP_MS = 3000         # Layer 1 host reachability
 TIMEOUT_HTTP_MS = 1500        # Layer 2 Tailscale service checks
 TIMEOUT_PUBLIC_MS = 3000      # Layer 3 public endpoint checks
 
+# ------ Plex Configuration ------
+PLEX_CONFIG = {
+    "surface3-gc": {
+        "plex_url": "http://surface3-gc:32400",
+        "plex_token": "xqetuxscJvEVVUdNE6-v",
+    },
+    "mathes-mac-mini": {
+        "plex_url": "http://mathes-mac-mini:32400",
+        "plex_token": "xqetuxscJvEVVUdNE6-v",
+    },
+    "chatworkhorse": None,
+    "travelbeast": None,
+    "amsterdamdesktop": None,
+    "denniss-macbook-air": None,
+    "imagebeast": None,
+    "denniss-2nd-macbook-air": None,
+}
+
 # ---------------------------------------------------------------------------
 # Fleet definition
 # ---------------------------------------------------------------------------
@@ -197,6 +215,38 @@ FLEET = [
                 "port": 11434,
                 "priority": "B99",
                 "check_type": "ollama",
+                "public_url": None,
+            },
+        ],
+    },
+    {
+        "display_name": "Plex Server GC",
+        "tailscale_name": "surface3-gc",
+        "tailscale_ip": "100.72.84.84",
+        "primary_role": "Plex Server",
+        "probe_port": 32400,
+        "services": [
+            {
+                "name": "Plex",
+                "port": 32400,
+                "priority": "P",
+                "check_type": "plex",
+                "public_url": None,
+            },
+        ],
+    },
+    {
+        "display_name": "Plex Server AMS",
+        "tailscale_name": "mathes-mac-mini",
+        "tailscale_ip": "100.108.12.39",
+        "primary_role": "Plex Server",
+        "probe_port": 32400,
+        "services": [
+            {
+                "name": "Plex",
+                "port": 32400,
+                "priority": "P",
+                "check_type": "plex",
                 "public_url": None,
             },
         ],
