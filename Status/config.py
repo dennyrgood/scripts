@@ -236,7 +236,7 @@ FLEET = [
         "tailscale_name": "denniss-macbook-air",
         "tailscale_ip": "100.72.187.19",
         "primary_role": "Ollama B99",
-        "probe_port": 11434,
+        "probe_port": 22,  # SSH always listens, ensures host detection works
         "services": [
             {
                 "name": "Ollama",
