@@ -90,10 +90,10 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
                 "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             }
             
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         # Tailscale CLI not found
         status = "down"
-        detail = "Tailscale CLI not installed or not in PATH"
+        detail = f"Tailscale CLI error: {e}"
         elapsed_ms = round((time.monotonic() - start) * 1000)
         return {
             "status": status,
@@ -101,9 +101,16 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
             "detail": detail,
             "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        # Show what Tailscale actually said before timing out
         status = "down"
-        detail = "Tailscale ping timed out"
+        detail = None
+        if hasattr(e, 'stdout') and e.stdout:
+            part_output = e.stdout.decode() if isinstance(e.stdout, bytes) else str(e.stdout)
+            detail = f"Tailscale ping timed out ({part_output.strip()[:200]})"
+        else:
+            detail = "Tailscale ping timed out"
+        
         elapsed_ms = round((time.monotonic() - start) * 1000)
         return {
             "status": status,
@@ -112,6 +119,7 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
             "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
     except Exception as e:
+        # Generic error - include the actual exception
         status = "down"
         detail = f"Tailscale ping error: {e}"
         elapsed_ms = round((time.monotonic() - start) * 1000)
