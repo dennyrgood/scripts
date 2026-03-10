@@ -52,6 +52,16 @@ PLEX_CONFIG = {
     "denniss-2nd-macbook-air": None,
 }
 
+SYNCTHING_CONFIG = {
+    "surface3-gc": {
+        "syncthing_url": "http://surface3-gc:8384",
+        "api_key": "your-syncthing-api-key",
+    },
+    "mathes-mac-mini": None,  # No Syncthing config for this machine
+    # Include all fleet machines to avoid config lookup errors
+}
+
+
 # ---------------------------------------------------------------------------
 # Fleet definition
 # ---------------------------------------------------------------------------
