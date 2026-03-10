@@ -22,7 +22,7 @@ from config import (
     TIMEOUT_PUBLIC_MS,
 )
 from checkers import tcp_checker, http_checker
-from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker
+from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker, onedrive_heartbeat_checker
 from reporters import json_reporter
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ CHECKER_MAP = {
     "openwebui": openwebui_checker,
     "flask": flask_checker,
     "plex": plex_checker,
+    "onedrive_heartbeat": onedrive_heartbeat_checker,
 }
 
 
@@ -132,6 +133,7 @@ def _check_service(tailscale_name: str, svc_cfg: dict) -> dict:
     """
     check_type = svc_cfg["check_type"]
     port = svc_cfg["port"]
+    check_params = svc_cfg.get("check_params", {})
 
     # --- Layer 2: Tailscale service check ---
     if check_type == "tcp":
@@ -152,7 +154,12 @@ def _check_service(tailscale_name: str, svc_cfg: dict) -> dict:
                 "detail": f"Unknown check_type: {check_type}",
             }
         else:
-            raw = checker_module.check(tailscale_name, port, TIMEOUT_HTTP_MS)
+            # Pass check_params as additional kwargs to checker modules
+            if check_params:
+                raw = checker_module.check(tailscale_name, port, TIMEOUT_HTTP_MS, **check_params)
+            else:
+                raw = checker_module.check(tailscale_name, port, TIMEOUT_HTTP_MS)
+            
             tailscale_check = {
                 "status": raw["status"],
                 "response_time_ms": raw["response_time_ms"],
