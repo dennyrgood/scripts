@@ -86,7 +86,7 @@ FLEET = [
         "tailscale_name": "imagebeast",
         "tailscale_ip": "100.107.247.38",
         "primary_role": "ComfyUI Primary",
-        "probe_port": 8188,
+        "probe_port": 22,
         "services": [
             {
                 "name": "ComfyUI",
@@ -109,7 +109,7 @@ FLEET = [
         "tailscale_name": "chatworkhorse",
         "tailscale_ip": "100.124.162.73",
         "primary_role": "Ollama Primary",
-        "probe_port": 11434,
+        "probe_port": 22,
         "services": [
             {
                 "name": "Ollama",
@@ -154,7 +154,7 @@ FLEET = [
         "tailscale_name": "travelbeast",
         "tailscale_ip": "100.73.82.42",
         "primary_role": "Mobile/Travel",
-        "probe_port": 8188,
+        "probe_port": 22,
         "services": [
             {
                 "name": "ComfyUI",
@@ -177,7 +177,7 @@ FLEET = [
         "tailscale_name": "amsterdamdesktop",
         "tailscale_ip": "100.125.37.114",
         "primary_role": "Flask / OpenWebUI Primary",
-        "probe_port": 5000,
+        "probe_port": 22,
         "services": [
             {
                 "name": "OpenWebUI",
@@ -252,7 +252,7 @@ FLEET = [
         "tailscale_name": "surface3-gc",
         "tailscale_ip": "100.72.84.84",
         "primary_role": "Plex Server",
-        "probe_port": 32400,
+        "probe_port": 22,
         "services": [
             {
                 "name": "Plex",
@@ -268,7 +268,7 @@ FLEET = [
         "tailscale_name": "mathes-mac-mini",
         "tailscale_ip": "100.108.12.39",
         "primary_role": "Plex Server",
-        "probe_port": 32400,
+        "probe_port": 22,
         "services": [
             {
                 "name": "Plex",
@@ -284,7 +284,7 @@ FLEET = [
         "tailscale_name": "denniss-2nd-macbook-air",
         "tailscale_ip": "100.84.152.110",
         "primary_role": "Ollama B99",
-        "probe_port": 11434,
+        "probe_port": 22,
         "services": [
             {
                 "name": "Ollama",
