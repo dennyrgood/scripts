@@ -62,8 +62,8 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
                 windows_match = re.search(r'time=([\d.]+)ms', output, re.IGNORECASE)
                 
                 if linux_match:
-                    avg_ms = linux_match.group(1)
-                    detail = f"avg response time: {float(avg_ms):.0f}ms"
+                    avg_ms = float(linux_match.group(1))
+                    detail = f"avg response time: {int(avg_ms)}ms"  # Round to nearest ms for display
                 elif windows_match:
                     # For Windows, just use first ping time or calculate average
                     times = re.findall(r'time=([\d.]+)ms', output, re.IGNORECASE)
