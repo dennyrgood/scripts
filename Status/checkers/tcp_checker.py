@@ -62,7 +62,13 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
                     avg_ms = float(linux_match.group(1))
                     response_time_ms = round(avg_ms)
                     detail = f"avg response time: {response_time_ms}ms"
-                
+                else:
+                    # Windows format: "Reply from X.X.X.X: ... time=95ms ..."
+                    times = re.findall(r'time=([\d.]+)ms', output, re.IGNORECASE)
+                    if times:
+                        avg_time = sum(float(t) for t in times) / len(times)
+                        response_time_ms = round(avg_time)
+                        detail = f"avg response time: {response_time_ms}ms"
             except Exception:
                 pass
             
