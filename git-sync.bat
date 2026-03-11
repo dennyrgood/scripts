@@ -12,7 +12,7 @@ git checkout main
 
 :: 2. Stage changes
 git add .
-
+    
 :: 3. Only commit if there are actually changes
 git diff-index --quiet HEAD || git commit -m "Sync: %date% %time%"
 
