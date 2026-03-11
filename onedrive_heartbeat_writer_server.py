@@ -41,9 +41,11 @@ while True:
     try:
         HEARTBEAT_DIR.mkdir(parents=True, exist_ok=True)
         HEARTBEAT_FILE.write_text(datetime.now(timezone.utc).isoformat())
-        timestamp = HEARTBEAT_FILE.read_text().strip()
+        #timestamp = HEARTBEAT_FILE.read_text().strip()
         #print(f"DEBUG: Successfully wrote timestamp: {timestamp}", file=sys.stderr, flush=True)
     except Exception as e:
+        pass
         #print(f"DEBUG: ERROR writing to {HEARTBEAT_FILE}: {e}", file=sys.stderr, flush=True)
-        time.sleep(WRITE_INTERVAL)
+    time.sleep(WRITE_INTERVAL)
+
 
