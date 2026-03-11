@@ -23,11 +23,12 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
       response_time_ms: time in milliseconds
       detail: "responded in Xms" or error message
     """
-    # Tailscale ping typically takes 50-200ms on LAN, up to 3s on slow networks
-    # We use a shorter timeout for subprocess but account for its overhead
-    tailscale_timeout_s = min(timeout_ms / 1000 - 1.0, 60)  # Reserve 1s for subprocess overhead
-    if tailscale_timeout_s < 0.5:
-        tailscale_timeout_s = 0.5  # Minimum timeout of 0.5s
+    start = time.monotonic()
+    
+    # Give Tailscale ping full timeout - it handles retries itself internally
+    # We add 3 seconds as buffer for subprocess overhead and multiple pings
+    tailscale_timeout_s = (timeout_ms / 1000) + 3.0
+    
         
     start = time.monotonic()
     
