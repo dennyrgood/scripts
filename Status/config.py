@@ -57,8 +57,10 @@ SYNCTHING_CONFIG = {
         "syncthing_url": "http://surface3-gc:8384",
         "api_key": "your-syncthing-api-key",
     },
-    "mathes-mac-mini": None,  # No Syncthing config for this machine
-    # Include all fleet machines to avoid config lookup errors
+    "mathes-mac-mini": {
+        "syncthing_url": "http://mathes-mac-mini:8384",
+        "api_key": "your-syncthing-api-key",
+    },
 }
 
 
