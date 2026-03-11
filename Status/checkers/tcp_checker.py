@@ -6,6 +6,7 @@ This checks Tailscale connectivity regardless of specific ports or services.
 
 import subprocess
 import re
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -19,96 +20,79 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
     
     Returns a host-level result dict:
       status: "up" | "down"
-      response_time_ms: time in milliseconds  
+      response_time_ms: actual ping RTT in milliseconds  
       detail: "avg response time: Xms" or error message
     """
     start = time.monotonic()
     
-    # Give the ping command all the user's timeout, with 3s buffer for subprocess
-    ping_timeout_s = (timeout_ms / 1000.0) + 3.0
-    if ping_timeout_s < 5.0:
-        ping_timeout_s = 5.0  # Minimum 5 seconds for remote checks
+    # Build cross-platform ping command
+    if sys.platform.startswith('win'):
+        # Windows ping defaults to 4 pings, force 3 for consistency
+        ping_cmd = ["ping", "-n", "3", str(host)]
+    else:
+        # Linux/macOS ping uses -c for count
+        ping_cmd = ["ping", "-c", "3", str(host)]
     
     try:
-        # Send 3 pings (cross-platform) and wait for result
-        # Windows: ping -n, Linux/macOS: ping -c
-        import sys
-        if sys.platform.startswith('win'):
-            ping_cmd = ["ping", "-n", "3", str(host)]
-        else:
-            ping_cmd = ["ping", "-c", "3", str(host)]
-        
+        # Run ping directly without artificial timeout
         result = subprocess.run(
             ping_cmd,
             capture_output=True,
             text=True,
-            timeout=10,  # Absolute upper bound on wait time
         )
         
         output = result.stdout.strip() + " " + result.stderr.strip()
         
-        # Check for ping success (any response received)
-        # Linux/macOS: "64 bytes from" or "rtt", Windows: "Reply from"
+        # Check for ping success based on OS-specific output format
         has_ping_success = (
-            ("64 bytes from" in output.lower() and "icmp_seq" in output.lower())
-            or "round-trip" in output.lower()
-            or "reply from" in output.lower()
+            ("64 bytes from" in output.lower() and "icmp_seq" in output.lower())  # Linux/macOS
+            or "round-trip" in output.lower()  # Also Linux/macOS
+            or "reply from" in output.lower()  # Windows
         )
         
         if has_ping_success:
-            elapsed_ms = round((time.monotonic() - start) * 1000)
-            
-            # Extract avg RTT from ping output (Linux/macOS or Windows format)
+            # Extract RTT time from ping output for reporting
+            response_time_ms = 0
             detail = "responded"
+            
             try:
-                import re
-                # Linux/macOS: "round-trip min/avg/max/stddev = 5.123/45.678/67.890/15.321 ms"
+                # Linux/macOS format: round-trip min/avg/max/stddev = 5.123/45.678/67.890/15.321 ms
                 linux_match = re.search(r'round-trip\s+[^=]+=\s+(?:min\/)?([\d.]+)', output)
-                # Windows: "Reply from X.X.X.X: ... time=95ms ..."
-                windows_match = re.search(r'time=([\d.]+)ms', output, re.IGNORECASE)
-                
                 if linux_match:
                     avg_ms = float(linux_match.group(1))
-                    detail = f"avg response time: {int(avg_ms)}ms"  # Round to nearest ms for display
-                elif windows_match:
-                    # For Windows, just use first ping time or calculate average
-                    times = re.findall(r'time=([\d.]+)ms', output, re.IGNORECASE)
-                    if times:
-                        avg_time = sum(float(t) for t in times) / len(times)
-                        detail = f"avg response time: {int(avg_time)}ms"
-                elif result.returncode == 0:
-                    detail = "responded"
+                    response_time_ms = round(avg_ms)
+                    detail = f"avg response time: {response_time_ms}ms"
+                
             except Exception:
                 pass
             
             return {
                 "status": "up",
-                "response_time_ms": elapsed_ms,
+                "response_time_ms": response_time_ms,
                 "detail": detail,
                 "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             }
         else:
-            # No ping responses at all (0% packet loss, or DNS failure)
+            # No successful ping responses
             status = "down"
             error_text = result.stderr.strip() if result.stderr else output[:100]
             detail = f"Ping failed: {error_text}" if error_text else "Host unreachable on network"
             
-            elapsed_ms = round((time.monotonic() - start) * 1000)
             return {
                 "status": status,
-                "response_time_ms": elapsed_ms,
+                "response_time_ms": 0,
                 "detail": detail,
                 "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             }
             
     except Exception as e:
-        # Tailscale CLI not found or other error
+        # Process execution error (ping command not found, permissions, etc.)
         status = "down"
         detail = f"Ping error: {e}"
-        elapsed_ms = round((time.monotonic() - start) * 1000)
+        
         return {
             "status": status,
-            "response_time_ms": elapsed_ms,
+            "response_time_ms": 0,
             "detail": detail,
             "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
