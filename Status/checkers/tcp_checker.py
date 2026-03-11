@@ -41,16 +41,16 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
             timeout=tailscale_timeout_s,
         )
         
-        output = result.stdout.strip() + " " + result.stderr.strip()
+        output = result.stdout.strip() 
+        has_success = "pong from" in output.lower()
         
-        if result.returncode == 0:
+        if has_success or result.returncode == 0:
             elapsed_ms = round((time.monotonic() - start) * 1000)
             
             # Parse response time from tailscale ping output
             # Various formats:
             #   "pong from imagebeast (100.107.247.38) via ... in 81ms" (remote host)
             #   "pong from denniss-macbook-air (100.72.187.19) via DERP(mad) in 86ms" (local/DERP relay)
-            #   "100.72.187.19 is local Tailscale IP" or other variations
             detail = None
             try:
                 # Try to extract the ms value from output
@@ -78,7 +78,7 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
                 "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             }
         else:
-            # tailscale ping failed - host unreachable or not on network
+            # Genuine failure - no pongs at all
             status = "down"
             error_detail = result.stderr.strip() if result.stderr else output
             detail = f"Tailscale ping failed: {error_detail}" if error_detail else "Host unreachable"
