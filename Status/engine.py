@@ -22,7 +22,7 @@ from config import (
     TIMEOUT_PUBLIC_MS,
 )
 from checkers import tcp_checker, http_checker
-from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker, onedrive_heartbeat_checker
+from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker, onedrive_heartbeat_checker, syncthing_checker
 from reporters import json_reporter
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ CHECKER_MAP = {
     "flask": flask_checker,
     "plex": plex_checker,
     "onedrive_heartbeat": onedrive_heartbeat_checker,
+    "syncthing": syncthing_checker,
 }
 
 

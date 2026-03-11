@@ -55,11 +55,11 @@ PLEX_CONFIG = {
 SYNCTHING_CONFIG = {
     "surface3-gc": {
         "syncthing_url": "http://surface3-gc:8384",
-        "api_key": "your-syncthing-api-key",
+        "api_key": "NXiQUQ2MnrHfZwrALKxECfrHrmwWfLqi",
     },
     "mathes-mac-mini": {
         "syncthing_url": "http://mathes-mac-mini:8384",
-        "api_key": "your-syncthing-api-key",
+        "api_key": "rPDLKezk4ppcf6sYDwdmLwtv3jx3ZUvg",
     },
 }
 
@@ -263,6 +263,13 @@ FLEET = [
                 "check_type": "plex",
                 "public_url": None,
             },
+            {
+                "name": "Syncthing",
+                "port": 8384,
+                "priority": "B1",
+                "check_type": "syncthing",
+                "public_url": None,
+            },
         ],
     },
     {
@@ -277,6 +284,13 @@ FLEET = [
                 "port": 32400,
                 "priority": "P",
                 "check_type": "plex",
+                "public_url": None,
+            },
+            {
+                "name": "Syncthing",
+                "port": 8384,
+                "priority": "B1",
+                "check_type": "syncthing",
                 "public_url": None,
             },
         ],
@@ -296,5 +310,5 @@ FLEET = [
                 "public_url": None,
             },
         ],
-    },
+},
 ]

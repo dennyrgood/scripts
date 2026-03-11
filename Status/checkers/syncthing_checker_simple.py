@@ -19,17 +19,15 @@ def check(tailscale_name: str, port: int, timeout_ms: int) -> dict:
     """
     Check Syncthing sync status on tailscale_name:port.
 
-    Detail strings (up / idle):
-        "Synced • 3 folders • v1.27.0 • ↑ 0 B/s ↓ 0 B/s"
+    Detail strings (passing):
+        "Synced • 3 folders • 0 items pending"
 
-    Detail strings (up / actively syncing):
-        "Syncing • 2 folder(s) active • 42 items • 128.3 MB remaining • ↑ 2.1 MB/s ↓ 0 B/s"
-
-    Detail strings (down / hard errors only):
+    Detail strings (failing):
         "Connection error to http://surface3-gc:8384"
         "Connection timeout"
         "HTTP 403 — check api_key in SYNCTHING_CONFIG"
-        "ERROR • Folder 'docs' error state • 2 pull error(s) in 'docs'"
+        "Folder 'docs' error state"
+        "Sync pending: 5 items • 12.3 MB behind"
     """
     start_time = time.monotonic()
 
@@ -61,26 +59,7 @@ def check(tailscale_name: str, port: int, timeout_ms: int) -> dict:
         if ping.json().get("ping") != "pong":
             raise RuntimeError("unexpected ping response")
 
-        # 2. Version
-        ver_resp = requests.get(
-            f"{syncthing_url}/rest/system/version",
-            headers=headers, timeout=timeout, verify=False,
-        )
-        ver_resp.raise_for_status()
-        version = ver_resp.json().get("version", "?")
-
-        # 3. Connections — total bandwidth
-        conn_resp = requests.get(
-            f"{syncthing_url}/rest/system/connections",
-            headers=headers, timeout=timeout, verify=False,
-        )
-        conn_resp.raise_for_status()
-        total  = conn_resp.json().get("total", {})
-        in_bps = total.get("inBps",  0) or 0
-        out_bps= total.get("outBps", 0) or 0
-        bw     = f"↑ {_fmt_bps(out_bps)} ↓ {_fmt_bps(in_bps)}"
-
-        # 4. Folder list from config
+        # 2. Folder list from config
         cfg_resp = requests.get(
             f"{syncthing_url}/rest/config",
             headers=headers, timeout=timeout, verify=False,
@@ -88,11 +67,10 @@ def check(tailscale_name: str, port: int, timeout_ms: int) -> dict:
         cfg_resp.raise_for_status()
         folder_ids = [f["id"] for f in cfg_resp.json().get("folders", [])]
 
-        # 5. Per-folder sync status
+        # 3. Per-folder sync status
         total_need_files = 0
         total_need_bytes = 0
-        active_folders   = 0   # folders currently syncing/scanning
-        error_parts      = []  # hard errors only → status=down
+        folder_issues    = []
 
         for fid in folder_ids:
             db_resp = requests.get(
@@ -106,40 +84,29 @@ def check(tailscale_name: str, port: int, timeout_ms: int) -> dict:
             nf    = db.get("needFiles",  0) or 0
             nb    = db.get("needBytes",  0) or 0
             pe    = db.get("pullErrors", 0) or 0
-
             total_need_files += nf
             total_need_bytes += nb
-
-            if state in ("syncing", "scanning", "sync-preparing"):
-                active_folders += 1
             if state == "error":
-                error_parts.append(f"Folder '{fid}' error state")
+                folder_issues.append(f"Folder '{fid}' error state")
             if pe:
-                error_parts.append(f"{pe} pull error(s) in '{fid}'")
+                folder_issues.append(f"Folder '{fid}' has {pe} pull error(s)")
 
         elapsed = round((time.monotonic() - start_time) * 1000)
-        now_z   = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        n       = len(folder_ids)
 
-        # Hard errors → down
-        if error_parts:
+        if folder_issues:
+            return _result("down", elapsed, " • ".join(folder_issues),
+                           datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+
+        if total_need_files > 0:
+            mb = total_need_bytes / 1_048_576
             return _result("down", elapsed,
-                           "ERROR • " + " • ".join(error_parts), now_z)
+                           f"Sync pending: {total_need_files} items • {mb:.1f} MB behind",
+                           datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
 
-        # Actively syncing → up but show progress
-        if active_folders > 0 or total_need_files > 0:
-            mb     = total_need_bytes / 1_048_576
-            detail = (
-                f"Syncing • {active_folders or '?'} folder(s) active"
-                f" • {total_need_files} items"
-                f" • {mb:.1f} MB remaining"
-                f" • {bw}"
-            )
-            return _result("up", elapsed, detail, now_z)
-
-        # All idle and fully in sync
-        detail = f"Synced • {n} folder{'s' if n != 1 else ''} • {version} • {bw}"
-        return _result("up", elapsed, detail, now_z)
+        n = len(folder_ids)
+        return _result("up", elapsed,
+                       f"Synced • {n} folder{'s' if n != 1 else ''} • 0 items pending",
+                       datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
 
     except ConnectTimeout:
         elapsed = round((time.monotonic() - start_time) * 1000)
@@ -162,15 +129,6 @@ def check(tailscale_name: str, port: int, timeout_ms: int) -> dict:
         elapsed = round((time.monotonic() - start_time) * 1000)
         return _result("down", elapsed, f"Syncthing error: {exc}",
                        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
-
-
-def _fmt_bps(bps: float) -> str:
-    """Format bytes/sec into a human-readable rate string."""
-    if bps >= 1_048_576:
-        return f"{bps / 1_048_576:.1f} MB/s"
-    if bps >= 1_024:
-        return f"{bps / 1_024:.1f} KB/s"
-    return f"{int(bps)} B/s"
 
 
 def _result(status: str, response_time_ms: int, detail: str, timestamp: str) -> dict:
