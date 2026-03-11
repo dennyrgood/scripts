@@ -1,2 +1,2 @@
 test
-this is only a
+this is only a test
