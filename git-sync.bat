@@ -22,6 +22,7 @@ git pull origin main --rebase
 :: 5. Push local changes
 git push origin main
 
+
 echo ---------------------------------------
 git status
 echo ---------------------------------------
