@@ -69,6 +69,12 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
                         avg_time = sum(float(t) for t in times) / len(times)
                         response_time_ms = round(avg_time)
                         detail = f"avg response time: {response_time_ms}ms"
+                    elif "64 bytes from" in output.lower():
+                        # Fallback for localhost ping or individual replies without stats line
+                        time_match = re.search(r'time=([\d.]+)ms', output, re.IGNORECASE)
+                        if time_match:
+                            response_time_ms = round(float(time_match.group(1)))
+                            detail = f"avg response time: {response_time_ms}ms"
             except Exception:
                 pass
             
