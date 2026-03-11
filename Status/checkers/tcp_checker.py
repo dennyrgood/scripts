@@ -30,10 +30,16 @@ def check(host: str, timeout_ms: int, port: int = 0) -> dict:
         ping_timeout_s = 5.0  # Minimum 5 seconds for remote checks
     
     try:
-        # Send 3 pings and wait for full result
-        # -c 3 means 3 packets, -W is individual packet timeout in seconds
+        # Send 3 pings (cross-platform) and wait for result
+        # Windows: ping -n, Linux/macOS: ping -c
+        import sys
+        if sys.platform.startswith('win'):
+            ping_cmd = ["ping", "-n", "3", str(host)]
+        else:
+            ping_cmd = ["ping", "-c", "3", str(host)]
+        
         result = subprocess.run(
-            ["ping", "-c", "3", str(host)],
+            ping_cmd,
             capture_output=True,
             text=True,
             timeout=10,  # Absolute upper bound on wait time
