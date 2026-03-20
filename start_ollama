@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# Ollama tray app binds to 127.0.0.1 by default on macOS.
+# This script binds a new server to 0.0.0.0 so it's accessible via Tailscale.
+# Run once after reboot.
+#
+# launch backend bound to 0.0.0.0
+#
+OLLAMA_HOST=0.0.0.0 ollama serve > /dev/null 2>&1 &
+#
+# use this one if debuging instead:
+#
+#OLLAMA_HOST=0.0.0.0 ollama serve > ~/scripts/ollama.log 2>&1 &
+
+echo "To check Ollama running processes:"
+echo " "
+echo "lsof -i -nP | grep ollama"
+echo " "
+echo "To kill all Ollama related process:"
+echo " " 
+echo "killall ollama"
+
