@@ -297,8 +297,8 @@ FLEET = [
     },
     {
         "display_name": "MacBook Air 2",
-        "tailscale_name": "denniss-2nd-macbook-air",
-        "tailscale_ip": "100.84.152.110",
+        "tailscale_name": "denniss-2nd-macbook-air-1",
+        "tailscale_ip": "100.92.24.75",
         "primary_role": "Ollama B99",
         "probe_port": 22,
         "services": [
@@ -307,6 +307,20 @@ FLEET = [
                 "port": 11434,
                 "priority": "B99",
                 "check_type": "ollama",
+                "public_url": None,
+            },
+                        {
+                "name": "Plex",
+                "port": 32400,
+                "priority": "P",
+                "check_type": "plex",
+                "public_url": None,
+            },
+            {
+                "name": "Syncthing",
+                "port": 8384,
+                "priority": "B1",
+                "check_type": "syncthing",
                 "public_url": None,
             },
         ],
