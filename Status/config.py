@@ -44,12 +44,15 @@ PLEX_CONFIG = {
         "plex_url": "http://mathes-mac-mini:32400",
         "plex_token": "xqetuxscJvEVVUdNE6-v",
     },
+        "denniss-2nd-macbook-air": {
+        "plex_url": "http://denniss-2nd-macbook-air:32400",
+        "plex_token": "xqetuxscJvEVVUdNE6-v",
+    },
     "chatworkhorse": None,
     "travelbeast": None,
     "amsterdamdesktop": None,
     "denniss-macbook-air": None,
     "imagebeast": None,
-    "denniss-2nd-macbook-air": None,
 }
 
 SYNCTHING_CONFIG = {
@@ -60,6 +63,10 @@ SYNCTHING_CONFIG = {
     "mathes-mac-mini": {
         "syncthing_url": "http://mathes-mac-mini:8384",
         "api_key": "rPDLKezk4ppcf6sYDwdmLwtv3jx3ZUvg",
+    },
+        "denniss-2nd-macbook-air": {
+        "syncthing_url": "http://denniss-2nd-macbook-air:8384",
+        "api_key": "YXrcyDGXJe9hhgUacuPZuwcWJUREc49S",
     },
 }
 
@@ -297,7 +304,7 @@ FLEET = [
     },
     {
         "display_name": "MacBook Air 2",
-        "tailscale_name": "denniss-2nd-macbook-air-1",
+        "tailscale_name": "denniss-2nd-macbook-air",
         "tailscale_ip": "100.92.24.75",
         "primary_role": "Ollama B99",
         "probe_port": 22,
