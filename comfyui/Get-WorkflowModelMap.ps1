@@ -5,36 +5,32 @@
 # and maps every model reference found back to the actual model file on disk.
 #
 # Outputs:
-#   workflow_model_map.csv  - one row per (workflow, model) pair
-#   model_usage_summary.csv - one row per model: how many workflows use it
-#   unused_models.csv       - models on disk never referenced in any workflow
-#   missing_models.csv      - models referenced in workflows but not on disk
-#   workflow_map_summary.txt - human-readable summary
+#   *-full_map.csv        - one row per (workflow, model) pair
+#   *-model_usage.csv     - one row per model: how many workflows use it
+#   *-unused_models.csv   - models on disk never referenced in any workflow
+#   *-missing_models.csv  - models referenced in workflows but not on disk
+#   *-summary.txt         - human-readable summary
 #
-# Requirements:
-#   PowerShell 5.1+ (ships with Windows 10/11)
-#   No extra modules needed - PNG metadata is read natively.
+# Requirements: PowerShell 5.1+ (Windows 10/11). No extra modules needed.
 # =============================================================================
 
 param(
-    [string]$ComfyRoot    = "C:\ComfyUI_easy\ComfyUI-Easy-Install\comfyui",
-    [string]$WorkflowDir  = "",      # Defaults to $ComfyRoot\user\default\workflows
-    [string]$OutputDir    = ".\comfy-reports",
-    [switch]$IncludePng,             # Also scan PNG files for embedded workflow data
-    [switch]$NoFile                  # Skip file output, print summary only
+    [string]$ComfyRoot   = "C:\ComfyUI_easy\ComfyUI-Easy-Install\comfyui",
+    [string]$WorkflowDir = "",
+    [string]$OutputDir   = ".\comfy-reports",
+    [switch]$IncludePng,
+    [switch]$NoFile
 )
 
 # ---------------------------------------------------------------------------
 # 0. Setup
 # ---------------------------------------------------------------------------
-$timeStamp   = Get-Date -Format "yyyy-MM-dd_HHmm"
-$hostName    = $env:COMPUTERNAME
-$modelsPath  = Join-Path $ComfyRoot "models"
+$timeStamp  = Get-Date -Format "yyyy-MM-dd_HHmm"
+$hostName   = $env:COMPUTERNAME
+$modelsPath = Join-Path $ComfyRoot "models"
 
 if (!$WorkflowDir) {
-    # Default ComfyUI workflow location
     $WorkflowDir = Join-Path $ComfyRoot "user\default\workflows"
-    # Fallback: older installs put them here
     if (!(Test-Path $WorkflowDir)) {
         $WorkflowDir = Join-Path $ComfyRoot "workflows"
     }
@@ -42,15 +38,14 @@ if (!$WorkflowDir) {
 
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host "  ComfyUI Workflow -> Model Map" -ForegroundColor Cyan
-Write-Host "  Host      : $hostName" -ForegroundColor Cyan
-Write-Host "  ComfyRoot : $ComfyRoot" -ForegroundColor Cyan
-Write-Host "  Workflows : $WorkflowDir" -ForegroundColor Cyan
-Write-Host "  Models    : $modelsPath" -ForegroundColor Cyan
+Write-Host "  ComfyUI Workflow -> Model Map"              -ForegroundColor Cyan
+Write-Host "  Host      : $hostName"                      -ForegroundColor Cyan
+Write-Host "  ComfyRoot : $ComfyRoot"                     -ForegroundColor Cyan
+Write-Host "  Workflows : $WorkflowDir"                   -ForegroundColor Cyan
+Write-Host "  Models    : $modelsPath"                    -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Validate paths
 foreach ($p in @($modelsPath, $WorkflowDir)) {
     if (!(Test-Path $p)) {
         Write-Host "ERROR: Path not found: $p" -ForegroundColor Red
@@ -59,13 +54,12 @@ foreach ($p in @($modelsPath, $WorkflowDir)) {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Build model inventory (filename -> full_path + category)
+# 1. Build model inventory
 # ---------------------------------------------------------------------------
 Write-Host "Building model inventory..." -ForegroundColor Yellow
 
 $modelExtensions = @('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf')
-
-$modelInventory = @{}   # key = lowercase filename, value = PSObject
+$modelInventory  = @{}
 
 Get-ChildItem -Path $modelsPath -File -Recurse |
     Where-Object { $modelExtensions -contains $_.Extension.ToLower() } |
@@ -74,14 +68,10 @@ Get-ChildItem -Path $modelsPath -File -Recurse |
         $relPath  = $file.FullName.Substring($modelsPath.Length).TrimStart('\','/')
         $parts    = $relPath -split '[/\\]'
         $category = if ($parts.Count -gt 1) { $parts[0] } else { "root" }
-
-        $key = $file.Name.ToLower()
-        # If two files share the same name in different folders, keep both
-        # by making the key unique with a counter
+        $key      = $file.Name.ToLower()
         if ($modelInventory.ContainsKey($key)) {
             $key = "$key|$($file.FullName.ToLower())"
         }
-
         $modelInventory[$key] = [PSCustomObject]@{
             filename      = $file.Name
             category      = $category
@@ -94,99 +84,59 @@ Get-ChildItem -Path $modelsPath -File -Recurse |
 Write-Host "  Found $($modelInventory.Count) model file(s) on disk" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
-# Helper: resolve a model reference string to the inventory entry
+# Helper: resolve model reference to inventory entry
 # ---------------------------------------------------------------------------
 function Resolve-ModelRef {
     param([string]$Ref)
-
     if (!$Ref) { return $null }
-
-    # Normalize slashes and get just the filename
     $normalized = $Ref -replace '\\', '/'
     $basename   = ($normalized -split '/')[-1].ToLower()
-
-    # 1. Exact filename match
-    if ($modelInventory.ContainsKey($basename)) {
-        return $modelInventory[$basename]
-    }
-
-    # 2. Check keys that may have been made unique (name|path)
+    if ($modelInventory.ContainsKey($basename)) { return $modelInventory[$basename] }
     $hit = $modelInventory.Keys | Where-Object { $_ -like "$basename|*" } | Select-Object -First 1
     if ($hit) { return $modelInventory[$hit] }
-
-    # 3. Partial path match - ref may include a sub-folder e.g. "sdxl/model.safetensors"
     foreach ($entry in $modelInventory.Values) {
-        if ($entry.relative_path.ToLower().EndsWith($normalized.ToLower())) {
-            return $entry
-        }
+        if ($entry.relative_path.ToLower().EndsWith($normalized.ToLower())) { return $entry }
     }
-
-    return $null   # Not found on disk
+    return $null
 }
 
 # ---------------------------------------------------------------------------
-# 2. Node keys that typically hold model filenames in ComfyUI
+# 2. Model input keys used by ComfyUI nodes
 # ---------------------------------------------------------------------------
 $modelKeys = @(
-    'ckpt_name',        # CheckpointLoaderSimple
-    'lora_name',        # LoraLoader
-    'model_name',       # Various loaders
-    'vae_name',         # VAELoader
-    'control_net_name', # ControlNetLoader
-    'unet_name',        # UNETLoader (Flux etc.)
-    'clip_name',        # CLIPLoader
-    'clip_name1',       # DualCLIPLoader
-    'clip_name2',       # DualCLIPLoader
-    'ipadapter_file',   # IPAdapter
-    'weight_name',      # Some LoRA loaders
-    'file'              # Generic
+    'ckpt_name', 'lora_name', 'model_name', 'vae_name',
+    'control_net_name', 'unet_name', 'clip_name', 'clip_name1',
+    'clip_name2', 'ipadapter_file', 'weight_name', 'file'
 )
 
 # ---------------------------------------------------------------------------
-# Helper: extract model references from a workflow dict (parsed JSON)
+# Helper: extract model refs from parsed workflow JSON
 # ---------------------------------------------------------------------------
 function Get-RefsFromWorkflow {
     param($workflow)
-
     $refs = [System.Collections.Generic.List[PSObject]]::new()
-
     if ($null -eq $workflow) { return $refs }
 
-    # --- Format A: { "nodes": [ {id, type, widgets_values, inputs, ...} ] }
-    # --- Format B: { "1": { class_type, inputs: {ckpt_name:...} }, "2": ... }
-
     $nodesList = $null
-
     if ($workflow.PSObject.Properties['nodes']) {
         $nodesList = $workflow.nodes
     } else {
-        # Try dict-of-nodes format (API/prompt format)
         $nodesList = $workflow.PSObject.Properties.Value |
             Where-Object { $_ -is [PSCustomObject] -and $_.PSObject.Properties['class_type'] }
     }
-
     if ($null -eq $nodesList) { return $refs }
 
     foreach ($node in $nodesList) {
         if ($null -eq $node) { continue }
-
-        # Determine a human-readable node label
         $classType = ""
         $nodeTitle = ""
-
-        if ($node.PSObject.Properties['class_type'])  { $classType = $node.class_type }
-        if ($node.PSObject.Properties['type'])         { $classType = $node.type }
-        if ($node.PSObject.Properties['_meta']) {
-            $nodeTitle = $node._meta.title
-        }
+        if ($node.PSObject.Properties['class_type']) { $classType = $node.class_type }
+        if ($node.PSObject.Properties['type'])        { $classType = $node.type }
+        if ($node.PSObject.Properties['_meta'])       { $nodeTitle = $node._meta.title }
         if (!$nodeTitle -and $node.PSObject.Properties['title']) { $nodeTitle = $node.title }
         if (!$nodeTitle) { $nodeTitle = $classType }
+        $label = if ($nodeTitle -and $nodeTitle -ne $classType) { "$nodeTitle ($classType)" } else { $classType }
 
-        $label = if ($nodeTitle -and $nodeTitle -ne $classType) {
-            "$nodeTitle ($classType)"
-        } else { $classType }
-
-        # --- widgets_values (newer graph format) ---
         if ($node.PSObject.Properties['widgets_values']) {
             $wv = $node.widgets_values
             if ($wv -is [System.Collections.IEnumerable]) {
@@ -198,7 +148,6 @@ function Get-RefsFromWorkflow {
             }
         }
 
-        # --- inputs dict (API/prompt format and some nodes) ---
         if ($node.PSObject.Properties['inputs']) {
             $inputs = $node.inputs
             foreach ($key in $modelKeys) {
@@ -211,29 +160,24 @@ function Get-RefsFromWorkflow {
             }
         }
     }
-
     return $refs
 }
 
 # ---------------------------------------------------------------------------
-# Helper: read PNG tEXt chunk to get embedded workflow JSON
+# Helper: extract embedded workflow JSON from PNG tEXt chunk
 # ---------------------------------------------------------------------------
 function Get-WorkflowFromPng {
     param([string]$PngPath)
-
     try {
         $bytes = [System.IO.File]::ReadAllBytes($PngPath)
         $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
-
-        # ComfyUI embeds workflow under "workflow" or "prompt" tEXt key
         foreach ($marker in @('workflow', 'prompt')) {
             $idx = $text.IndexOf($marker + '{')
             if ($idx -ge 0) {
                 $jsonStart = $text.IndexOf('{', $idx)
                 if ($jsonStart -ge 0) {
-                    # Walk forward to find the matching closing brace
-                    $depth  = 0
-                    $end    = $jsonStart
+                    $depth = 0
+                    $end   = $jsonStart
                     for ($i = $jsonStart; $i -lt $bytes.Length; $i++) {
                         if ($bytes[$i] -eq 0x7B) { $depth++ }
                         elseif ($bytes[$i] -eq 0x7D) {
@@ -247,7 +191,6 @@ function Get-WorkflowFromPng {
             }
         }
     } catch { }
-
     return $null
 }
 
@@ -257,18 +200,15 @@ function Get-WorkflowFromPng {
 Write-Host "Scanning workflow files in: $WorkflowDir" -ForegroundColor Yellow
 
 $workflowFiles = Get-ChildItem -Path $WorkflowDir -File -Recurse |
-    Where-Object {
-        $_.Extension -eq '.json' -or ($IncludePng -and $_.Extension -eq '.png')
-    }
+    Where-Object { $_.Extension -eq '.json' -or ($IncludePng -and $_.Extension -eq '.png') }
 
 Write-Host "  Found $($workflowFiles.Count) workflow file(s)" -ForegroundColor Green
 Write-Host ""
 
-$mapRows     = [System.Collections.Generic.List[PSObject]]::new()
+$mapRows      = [System.Collections.Generic.List[PSObject]]::new()
 $allModelRefs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-
-$processed  = 0
-$skipped    = 0
+$processed    = 0
+$skipped      = 0
 
 foreach ($wf in $workflowFiles) {
     $workflow = $null
@@ -284,24 +224,17 @@ foreach ($wf in $workflowFiles) {
         }
     } elseif ($wf.Extension -eq '.png') {
         $workflow = Get-WorkflowFromPng -PngPath $wf.FullName
-        if (!$workflow) {
-            $skipped++
-            continue
-        }
+        if (!$workflow) { $skipped++; continue }
     }
 
     $refs = Get-RefsFromWorkflow -workflow $workflow
-
-    if ($refs.Count -eq 0) {
-        $skipped++
-        continue
-    }
+    if ($refs.Count -eq 0) { $skipped++; continue }
 
     $processed++
     $wfRel = $wf.FullName.Replace($WorkflowDir, '').TrimStart('\','/')
 
     foreach ($r in $refs) {
-        $resolved = Resolve-ModelRef -Ref $r.model_ref
+        $resolved      = Resolve-ModelRef -Ref $r.model_ref
         $normalizedRef = $r.model_ref.ToLower() -replace '\\','/'
         [void]$allModelRefs.Add($normalizedRef)
 
@@ -325,26 +258,26 @@ Write-Host "  Skipped   : $skipped (no model refs or unreadable)" -ForegroundCol
 Write-Host ""
 
 # ---------------------------------------------------------------------------
-# 4. Build usage summary (per model)
+# 4. Usage summary per model
 # ---------------------------------------------------------------------------
 $usageSummary = @($mapRows |
     Where-Object { $_.on_disk -eq "YES" } |
     Group-Object model_filename |
     ForEach-Object {
-        $grp        = $_
-        $first      = $grp.Group[0]
-        $wfList     = @($grp.Group | Select-Object -ExpandProperty workflow_file -Unique | Sort-Object)
+        $grp    = $_
+        $first  = $grp.Group[0]
+        $wfList = @($grp.Group | Select-Object -ExpandProperty workflow_file -Unique | Sort-Object)
         [PSCustomObject]@{
-            model_filename    = $grp.Name
-            model_category    = $first.model_category
-            model_size_gb     = $first.model_size_gb
-            workflow_count    = $wfList.Count
-            workflows         = $wfList -join " | "
+            model_filename = $grp.Name
+            model_category = $first.model_category
+            model_size_gb  = $first.model_size_gb
+            workflow_count = $wfList.Count
+            workflows      = $wfList -join " | "
         }
     } | Sort-Object -Property workflow_count -Descending)
 
 # ---------------------------------------------------------------------------
-# 5. Unused models (on disk, never referenced)
+# 5. Unused models
 # ---------------------------------------------------------------------------
 $unusedModels = @($modelInventory.Values | Where-Object {
     $fn = $_.filename.ToLower()
@@ -352,7 +285,7 @@ $unusedModels = @($modelInventory.Values | Where-Object {
 } | Sort-Object category, filename)
 
 # ---------------------------------------------------------------------------
-# 6. Missing models (referenced in workflows, not on disk)
+# 6. Missing models
 # ---------------------------------------------------------------------------
 $missingModels = @($mapRows |
     Where-Object { $_.on_disk -eq "NO" } |
@@ -374,70 +307,81 @@ if ($missingModels.Count -gt 0) {
 
 Write-Host ""
 Write-Host "--- Unused Models (on disk but NEVER referenced): $($unusedModels.Count) ---" -ForegroundColor Yellow
-$unusedModels | Select-Object -First 10 |
-    Format-Table filename, category, size_gb -AutoSize
+$unusedModels | Select-Object -First 10 | Format-Table filename, category, size_gb -AutoSize
 
 # ---------------------------------------------------------------------------
-# 8. Save files
+# 8. Save output files
 # ---------------------------------------------------------------------------
 if (!$NoFile) {
     if (!(Test-Path $OutputDir)) {
         New-Item -ItemType Directory -Path $OutputDir | Out-Null
     }
 
-    $prefix = "$OutputDir\$hostName-WorkflowMap-$timeStamp"
+    $prefix = Join-Path $OutputDir "$hostName-WorkflowMap-$timeStamp"
 
-    $mapRows      | Export-Csv "$prefix-full_map.csv"         -NoTypeInformation -Encoding UTF8
-    $usageSummary | Export-Csv "$prefix-model_usage.csv"      -NoTypeInformation -Encoding UTF8
-    $unusedModels | Export-Csv "$prefix-unused_models.csv"    -NoTypeInformation -Encoding UTF8
-    $missingModels| Export-Csv "$prefix-missing_models.csv"   -NoTypeInformation -Encoding UTF8
+    $mapRows       | Export-Csv "$prefix-full_map.csv"       -NoTypeInformation -Encoding UTF8
+    $usageSummary  | Export-Csv "$prefix-model_usage.csv"    -NoTypeInformation -Encoding UTF8
+    $unusedModels  | Export-Csv "$prefix-unused_models.csv"  -NoTypeInformation -Encoding UTF8
+    $missingModels | Export-Csv "$prefix-missing_models.csv" -NoTypeInformation -Encoding UTF8
 
-    # Human-readable summary
-    $summaryLines = @(
-        "ComfyUI Workflow -> Model Map Summary",
-        "Host    : $hostName",
-        "Date    : $timeStamp",
-        "=" * 60,
-        "",
-        "MODELS ON DISK       : $($modelInventory.Count)",
-        "WORKFLOW FILES       : $processed (with model refs)",
-        "UNIQUE MODEL REFS    : $($allModelRefs.Count)",
-        "MODELS USED          : $($usageSummary.Count)",
-        "MODELS UNUSED        : $($unusedModels.Count)",
-        "MISSING (not on disk): $($missingModels.Count)",
-        "",
-        "=" * 60,
-        "TOP MODELS BY WORKFLOW COUNT",
-        "-" * 60
-    )
+    # Use a List[string] to build the summary - avoids PS5.1 array type coercion bugs
+    $div1 = "============================================================"
+    $div2 = "------------------------------------------------------------"
+
+    $invCount     = $modelInventory.Count
+    $refsCount    = $allModelRefs.Count
+    $usedCount    = $usageSummary.Count
+    $unusedCount  = $unusedModels.Count
+    $missingCount = $missingModels.Count
+
+    $out = [System.Collections.Generic.List[string]]::new()
+    $out.Add("ComfyUI Workflow -> Model Map Summary")
+    $out.Add("Host    : $hostName")
+    $out.Add("Date    : $timeStamp")
+    $out.Add($div1)
+    $out.Add("")
+    $out.Add("MODELS ON DISK       : $invCount")
+    $out.Add("WORKFLOW FILES       : $processed (with model refs)")
+    $out.Add("UNIQUE MODEL REFS    : $refsCount")
+    $out.Add("MODELS USED          : $usedCount")
+    $out.Add("MODELS UNUSED        : $unusedCount")
+    $out.Add("MISSING (not on disk): $missingCount")
+    $out.Add("")
+    $out.Add($div1)
+    $out.Add("TOP MODELS BY WORKFLOW COUNT")
+    $out.Add($div2)
+
     foreach ($row in ($usageSummary | Select-Object -First 30)) {
-        $summaryLines += "  [{0,2} workflows]  {1}  ({2})  {3} GB" -f `
+        $line = "  [{0,2} workflows]  {1}  ({2})  {3} GB" -f `
             $row.workflow_count, $row.model_filename, $row.model_category, $row.model_size_gb
+        $out.Add($line)
     }
 
-    if ($unusedModels.Count -gt 0) {
-        $unusedGB = ($unusedModels | Measure-Object size_gb -Sum).Sum
-        $summaryLines += ""
-        $summaryLines += "=" * 60
-        $summaryLines += "UNUSED MODELS  ($($unusedModels.Count) files  |  $([math]::Round($unusedGB,2)) GB wasted)"
-        $summaryLines += "-" * 60
+    if ($unusedCount -gt 0) {
+        $unusedGB = [math]::Round(($unusedModels | Measure-Object size_gb -Sum).Sum, 2)
+        $out.Add("")
+        $out.Add($div1)
+        $out.Add("UNUSED MODELS  ($unusedCount files  |  $unusedGB GB wasted)")
+        $out.Add($div2)
         foreach ($m in $unusedModels) {
-            $summaryLines += "  {0,-55} {1} GB  [{2}]" -f $m.filename, $m.size_gb, $m.category
+            $line = "  {0,-55} {1} GB  [{2}]" -f $m.filename, $m.size_gb, $m.category
+            $out.Add($line)
         }
     }
 
-    if ($missingModels.Count -gt 0) {
-        $summaryLines += ""
-        $summaryLines += "=" * 60
-        $summaryLines += "MISSING MODELS (referenced in workflows but not on disk)"
-        $summaryLines += "-" * 60
+    if ($missingCount -gt 0) {
+        $out.Add("")
+        $out.Add($div1)
+        $out.Add("MISSING MODELS (referenced in workflows but not on disk)")
+        $out.Add($div2)
         foreach ($m in ($missingModels | Select-Object model_ref -Unique)) {
-            $summaryLines += "  $($m.model_ref)"
+            $out.Add("  $($m.model_ref)")
         }
     }
 
-    $summaryLines | Out-File "$prefix-summary.txt" -Encoding UTF8
+    $out | Out-File "$prefix-summary.txt" -Encoding UTF8
 
+    Write-Host ""
     Write-Host "Output files:" -ForegroundColor Yellow
     Write-Host "  $prefix-full_map.csv"
     Write-Host "  $prefix-model_usage.csv"
