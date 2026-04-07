@@ -35,7 +35,7 @@ Write-Host "Found $($nodes.Count) custom node(s):" -ForegroundColor Green
 Write-Host ""
 
 $lines = @()
-$lines += "ComfyUI Custom Nodes — $hostName — $timeStamp"
+$lines += "ComfyUI Custom Nodes - $hostName - $timeStamp"
 $lines += "Root: $ComfyRoot"
 $lines += "=" * 60
 $lines += ""

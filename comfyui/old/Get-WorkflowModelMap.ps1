@@ -5,15 +5,15 @@
 # and maps every model reference found back to the actual model file on disk.
 #
 # Outputs:
-#   workflow_model_map.csv  - one row per (workflow, model) pair
-#   model_usage_summary.csv - one row per model: how many workflows use it
-#   unused_models.csv       - models on disk never referenced in any workflow
-#   missing_models.csv      - models referenced in workflows but not on disk
-#   workflow_map_summary.txt - human-readable summary
+#   workflow_model_map.csv  — one row per (workflow, model) pair
+#   model_usage_summary.csv — one row per model: how many workflows use it
+#   unused_models.csv       — models on disk never referenced in any workflow
+#   missing_models.csv      — models referenced in workflows but not on disk
+#   workflow_map_summary.txt — human-readable summary
 #
 # Requirements:
 #   PowerShell 5.1+ (ships with Windows 10/11)
-#   No extra modules needed - PNG metadata is read natively.
+#   No extra modules needed — PNG metadata is read natively.
 # =============================================================================
 
 param(
@@ -42,7 +42,7 @@ if (!$WorkflowDir) {
 
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host "  ComfyUI Workflow -> Model Map" -ForegroundColor Cyan
+Write-Host "  ComfyUI Workflow → Model Map" -ForegroundColor Cyan
 Write-Host "  Host      : $hostName" -ForegroundColor Cyan
 Write-Host "  ComfyRoot : $ComfyRoot" -ForegroundColor Cyan
 Write-Host "  Workflows : $WorkflowDir" -ForegroundColor Cyan
@@ -114,7 +114,7 @@ function Resolve-ModelRef {
     $hit = $modelInventory.Keys | Where-Object { $_ -like "$basename|*" } | Select-Object -First 1
     if ($hit) { return $modelInventory[$hit] }
 
-    # 3. Partial path match - ref may include a sub-folder e.g. "sdxl/model.safetensors"
+    # 3. Partial path match — ref may include a sub-folder e.g. "sdxl/model.safetensors"
     foreach ($entry in $modelInventory.Values) {
         if ($entry.relative_path.ToLower().EndsWith($normalized.ToLower())) {
             return $entry
@@ -302,8 +302,7 @@ foreach ($wf in $workflowFiles) {
 
     foreach ($r in $refs) {
         $resolved = Resolve-ModelRef -Ref $r.model_ref
-        $normalizedRef = $r.model_ref.ToLower() -replace '\\','/'
-        [void]$allModelRefs.Add($normalizedRef)
+        $null     = $allModelRefs.Add($r.model_ref.ToLower() -replace '\\','/')
 
         $mapRows.Add([PSCustomObject]@{
             workflow_file     = $wfRel
@@ -394,7 +393,7 @@ if (!$NoFile) {
 
     # Human-readable summary
     $summaryLines = @(
-        "ComfyUI Workflow -> Model Map Summary",
+        "ComfyUI Workflow → Model Map Summary",
         "Host    : $hostName",
         "Date    : $timeStamp",
         "=" * 60,
