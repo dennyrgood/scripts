@@ -17,6 +17,7 @@
 param(
     [string]$ComfyRoot   = "C:\ComfyUI_easy\ComfyUI-Easy-Install\comfyui",
     [string]$WorkflowDir = "",
+    [string]$ModelsPath  = "",   # Override default models dir (e.g. -ModelsPath "D:\AI\models")
     [string]$OutputDir   = ".\comfy-reports",
     [switch]$IncludePng,
     [switch]$NoFile
@@ -27,7 +28,7 @@ param(
 # ---------------------------------------------------------------------------
 $timeStamp  = Get-Date -Format "yyyy-MM-dd_HHmm"
 $hostName   = $env:COMPUTERNAME
-$modelsPath = Join-Path $ComfyRoot "models"
+$modelsPath = if ($ModelsPath) { $ModelsPath } else { Join-Path $ComfyRoot "models" }
 
 if (!$WorkflowDir) {
     $WorkflowDir = Join-Path $ComfyRoot "user\default\workflows"
