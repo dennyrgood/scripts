@@ -571,24 +571,30 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
 def build_actions(gaps: list, readiness: dict, drift: dict, nodes_data: dict) -> list:
     actions = []
 
-    # Model sync actions
+    # Model sync actions - use gap's own priority field
+    seen_scripts = set()
     for gap in gaps:
         if gap.get("is_sync") and gap["models"]:
+            script = gap.get("script_name", "")
+            if script in seen_scripts:
+                continue
+            seen_scripts.add(script)
             total_gb = sum(m["size_gb"] for m in gap["models"])
+            priority = gap.get("priority", "medium")
             actions.append({
-                "priority": "high",
-                "title":    f"Run {gap['script_name']} on ImageBeast",
+                "priority": priority,
+                "title":    f"Run {script} on ImageBeast",
                 "detail":   f"{len(gap['models'])} files, {total_gb:.2f} GB — copies to Models_bare for Travel + Chat",
             })
 
-    # Readiness
+    # Readiness - only flag if low AND not explained by VRAM
     for h, r in readiness.items():
         pct = r.get("pct", 100)
         if pct < 60:
             actions.append({
-                "priority": "high",
-                "title":    f"{h} readiness low ({pct}%)",
-                "detail":   f"Only {r['can_run']}/{r['total']} workflows can run — check model gaps",
+                "priority": "medium",
+                "title":    f"{h} readiness {pct}% — expected for lower-VRAM machine",
+                "detail":   f"{r['can_run']}/{r['total']} workflows runnable. Blocked workflows require large models only suited for ImageBeast.",
             })
 
     # Missing nodes on TravelBeast
@@ -634,15 +640,20 @@ def main():
     parser.add_argument("--year",   default=None, help="Override workflow year filter")
     args = parser.parse_args()
 
-    # Find config
+    # Find config - check: explicit arg, CWD, then script directory
     if args.config:
         config_path = Path(args.config)
     else:
-        # Look next to this script first, then in reports_dir
-        script_dir  = Path(__file__).parent
-        config_path = script_dir / "fleet_config.json"
-        if not config_path.exists():
-            print("ERROR: fleet_config.json not found. Pass --config /path/to/fleet_config.json")
+        cwd_config    = Path.cwd() / "fleet_config.json"
+        script_config = Path(__file__).parent / "fleet_config.json"
+        if cwd_config.exists():
+            config_path = cwd_config
+        elif script_config.exists():
+            config_path = script_config
+        else:
+            print("ERROR: fleet_config.json not found.")
+            print(f"  Looked in: {Path.cwd()} and {Path(__file__).parent}")
+            print("  Pass --config /path/to/fleet_config.json or put fleet_config.json in current directory.")
             sys.exit(1)
 
     print(f"Loading config: {config_path}")
@@ -701,79 +712,94 @@ def main():
 
     source_models = data[source_host]["models"] if source_host in data else {}
 
-    # For each non-source machine, find what it's missing that source has
-    gaps = []
+    # Find all non-source machines and group by shared dest (Models_bare path)
+    # Machines sharing the same Models_bare only need one set of sync scripts
+    gaps         = []
     sync_scripts = {}
 
+    # Group non-source machines by their dest models_bare path
+    dest_groups = defaultdict(list)
     for hostname, machine in data.items():
         if hostname == source_host:
             continue
-        vram = config["machines"][hostname].get("vram_gb", 99)
+        bare = config["machines"][hostname].get("models_bare", hostname)
+        dest_groups[bare].append(hostname)
 
-        # Models on source, used in year_filter workflows, not on this machine
+    for dest_bare, hostnames_in_group in dest_groups.items():
+        # Use the lowest VRAM in the group as the constraint
+        vram = min(config["machines"][h].get("vram_gb", 99) for h in hostnames_in_group)
+        group_label = " + ".join(hostnames_in_group)
+
+        # Union of what ALL machines in this group are missing
+        # (if they share Models_bare, missing set is identical, but union is safe)
+        missing_keys = set()
+        for hostname in hostnames_in_group:
+            machine = data[hostname]
+            for fn_lower in wf_data:
+                if fn_lower not in machine["models"] and fn_lower in source_models:
+                    if max_wf_count(wf_data[fn_lower]) >= 3:
+                        missing_keys.add(fn_lower)
+
         missing = []
-        for fn_lower, wf_entry in wf_data.items():
-            if fn_lower in machine["models"]:
-                continue
-            if fn_lower not in source_models:
-                continue
-            wf_count = max_wf_count(wf_entry)
-            if wf_count < 3:
-                continue
+        for fn_lower in missing_keys:
             sz   = universe.get(fn_lower, {}).get("size_gb", 0)
             cat  = universe.get(fn_lower, {}).get("category", "")
             rel  = source_models[fn_lower].get("relative_path", fn_lower)
             missing.append({
-                "filename":      source_models[fn_lower]["filename"],
+                "filename":       source_models[fn_lower]["filename"],
                 "filename_lower": fn_lower,
-                "category":      cat,
-                "size_gb":       sz,
-                "wf_count":      wf_count,
-                "relative_path": rel,
+                "category":       cat,
+                "size_gb":        sz,
+                "wf_count":       max_wf_count(wf_data[fn_lower]),
+                "relative_path":  rel,
             })
-
         missing.sort(key=lambda x: x["wf_count"], reverse=True)
 
         ok_models    = [m for m in missing if m["size_gb"] <= vram_ok]
         maybe_models = [m for m in missing if vram_ok < m["size_gb"] <= vram_maybe]
         big_models   = [m for m in missing if m["size_gb"] > vram_maybe]
 
+        # Script name based on group (use first hostname if shared)
+        script_tag = hostnames_in_group[0] if len(hostnames_in_group) == 1 else "ModelsBase"
+
         gaps.append({
-            "title":       f"Copy to {hostname} — OK models (<= {vram_ok} GB, safe for {vram}GB VRAM)",
+            "title":       f"Copy to {group_label} — OK models (<= {vram_ok} GB, safe for {vram}GB VRAM)",
             "models":      ok_models,
-            "script_name": f"sync_{hostname}_MIN.bat",
+            "script_name": f"sync_{script_tag}_MIN.bat",
             "is_sync":     True,
+            "priority":    "high",
         })
         gaps.append({
-            "title":       f"Copy to {hostname} — MAYBE models ({vram_ok}-{vram_maybe} GB, marginal)",
+            "title":       f"Copy to {group_label} — MAYBE models ({vram_ok}-{vram_maybe} GB, marginal for {vram}GB VRAM)",
             "models":      maybe_models,
-            "script_name": f"sync_{hostname}_MAYBE.bat",
+            "script_name": f"sync_{script_tag}_MAYBE.bat",
             "is_sync":     True,
+            "priority":    "medium",
         })
         gaps.append({
-            "title":       f"Skip for {hostname} — BIG models (> {vram_maybe} GB, too large for {vram}GB VRAM)",
+            "title":       f"Skip for {group_label} — BIG models (> {vram_maybe} GB, too large for {vram}GB VRAM)",
             "models":      big_models,
             "is_sync":     False,
+            "priority":    "low",
         })
 
-        # Generate robocopy scripts
         if ok_models:
             script = generate_robocopy(
                 ok_models,
-                f"sync_{hostname}_MIN  -- Safe for {vram}GB VRAM (<= {vram_ok}GB each)",
-                f"{len(ok_models)} files, safe for RTX {vram}GB",
+                f"sync_{script_tag}_MIN  -- Safe for {vram}GB VRAM (<= {vram_ok}GB each)",
+                f"Copies to Models_bare shared by: {group_label}",
                 src_models_root, dest_models_bare
             )
-            sync_scripts[f"sync_{hostname}_MIN.bat"] = script
+            sync_scripts[f"sync_{script_tag}_MIN.bat"] = script
 
         if maybe_models:
             script = generate_robocopy(
                 maybe_models,
-                f"sync_{hostname}_MAYBE  -- Marginal ({vram_ok}-{vram_maybe}GB each)",
-                f"{len(maybe_models)} files, may work with offloading",
+                f"sync_{script_tag}_MAYBE  -- Marginal ({vram_ok}-{vram_maybe}GB each)",
+                f"Run after MIN. Marginal for {vram}GB VRAM — test before travelling.",
                 src_models_root, dest_models_bare
             )
-            sync_scripts[f"sync_{hostname}_MAYBE.bat"] = script
+            sync_scripts[f"sync_{script_tag}_MAYBE.bat"] = script
 
     # Build actions
     report_data = {
