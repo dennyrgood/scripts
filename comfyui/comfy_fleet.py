@@ -360,7 +360,7 @@ def generate_robocopy(models_to_copy: list, label: str, note: str,
         for m in sorted(entries, key=lambda x: x["filename"]):
             lines.append(f'REM   {m["size_gb"]:.2f} GB  [{m.get("wf_count",0)} wf]  {m["filename"]}')
         file_args = " ".join(f'"{m["filename"]}"' for m in entries)
-        lines.append(f'robocopy "{src_dir}" "{dst_dir}" {file_args} /COPYALL /R:2 /W:5')
+        lines.append(f'robocopy "{src_dir}" "{dst_dir}" {file_args} /COPY:DAT /R:2 /W:5')
         lines.append("")
 
     lines += [
@@ -712,18 +712,17 @@ def main():
 
     source_models = data[source_host]["models"] if source_host in data else {}
 
-    # Find all non-source machines and group by shared dest (Models_bare path)
-    # Machines sharing the same Models_bare only need one set of sync scripts
+    # Group non-source machines by sync_group (explicit) or fall back to hostname
+    # Machines in the same sync_group share a Models_bare destination
     gaps         = []
     sync_scripts = {}
 
-    # Group non-source machines by their dest models_bare path
     dest_groups = defaultdict(list)
     for hostname, machine in data.items():
         if hostname == source_host:
             continue
-        bare = config["machines"][hostname].get("models_bare", hostname)
-        dest_groups[bare].append(hostname)
+        group_key = config["machines"][hostname].get("sync_group", hostname)
+        dest_groups[group_key].append(hostname)
 
     for dest_bare, hostnames_in_group in dest_groups.items():
         # Use the lowest VRAM in the group as the constraint
