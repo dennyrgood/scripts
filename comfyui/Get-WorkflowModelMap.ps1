@@ -222,21 +222,19 @@ function Get-WorkflowFromPng {
                 }
 
                 if ($isWorkflowChunk -and $valueLen -gt 2) {
-                    $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $valueStart, $valueLen)
-                    # Only try to parse if it looks like JSON
-                    $jsonStr = $jsonStr.Trim()
+                    $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $valueStart, $valueLen).Trim()
                     if ($jsonStr.StartsWith("{")) {
-                        $parsed = $jsonStr | ConvertFrom-Json -ErrorAction SilentlyContinue
-                        # Prefer the chunk that looks like a workflow (has nodes or class_type keys)
-                        if ($parsed -and (
-                            $parsed.PSObject.Properties['nodes'] -or
-                            $parsed.PSObject.Properties['id'] -or
-                            ($parsed.PSObject.Properties.Value | Where-Object {
-                                $_ -is [PSCustomObject] -and $_.PSObject.Properties['class_type']
-                            })
-                        )) {
-                            return $parsed
-                        }
+                        try {
+                            $parsed = $jsonStr | ConvertFrom-Json -ErrorAction Stop
+                            if ($parsed) {
+                                # Stash all valid chunks, prefer prompt (API format has model refs in inputs)
+                                # then workflow (graph format has model refs in widgets_values)
+                                if ($keyword -eq "prompt" -or $keyword -eq "") {
+                                    return $parsed   # API format - has model refs directly, return immediately
+                                }
+                                $script:_wfFallback = $parsed   # workflow format - keep as fallback
+                            }
+                        } catch { }
                     }
                 }
             }
@@ -245,6 +243,12 @@ function Get-WorkflowFromPng {
             if ($chunkType -eq 'IEND') { break }
         }
     } catch { }
+    # Return workflow-format chunk if we found one but no prompt chunk
+    if ($script:_wfFallback) {
+        $result = $script:_wfFallback
+        $script:_wfFallback = $null
+        return $result
+    }
     return $null
 }
 
