@@ -171,12 +171,12 @@ function Get-RefsFromWorkflow {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: properly parse PNG chunks to extract ComfyUI workflow JSON
+# Helper: parse PNG tEXt chunks to extract ComfyUI workflow JSON
 #
-# Handles all three text chunk types ComfyUI may use:
-#   tEXt - uncompressed:  keyword\0text
-#   zTXt - zlib deflate:  keyword\0\0<deflate-compressed text>
-#   iTXt - international: keyword\0flag\0method\0lang\0translated\0text
+# Your ComfyUI output PNGs store JSON directly in tEXt chunks with NO keyword
+# (null byte at position 0, raw JSON immediately after). We try:
+#   1. No keyword - raw JSON starting at byte 0 of chunk data
+#   2. Known keywords: "workflow", "prompt"
 # ---------------------------------------------------------------------------
 function Get-WorkflowFromPng {
     param([string]$PngPath)
@@ -199,84 +199,43 @@ function Get-WorkflowFromPng {
             $dataStart = $pos + 8
             $dataEnd   = $dataStart + $chunkLen
 
-            if ($chunkType -eq 'tEXt' -or $chunkType -eq 'zTXt' -or $chunkType -eq 'iTXt') {
+            if ($chunkType -eq 'tEXt' -and $chunkLen -gt 0) {
 
-                # Find null-terminated keyword
+                # Find the null separator between keyword and value
                 $nullPos = $dataStart
                 while ($nullPos -lt $dataEnd -and $bytes[$nullPos] -ne 0x00) { $nullPos++ }
 
-                if ($nullPos -lt $dataEnd) {
-                    $keyword    = [System.Text.Encoding]::Latin1.GetString($bytes, $dataStart, $nullPos - $dataStart)
-                    $valueStart = $nullPos + 1
+                $keyword    = if ($nullPos -gt $dataStart) {
+                                  [System.Text.Encoding]::Latin1.GetString($bytes, $dataStart, $nullPos - $dataStart)
+                              } else { "" }
+                $valueStart = $nullPos + 1
+                $valueLen   = $dataEnd - $valueStart
 
-                    if ($keyword -eq 'workflow' -or $keyword -eq 'prompt') {
+                # Accept: no keyword, or keyword is "workflow" or "prompt"
+                $isWorkflowChunk = ($keyword -eq "") -or ($keyword -eq "workflow") -or ($keyword -eq "prompt")
 
-                        $jsonStr = $null
+                # Also accept: chunk starts directly with { (no keyword at all, null is first byte)
+                if (!$isWorkflowChunk -and $bytes[$dataStart] -eq 0x7B) {
+                    $isWorkflowChunk = $true
+                    $valueStart = $dataStart
+                    $valueLen   = $chunkLen
+                }
 
-                        if ($chunkType -eq 'tEXt') {
-                            # Plain text
-                            $valueLen = $dataEnd - $valueStart
-                            if ($valueLen -gt 0) {
-                                $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $valueStart, $valueLen)
-                            }
-
-                        } elseif ($chunkType -eq 'zTXt') {
-                            # zTXt: 1 byte compression method (always 0), then zlib/deflate data
-                            # zlib stream starts with 2-byte header (0x78 ...), deflate data follows
-                            $compMethod = $bytes[$valueStart]
-                            $compStart  = $valueStart + 1
-                            $compLen    = $dataEnd - $compStart
-                            if ($compLen -gt 2) {
-                                # Skip 2-byte zlib header, use raw deflate
-                                $deflateStart = $compStart + 2
-                                $deflateLen   = $compLen - 2
-                                $deflateBytes = [byte[]]::new($deflateLen)
-                                [Array]::Copy($bytes, $deflateStart, $deflateBytes, 0, $deflateLen)
-
-                                $msIn   = [System.IO.MemoryStream]::new($deflateBytes)
-                                $msOut  = [System.IO.MemoryStream]::new()
-                                $deflate = [System.IO.Compression.DeflateStream]::new(
-                                    $msIn, [System.IO.Compression.CompressionMode]::Decompress)
-                                $deflate.CopyTo($msOut)
-                                $deflate.Dispose()
-                                $jsonStr = [System.Text.Encoding]::UTF8.GetString($msOut.ToArray())
-                            }
-
-                        } elseif ($chunkType -eq 'iTXt') {
-                            # iTXt: compression_flag(1) + compression_method(1) + lang\0 + translated_keyword\0 + text
-                            $compFlag   = $bytes[$valueStart]
-                            $compMethod = $bytes[$valueStart + 1]
-                            $skipPos    = $valueStart + 2
-                            # Skip language tag (null-terminated)
-                            while ($skipPos -lt $dataEnd -and $bytes[$skipPos] -ne 0x00) { $skipPos++ }
-                            $skipPos++
-                            # Skip translated keyword (null-terminated)
-                            while ($skipPos -lt $dataEnd -and $bytes[$skipPos] -ne 0x00) { $skipPos++ }
-                            $skipPos++
-                            $textLen = $dataEnd - $skipPos
-                            if ($textLen -gt 0) {
-                                if ($compFlag -eq 1) {
-                                    # Compressed iTXt - same deflate approach
-                                    $deflateStart = $skipPos + 2
-                                    $deflateLen   = $textLen - 2
-                                    $deflateBytes = [byte[]]::new($deflateLen)
-                                    [Array]::Copy($bytes, $deflateStart, $deflateBytes, 0, $deflateLen)
-                                    $msIn    = [System.IO.MemoryStream]::new($deflateBytes)
-                                    $msOut   = [System.IO.MemoryStream]::new()
-                                    $deflate = [System.IO.Compression.DeflateStream]::new(
-                                        $msIn, [System.IO.Compression.CompressionMode]::Decompress)
-                                    $deflate.CopyTo($msOut)
-                                    $deflate.Dispose()
-                                    $jsonStr = [System.Text.Encoding]::UTF8.GetString($msOut.ToArray())
-                                } else {
-                                    $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $skipPos, $textLen)
-                                }
-                            }
-                        }
-
-                        if ($jsonStr) {
-                            $parsed = $jsonStr | ConvertFrom-Json -ErrorAction SilentlyContinue
-                            if ($parsed) { return $parsed }
+                if ($isWorkflowChunk -and $valueLen -gt 2) {
+                    $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $valueStart, $valueLen)
+                    # Only try to parse if it looks like JSON
+                    $jsonStr = $jsonStr.Trim()
+                    if ($jsonStr.StartsWith("{")) {
+                        $parsed = $jsonStr | ConvertFrom-Json -ErrorAction SilentlyContinue
+                        # Prefer the chunk that looks like a workflow (has nodes or class_type keys)
+                        if ($parsed -and (
+                            $parsed.PSObject.Properties['nodes'] -or
+                            $parsed.PSObject.Properties['id'] -or
+                            ($parsed.PSObject.Properties.Value | Where-Object {
+                                $_ -is [PSCustomObject] -and $_.PSObject.Properties['class_type']
+                            })
+                        )) {
+                            return $parsed
                         }
                     }
                 }
