@@ -7,7 +7,8 @@
 
 param(
     [string]$ComfyRoot  = "C:\ComfyUI_easy\ComfyUI-Easy-Install\comfyui",
-    [string]$OutputDir  = ".\comfy-reports",
+    [string]$ModelsPath  = "",   # Direct path to models dir, bypasses ComfyRoot\models
+    [string]$OutputDir   = ".\comfy-reports",
     [switch]$NoFile     # Print summary to console only, skip CSV
 )
 
@@ -17,7 +18,7 @@ $modelExtensions = @('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf')
 # --- Setup ---
 $timeStamp  = Get-Date -Format "yyyy-MM-dd_HHmm"
 $hostName   = $env:COMPUTERNAME
-$modelsPath = Join-Path $ComfyRoot "models"
+$modelsPath = if ($ModelsPath) { $ModelsPath } else { Join-Path $ComfyRoot "models" }
 
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan

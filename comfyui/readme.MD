@@ -1,6 +1,6 @@
 here is the commands used on imagebeast:
 
-PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\files\Get-CustomNodes.ps1 .
+PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .
 
 =============================================
   ComfyUI Custom Nodes Inventory
@@ -188,8 +188,15 @@ tl/dr
 
 here is the commands used on imagebeast:
 
-PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\files\Get-CustomNodes.ps1 .
+PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .
 
 PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-Models.ps1 C:\ComfyUI_Models\
 
 PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -ModelsPath C:\ComfyUI_Models\ -WorkflowDir .\user\default\workflows\
+
+
+
+UPDATE, new format:
+
+.\Get-Models.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"
+
