@@ -366,9 +366,9 @@ Write-Host "--- Model Usage Summary (top 20) ---" -ForegroundColor Cyan
 $usageSummary | Select-Object -First 20 |
     Format-Table model_filename, model_category, model_size_gb, workflow_count -AutoSize
 
-if ($missingModels.Count -gt 0) {
+if (@($missingModels).Count -gt 0) {
     Write-Host ""
-    Write-Host "--- Missing Models (referenced but NOT on disk): $($missingModels.Count) ---" -ForegroundColor Red
+    Write-Host ()"--- Missing Models (referenced but NOT on disk): $(@(missingModels).Count) ---" -ForegroundColor Red
     $missingModels | Select-Object -First 10 | Format-Table model_ref, workflow_file -AutoSize
 }
 
@@ -404,7 +404,7 @@ if (!$NoFile) {
         "UNIQUE MODEL REFS    : $($allModelRefs.Count)",
         "MODELS USED          : $($usageSummary.Count)",
         "MODELS UNUSED        : $($unusedModels.Count)",
-        "MISSING (not on disk): $($missingModels.Count)",
+        "MISSING (not on disk): $(@(missingModels).Count)",
         "",
         "=" * 60,
         "TOP MODELS BY WORKFLOW COUNT",
@@ -426,7 +426,7 @@ if (!$NoFile) {
         }
     }
 
-    if ($missingModels.Count -gt 0) {
+    if (@(missingModels).Count -gt 0) {
         $summaryLines += ""
         $summaryLines += "=" * 60
         $summaryLines += "MISSING MODELS (referenced in workflows but not on disk)"
