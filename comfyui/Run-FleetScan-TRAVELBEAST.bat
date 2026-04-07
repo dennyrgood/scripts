@@ -6,6 +6,7 @@ REM ============================================================
 set COMFY=C:\ComfyUI-Easy-Install\ComfyUI
 set SCRIPTS=C:\repos\scripts\comfyui
 set MODELS=C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare
+set WFDIR=%COMFY%\user\default\workflows
 set PNGDIR=C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output
 set OUTPUT=C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Work\comfy-reports
 
@@ -26,7 +27,7 @@ powershell -ExecutionPolicy Bypass -File "%SCRIPTS%\Get-Models.ps1" -ModelsPath 
 
 echo.
 echo [3/3] Mapping workflows to models...
-powershell -ExecutionPolicy Bypass -File "%SCRIPTS%\Get-WorkflowModelMap.ps1" -ModelsPath "%MODELS%" -WorkflowDir ".\user\default\workflows\" -PngDir "%PNGDIR%" -OutputDir "%OUTPUT%"
+powershell -ExecutionPolicy Bypass -File "%SCRIPTS%\Get-WorkflowModelMap.ps1" -ModelsPath "%MODELS%" -WorkflowDir "%WFDIR%" -PngDir "%PNGDIR%" -OutputDir "%OUTPUT%"
 
 echo.
 echo =============================================
