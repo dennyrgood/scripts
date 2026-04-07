@@ -205,9 +205,10 @@ function Get-WorkflowFromPng {
                 $nullPos = $dataStart
                 while ($nullPos -lt $dataEnd -and $bytes[$nullPos] -ne 0x00) { $nullPos++ }
 
-                $keyword    = if ($nullPos -gt $dataStart) {
-                                  [System.Text.Encoding]::Latin1.GetString($bytes, $dataStart, $nullPos - $dataStart)
-                              } else { "" }
+                $kwLen = $nullPos - $dataStart
+                $keyword = if ($kwLen -gt 0) {
+                                [System.Text.Encoding]::GetEncoding(28591).GetString($bytes, $dataStart, $kwLen)
+                           } else { "" }
                 $valueStart = $nullPos + 1
                 $valueLen   = $dataEnd - $valueStart
 
