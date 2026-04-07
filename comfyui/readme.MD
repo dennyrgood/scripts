@@ -196,10 +196,15 @@ PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-Wo
 
 
 
-UPDATE, new format:
 
-.\Get-Models.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"
+IMAGE BEAST:
 
+
+PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .
+
+PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-Models.ps1 C:\ComfyUI_Models\
+
+PS C:\ComfyUI_easy\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -WorkflowDir .\user\default\workflows\  -ModelsPath "C:\ComfyUI_Models\models" -PngDir "C:\Users\Pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output\"
 
 
 
@@ -210,16 +215,13 @@ PS C:\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-CustomNodes.ps1
 
 PS C:\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-Models.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"    
 
-PS C:\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" -WorkflowDir .\user\default\workflows\
+PS C:\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" -WorkflowDir .\user\default\workflows\ -PngDir "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output\"
 
 
 CHAT WORK HORSE
-
-
 
 PS C:\ComfyUI_windows_portable\ComfyUI> C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .
 
 PS C:\ComfyUI_windows_portable\ComfyUI>  C:\repos\scripts\comfyui\Get-Models.ps1 -ModelsPath "C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"
 
-
-PS C:\ComfyUI_windows_portable\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -ModelsPath "C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" -WorkflowDir .\user\default\workflows\
+PS C:\ComfyUI_windows_portable\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -ModelsPath "C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" -WorkflowDir .\user\default\workflows\ -PngDir "C:\Users\Pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output\"
