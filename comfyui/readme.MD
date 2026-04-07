@@ -200,3 +200,26 @@ UPDATE, new format:
 
 .\Get-Models.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"
 
+
+
+
+TRAVEL BEAST:
+
+
+PS C:\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .               
+
+PS C:\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-Models.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"    
+
+PS C:\ComfyUI-Easy-Install\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" -WorkflowDir .\user\default\workflows\
+
+
+CHAT WORK HORSE
+
+
+
+PS C:\ComfyUI_windows_portable\ComfyUI> C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .
+
+PS C:\ComfyUI_windows_portable\ComfyUI>  C:\repos\scripts\comfyui\Get-Models.ps1 -ModelsPath "C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"
+
+
+PS C:\ComfyUI_windows_portable\ComfyUI> C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 -ModelsPath "C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" -WorkflowDir .\user\default\workflows\

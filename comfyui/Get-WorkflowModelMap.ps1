@@ -16,10 +16,10 @@
 
 param(
     [string]$ComfyRoot   = "C:\ComfyUI_easy\ComfyUI-Easy-Install\comfyui",
-    [string]$WorkflowDir = "",
-    [string]$ModelsPath  = "",   # Override default models dir (e.g. -ModelsPath "D:\AI\models")
+    [string]$WorkflowDir = "",       # JSON workflow folder (defaults to ComfyRoot\user\default\workflows)
+    [string]$PngDir      = "",       # Separate folder to scan for PNG files with embedded workflows
+    [string]$ModelsPath  = "",       # Override default models dir (e.g. -ModelsPath "D:\AI\models")
     [string]$OutputDir   = ".\comfy-reports",
-    [switch]$IncludePng,
     [switch]$NoFile
 )
 
@@ -41,8 +41,10 @@ Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "  ComfyUI Workflow -> Model Map"              -ForegroundColor Cyan
 Write-Host "  Host      : $hostName"                      -ForegroundColor Cyan
-Write-Host "  ComfyRoot : $ComfyRoot"                     -ForegroundColor Cyan
 Write-Host "  Workflows : $WorkflowDir"                   -ForegroundColor Cyan
+if ($PngDir) {
+Write-Host "  PNG Dir   : $PngDir"                        -ForegroundColor Cyan
+}
 Write-Host "  Models    : $modelsPath"                    -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host ""
@@ -53,6 +55,10 @@ foreach ($p in @($modelsPath, $WorkflowDir)) {
         exit 1
     }
 }
+if ($PngDir -and !(Test-Path $PngDir)) {
+    Write-Host "ERROR: PngDir not found: $PngDir" -ForegroundColor Red
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # 1. Build model inventory
@@ -62,7 +68,7 @@ Write-Host "Building model inventory..." -ForegroundColor Yellow
 $modelExtensions = @('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf')
 $modelInventory  = @{}
 
-Get-ChildItem -Path $modelsPath -File -Recurse |
+Get-ChildItem -Path $modelsPath -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $modelExtensions -contains $_.Extension.ToLower() } |
     ForEach-Object {
         $file     = $_
@@ -165,53 +171,89 @@ function Get-RefsFromWorkflow {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: extract embedded workflow JSON from PNG tEXt chunk
+# Helper: properly parse PNG tEXt/iTXt chunks to extract ComfyUI workflow JSON
+#
+# PNG format: 8-byte signature, then chunks of:
+#   4 bytes length (big-endian)
+#   4 bytes chunk type (ASCII)
+#   <length> bytes data
+#   4 bytes CRC
+#
+# ComfyUI stores workflow JSON in a tEXt chunk with keyword "workflow" or
+# "prompt", separated from the data by a null byte (0x00).
 # ---------------------------------------------------------------------------
 function Get-WorkflowFromPng {
     param([string]$PngPath)
     try {
         $bytes = [System.IO.File]::ReadAllBytes($PngPath)
-        $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
-        foreach ($marker in @('workflow', 'prompt')) {
-            $idx = $text.IndexOf($marker + '{')
-            if ($idx -ge 0) {
-                $jsonStart = $text.IndexOf('{', $idx)
-                if ($jsonStart -ge 0) {
-                    $depth = 0
-                    $end   = $jsonStart
-                    for ($i = $jsonStart; $i -lt $bytes.Length; $i++) {
-                        if ($bytes[$i] -eq 0x7B) { $depth++ }
-                        elseif ($bytes[$i] -eq 0x7D) {
-                            $depth--
-                            if ($depth -eq 0) { $end = $i; break }
+
+        # Verify PNG signature: 8 bytes = 0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A
+        if ($bytes.Length -lt 8) { return $null }
+        if ($bytes[0] -ne 0x89 -or $bytes[1] -ne 0x50 -or $bytes[2] -ne 0x4E -or $bytes[3] -ne 0x47) {
+            return $null
+        }
+
+        $pos = 8  # Skip PNG signature
+
+        while ($pos -lt ($bytes.Length - 12)) {
+            # Read chunk length (4 bytes, big-endian)
+            $chunkLen = ([int]$bytes[$pos] -shl 24) -bor `
+                        ([int]$bytes[$pos+1] -shl 16) -bor `
+                        ([int]$bytes[$pos+2] -shl 8) -bor `
+                        ([int]$bytes[$pos+3])
+
+            # Read chunk type (4 bytes ASCII)
+            $chunkType = [System.Text.Encoding]::ASCII.GetString($bytes, $pos+4, 4)
+
+            if ($chunkType -eq 'tEXt' -or $chunkType -eq 'iTXt') {
+                # tEXt data: keyword\0value  (null-terminated keyword, rest is value)
+                $dataStart = $pos + 8
+                $dataEnd   = $dataStart + $chunkLen
+
+                # Find the null separator
+                $nullPos = $dataStart
+                while ($nullPos -lt $dataEnd -and $bytes[$nullPos] -ne 0x00) { $nullPos++ }
+
+                if ($nullPos -lt $dataEnd) {
+                    $keyword = [System.Text.Encoding]::Latin1.GetString($bytes, $dataStart, $nullPos - $dataStart)
+
+                    # For iTXt there are additional fields after null; skip compression flag, method, lang tag, translated keyword
+                    $valueStart = $nullPos + 1
+                    if ($chunkType -eq 'iTXt') {
+                        # compression flag (1), compression method (1), then two more null-terminated strings
+                        $valueStart += 2
+                        while ($valueStart -lt $dataEnd -and $bytes[$valueStart] -ne 0x00) { $valueStart++ }
+                        $valueStart++
+                        while ($valueStart -lt $dataEnd -and $bytes[$valueStart] -ne 0x00) { $valueStart++ }
+                        $valueStart++
+                    }
+
+                    if ($keyword -eq 'workflow' -or $keyword -eq 'prompt') {
+                        $valueLen = $dataEnd - $valueStart
+                        if ($valueLen -gt 0) {
+                            $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $valueStart, $valueLen)
+                            $parsed  = $jsonStr | ConvertFrom-Json -ErrorAction SilentlyContinue
+                            if ($parsed) { return $parsed }
                         }
                     }
-                    $jsonStr = $text.Substring($jsonStart, $end - $jsonStart + 1)
-                    return $jsonStr | ConvertFrom-Json -ErrorAction SilentlyContinue
                 }
             }
+
+            # Advance to next chunk: 4 (length) + 4 (type) + chunkLen (data) + 4 (CRC)
+            $pos += 12 + $chunkLen
+
+            if ($chunkType -eq 'IEND') { break }
         }
     } catch { }
     return $null
 }
 
 # ---------------------------------------------------------------------------
-# 3. Scan workflow files
+# Helper: process a single file (json or png) and add rows to $mapRows
 # ---------------------------------------------------------------------------
-Write-Host "Scanning workflow files in: $WorkflowDir" -ForegroundColor Yellow
+function Process-WorkflowFile {
+    param($wf, [string]$sourceLabel)
 
-$workflowFiles = Get-ChildItem -Path $WorkflowDir -File -Recurse |
-    Where-Object { $_.Extension -eq '.json' -or ($IncludePng -and $_.Extension -eq '.png') }
-
-Write-Host "  Found $($workflowFiles.Count) workflow file(s)" -ForegroundColor Green
-Write-Host ""
-
-$mapRows      = [System.Collections.Generic.List[PSObject]]::new()
-$allModelRefs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-$processed    = 0
-$skipped      = 0
-
-foreach ($wf in $workflowFiles) {
     $workflow = $null
 
     if ($wf.Extension -eq '.json') {
@@ -220,26 +262,25 @@ foreach ($wf in $workflowFiles) {
             $workflow = $content | ConvertFrom-Json -ErrorAction Stop
         } catch {
             Write-Host "  SKIP (bad JSON): $($wf.Name)" -ForegroundColor DarkGray
-            $skipped++
-            continue
+            return $false
         }
     } elseif ($wf.Extension -eq '.png') {
         $workflow = Get-WorkflowFromPng -PngPath $wf.FullName
-        if (!$workflow) { $skipped++; continue }
+        if (!$workflow) { return $false }
     }
 
     $refs = Get-RefsFromWorkflow -workflow $workflow
-    if ($refs.Count -eq 0) { $skipped++; continue }
+    if ($refs.Count -eq 0) { return $false }
 
-    $processed++
-    $wfRel = $wf.FullName.Replace($WorkflowDir, '').TrimStart('\','/')
+    $wfRel = "$sourceLabel\$($wf.Name)"
 
     foreach ($r in $refs) {
         $resolved      = Resolve-ModelRef -Ref $r.model_ref
         $normalizedRef = $r.model_ref.ToLower() -replace '\\','/'
-        [void]$allModelRefs.Add($normalizedRef)
+        [void]$script:allModelRefs.Add($normalizedRef)
 
-        $mapRows.Add([PSCustomObject]@{
+        $script:mapRows.Add([PSCustomObject]@{
+            source            = $sourceLabel
             workflow_file     = $wfRel
             workflow_dir      = $wf.DirectoryName
             workflow_modified = $wf.LastWriteTime.ToString("yyyy-MM-dd HH:mm")
@@ -252,14 +293,70 @@ foreach ($wf in $workflowFiles) {
             on_disk           = if ($resolved) { "YES" } else { "NO" }
         })
     }
+    return $true
 }
 
-Write-Host "  Processed : $processed workflow(s)" -ForegroundColor Green
-Write-Host "  Skipped   : $skipped (no model refs or unreadable)" -ForegroundColor DarkGray
-Write-Host ""
+# ---------------------------------------------------------------------------
+# 3. Scan workflow JSON files
+# ---------------------------------------------------------------------------
+Write-Host "Scanning JSON workflows in: $WorkflowDir" -ForegroundColor Yellow
+
+$jsonFiles = @(Get-ChildItem -Path $WorkflowDir -File -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Extension -eq '.json' })
+
+Write-Host "  Found $($jsonFiles.Count) JSON file(s)" -ForegroundColor Green
+
+$mapRows      = [System.Collections.Generic.List[PSObject]]::new()
+$allModelRefs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$processed    = 0
+$skipped      = 0
+
+foreach ($wf in $jsonFiles) {
+    $ok = Process-WorkflowFile -wf $wf -sourceLabel "workflows"
+    if ($ok) { $processed++ } else { $skipped++ }
+}
+
+Write-Host "  Processed : $processed  |  Skipped: $skipped" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
-# 4. Usage summary per model
+# 4. Scan PNG files (workflow dir first, then PngDir if specified)
+# ---------------------------------------------------------------------------
+$pngDirsToScan = @()
+
+# PNGs inside the workflow folder
+$wfPngs = @(Get-ChildItem -Path $WorkflowDir -File -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Extension -eq '.png' })
+if ($wfPngs.Count -gt 0) { $pngDirsToScan += [PSCustomObject]@{ files = $wfPngs; label = "workflows-png" } }
+
+# Dedicated output/PNG folder
+if ($PngDir) {
+    Write-Host ""
+    Write-Host "Scanning PNG outputs in: $PngDir" -ForegroundColor Yellow
+    $outputPngs = @(Get-ChildItem -Path $PngDir -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -eq '.png' })
+    Write-Host "  Found $($outputPngs.Count) PNG file(s)" -ForegroundColor Green
+    if ($outputPngs.Count -gt 0) { $pngDirsToScan += [PSCustomObject]@{ files = $outputPngs; label = "png-outputs" } }
+}
+
+$pngProcessed = 0
+$pngSkipped   = 0
+
+foreach ($batch in $pngDirsToScan) {
+    foreach ($wf in $batch.files) {
+        $ok = Process-WorkflowFile -wf $wf -sourceLabel $batch.label
+        if ($ok) { $pngProcessed++ } else { $pngSkipped++ }
+    }
+}
+
+if ($pngDirsToScan.Count -gt 0) {
+    Write-Host "  PNG processed : $pngProcessed  |  Skipped (no workflow data): $pngSkipped" -ForegroundColor Green
+}
+
+Write-Host ""
+$totalProcessed = $processed + $pngProcessed
+
+# ---------------------------------------------------------------------------
+# 5. Usage summary per model
 # ---------------------------------------------------------------------------
 $usageSummary = @($mapRows |
     Where-Object { $_.on_disk -eq "YES" } |
@@ -278,7 +375,7 @@ $usageSummary = @($mapRows |
     } | Sort-Object -Property workflow_count -Descending)
 
 # ---------------------------------------------------------------------------
-# 5. Unused models
+# 6. Unused models
 # ---------------------------------------------------------------------------
 $unusedModels = @($modelInventory.Values | Where-Object {
     $fn = $_.filename.ToLower()
@@ -286,7 +383,7 @@ $unusedModels = @($modelInventory.Values | Where-Object {
 } | Sort-Object category, filename)
 
 # ---------------------------------------------------------------------------
-# 6. Missing models
+# 7. Missing models
 # ---------------------------------------------------------------------------
 $missingModels = @($mapRows |
     Where-Object { $_.on_disk -eq "NO" } |
@@ -294,7 +391,7 @@ $missingModels = @($mapRows |
     Sort-Object model_ref)
 
 # ---------------------------------------------------------------------------
-# 7. Console output
+# 8. Console output
 # ---------------------------------------------------------------------------
 Write-Host "--- Model Usage Summary (top 20) ---" -ForegroundColor Cyan
 $usageSummary | Select-Object -First 20 |
@@ -311,7 +408,7 @@ Write-Host "--- Unused Models (on disk but NEVER referenced): $($unusedModels.Co
 $unusedModels | Select-Object -First 10 | Format-Table filename, category, size_gb -AutoSize
 
 # ---------------------------------------------------------------------------
-# 8. Save output files
+# 9. Save output files
 # ---------------------------------------------------------------------------
 if (!$NoFile) {
     if (!(Test-Path $OutputDir)) {
@@ -325,7 +422,6 @@ if (!$NoFile) {
     $unusedModels  | Export-Csv "$prefix-unused_models.csv"  -NoTypeInformation -Encoding UTF8
     $missingModels | Export-Csv "$prefix-missing_models.csv" -NoTypeInformation -Encoding UTF8
 
-    # Use a List[string] to build the summary - avoids PS5.1 array type coercion bugs
     $div1 = "============================================================"
     $div2 = "------------------------------------------------------------"
 
@@ -342,7 +438,9 @@ if (!$NoFile) {
     $out.Add($div1)
     $out.Add("")
     $out.Add("MODELS ON DISK       : $invCount")
-    $out.Add("WORKFLOW FILES       : $processed (with model refs)")
+    $out.Add("JSON WORKFLOWS       : $processed processed  |  $skipped skipped")
+    $out.Add("PNG FILES            : $pngProcessed processed  |  $pngSkipped skipped (no embedded workflow)")
+    $out.Add("TOTAL PROCESSED      : $totalProcessed")
     $out.Add("UNIQUE MODEL REFS    : $refsCount")
     $out.Add("MODELS USED          : $usedCount")
     $out.Add("MODELS UNUSED        : $unusedCount")
