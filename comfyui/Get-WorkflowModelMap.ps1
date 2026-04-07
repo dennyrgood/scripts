@@ -171,77 +171,118 @@ function Get-RefsFromWorkflow {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: properly parse PNG tEXt/iTXt chunks to extract ComfyUI workflow JSON
+# Helper: properly parse PNG chunks to extract ComfyUI workflow JSON
 #
-# PNG format: 8-byte signature, then chunks of:
-#   4 bytes length (big-endian)
-#   4 bytes chunk type (ASCII)
-#   <length> bytes data
-#   4 bytes CRC
-#
-# ComfyUI stores workflow JSON in a tEXt chunk with keyword "workflow" or
-# "prompt", separated from the data by a null byte (0x00).
+# Handles all three text chunk types ComfyUI may use:
+#   tEXt - uncompressed:  keyword\0text
+#   zTXt - zlib deflate:  keyword\0\0<deflate-compressed text>
+#   iTXt - international: keyword\0flag\0method\0lang\0translated\0text
 # ---------------------------------------------------------------------------
 function Get-WorkflowFromPng {
     param([string]$PngPath)
     try {
         $bytes = [System.IO.File]::ReadAllBytes($PngPath)
 
-        # Verify PNG signature: 8 bytes = 0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A
+        # Verify PNG signature
         if ($bytes.Length -lt 8) { return $null }
-        if ($bytes[0] -ne 0x89 -or $bytes[1] -ne 0x50 -or $bytes[2] -ne 0x4E -or $bytes[3] -ne 0x47) {
-            return $null
-        }
+        if ($bytes[0] -ne 0x89 -or $bytes[1] -ne 0x50 -or
+            $bytes[2] -ne 0x4E -or $bytes[3] -ne 0x47) { return $null }
 
-        $pos = 8  # Skip PNG signature
+        $pos = 8
 
         while ($pos -lt ($bytes.Length - 12)) {
-            # Read chunk length (4 bytes, big-endian)
-            $chunkLen = ([int]$bytes[$pos] -shl 24) -bor `
-                        ([int]$bytes[$pos+1] -shl 16) -bor `
-                        ([int]$bytes[$pos+2] -shl 8) -bor `
-                        ([int]$bytes[$pos+3])
-
-            # Read chunk type (4 bytes ASCII)
+            $chunkLen  = ([int]$bytes[$pos]   -shl 24) -bor `
+                         ([int]$bytes[$pos+1] -shl 16) -bor `
+                         ([int]$bytes[$pos+2] -shl 8)  -bor `
+                          [int]$bytes[$pos+3]
             $chunkType = [System.Text.Encoding]::ASCII.GetString($bytes, $pos+4, 4)
+            $dataStart = $pos + 8
+            $dataEnd   = $dataStart + $chunkLen
 
-            if ($chunkType -eq 'tEXt' -or $chunkType -eq 'iTXt') {
-                # tEXt data: keyword\0value  (null-terminated keyword, rest is value)
-                $dataStart = $pos + 8
-                $dataEnd   = $dataStart + $chunkLen
+            if ($chunkType -eq 'tEXt' -or $chunkType -eq 'zTXt' -or $chunkType -eq 'iTXt') {
 
-                # Find the null separator
+                # Find null-terminated keyword
                 $nullPos = $dataStart
                 while ($nullPos -lt $dataEnd -and $bytes[$nullPos] -ne 0x00) { $nullPos++ }
 
                 if ($nullPos -lt $dataEnd) {
-                    $keyword = [System.Text.Encoding]::Latin1.GetString($bytes, $dataStart, $nullPos - $dataStart)
-
-                    # For iTXt there are additional fields after null; skip compression flag, method, lang tag, translated keyword
+                    $keyword    = [System.Text.Encoding]::Latin1.GetString($bytes, $dataStart, $nullPos - $dataStart)
                     $valueStart = $nullPos + 1
-                    if ($chunkType -eq 'iTXt') {
-                        # compression flag (1), compression method (1), then two more null-terminated strings
-                        $valueStart += 2
-                        while ($valueStart -lt $dataEnd -and $bytes[$valueStart] -ne 0x00) { $valueStart++ }
-                        $valueStart++
-                        while ($valueStart -lt $dataEnd -and $bytes[$valueStart] -ne 0x00) { $valueStart++ }
-                        $valueStart++
-                    }
 
                     if ($keyword -eq 'workflow' -or $keyword -eq 'prompt') {
-                        $valueLen = $dataEnd - $valueStart
-                        if ($valueLen -gt 0) {
-                            $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $valueStart, $valueLen)
-                            $parsed  = $jsonStr | ConvertFrom-Json -ErrorAction SilentlyContinue
+
+                        $jsonStr = $null
+
+                        if ($chunkType -eq 'tEXt') {
+                            # Plain text
+                            $valueLen = $dataEnd - $valueStart
+                            if ($valueLen -gt 0) {
+                                $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $valueStart, $valueLen)
+                            }
+
+                        } elseif ($chunkType -eq 'zTXt') {
+                            # zTXt: 1 byte compression method (always 0), then zlib/deflate data
+                            # zlib stream starts with 2-byte header (0x78 ...), deflate data follows
+                            $compMethod = $bytes[$valueStart]
+                            $compStart  = $valueStart + 1
+                            $compLen    = $dataEnd - $compStart
+                            if ($compLen -gt 2) {
+                                # Skip 2-byte zlib header, use raw deflate
+                                $deflateStart = $compStart + 2
+                                $deflateLen   = $compLen - 2
+                                $deflateBytes = [byte[]]::new($deflateLen)
+                                [Array]::Copy($bytes, $deflateStart, $deflateBytes, 0, $deflateLen)
+
+                                $msIn   = [System.IO.MemoryStream]::new($deflateBytes)
+                                $msOut  = [System.IO.MemoryStream]::new()
+                                $deflate = [System.IO.Compression.DeflateStream]::new(
+                                    $msIn, [System.IO.Compression.CompressionMode]::Decompress)
+                                $deflate.CopyTo($msOut)
+                                $deflate.Dispose()
+                                $jsonStr = [System.Text.Encoding]::UTF8.GetString($msOut.ToArray())
+                            }
+
+                        } elseif ($chunkType -eq 'iTXt') {
+                            # iTXt: compression_flag(1) + compression_method(1) + lang\0 + translated_keyword\0 + text
+                            $compFlag   = $bytes[$valueStart]
+                            $compMethod = $bytes[$valueStart + 1]
+                            $skipPos    = $valueStart + 2
+                            # Skip language tag (null-terminated)
+                            while ($skipPos -lt $dataEnd -and $bytes[$skipPos] -ne 0x00) { $skipPos++ }
+                            $skipPos++
+                            # Skip translated keyword (null-terminated)
+                            while ($skipPos -lt $dataEnd -and $bytes[$skipPos] -ne 0x00) { $skipPos++ }
+                            $skipPos++
+                            $textLen = $dataEnd - $skipPos
+                            if ($textLen -gt 0) {
+                                if ($compFlag -eq 1) {
+                                    # Compressed iTXt - same deflate approach
+                                    $deflateStart = $skipPos + 2
+                                    $deflateLen   = $textLen - 2
+                                    $deflateBytes = [byte[]]::new($deflateLen)
+                                    [Array]::Copy($bytes, $deflateStart, $deflateBytes, 0, $deflateLen)
+                                    $msIn    = [System.IO.MemoryStream]::new($deflateBytes)
+                                    $msOut   = [System.IO.MemoryStream]::new()
+                                    $deflate = [System.IO.Compression.DeflateStream]::new(
+                                        $msIn, [System.IO.Compression.CompressionMode]::Decompress)
+                                    $deflate.CopyTo($msOut)
+                                    $deflate.Dispose()
+                                    $jsonStr = [System.Text.Encoding]::UTF8.GetString($msOut.ToArray())
+                                } else {
+                                    $jsonStr = [System.Text.Encoding]::UTF8.GetString($bytes, $skipPos, $textLen)
+                                }
+                            }
+                        }
+
+                        if ($jsonStr) {
+                            $parsed = $jsonStr | ConvertFrom-Json -ErrorAction SilentlyContinue
                             if ($parsed) { return $parsed }
                         }
                     }
                 }
             }
 
-            # Advance to next chunk: 4 (length) + 4 (type) + chunkLen (data) + 4 (CRC)
             $pos += 12 + $chunkLen
-
             if ($chunkType -eq 'IEND') { break }
         }
     } catch { }
