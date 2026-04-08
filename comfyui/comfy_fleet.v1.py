@@ -380,14 +380,13 @@ def generate_robocopy(models_to_copy: list, label: str, note: str,
 # ---------------------------------------------------------------------------
 
 def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
-    machines         = report_data["machines"]
-    drift            = report_data["drift"]
-    readiness        = report_data["readiness"]
-    nodes_data       = report_data["nodes"]
-    gaps             = report_data["gaps"]
-    actions          = report_data["actions"]
-    universe         = report_data["universe"]
-    subdir_mismatches = report_data.get("subdir_mismatches", [])
+    machines   = report_data["machines"]
+    drift      = report_data["drift"]
+    readiness  = report_data["readiness"]
+    nodes_data = report_data["nodes"]
+    gaps       = report_data["gaps"]
+    actions    = report_data["actions"]
+    universe   = report_data["universe"]
 
     hostnames = list(machines.keys())
 
@@ -481,23 +480,6 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
         node_matrix_html += '</tr>'
     node_matrix_html += "</table>"
 
-    # --- SUBDIR MISMATCHES ---
-    if subdir_mismatches:
-        mismatch_html = f'<p>{len(subdir_mismatches)} files in wrong subdirectory — run <code>fix_subdir_structure.bat</code> to correct</p>'
-        mismatch_html += '<table><tr><th>Model</th><th>Size</th><th>Current Path (Models_bare)</th><th>Correct Path (ImageBeast)</th></tr>'
-        for m in subdir_mismatches:
-            mismatch_html += (
-                f'<tr>'
-                f'<td>{m["filename"]}</td>'
-                f'<td>{m["size_gb"]:.2f} GB</td>'
-                f'<td style="color:#e74c3c;font-family:monospace;font-size:0.85em">{m["dest_rel"]}</td>'
-                f'<td style="color:#2ecc71;font-family:monospace;font-size:0.85em">{m["src_rel"]}</td>'
-                f'</tr>'
-            )
-        mismatch_html += '</table>'
-    else:
-        mismatch_html = '<p style="color:#2ecc71">All models are in the correct subdirectories.</p>'
-
     # --- UNUSED ON IMAGEBEAST ---
     unused_html = ""
     source = [h for h, m in machines.items() if m["config"].get("is_source")][0] if machines else ""
@@ -577,123 +559,9 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
 <h2>Unused Models on ImageBeast</h2>
 <div class="card">{unused_html if unused_html else "<p>No unused models data available.</p>"}</div>
 
-<h2>Subdir Structure Mismatches</h2>
-<div class="card">{mismatch_html}</div>
-
 </body>
 </html>"""
     return html
-
-
-
-# ---------------------------------------------------------------------------
-# Subdir mismatch analysis
-# Find models that exist in both source and dest but at different relative paths
-# ---------------------------------------------------------------------------
-
-def analyze_subdir_mismatches(data: dict, config: dict) -> list:
-    """Find models on both source and dest but in different subdirectories."""
-    source_host = next(
-        (h for h, m in config["machines"].items() if m.get("is_source")), None
-    )
-    if not source_host or source_host not in data:
-        return []
-
-    src_models = data[source_host]["models"]
-
-    # Build lookup: filename.lower() -> normalized relative path (forward slashes)
-    def norm(p):
-        return p.replace("\\\\", "/").replace("\\", "/")
-
-    src_relpath = {}
-    for fn_lower, row in src_models.items():
-        rel = row.get("relative_path", "")
-        if rel:
-            src_relpath[fn_lower] = norm(rel)
-
-    mismatches = []
-    seen = set()
-
-    for hostname, machine in data.items():
-        if hostname == source_host:
-            continue
-        if not config["machines"][hostname].get("models_bare"):
-            continue
-
-        for fn_lower, row in machine["models"].items():
-            if fn_lower not in src_relpath:
-                continue
-
-            dest_rel_raw = row.get("relative_path", "")
-            dest_rel = norm(dest_rel_raw)
-            src_rel  = src_relpath[fn_lower]
-
-            src_subdir  = "/".join(src_rel.split("/")[:-1])
-            dest_subdir = "/".join(dest_rel.split("/")[:-1])
-
-            if src_subdir.lower() != dest_subdir.lower():
-                key = (fn_lower, src_rel.lower())
-                if key not in seen:
-                    seen.add(key)
-                    mismatches.append({
-                        "filename":    row["filename"],
-                        "src_rel":     src_rel,
-                        "dest_rel":    dest_rel,
-                        "src_subdir":  src_subdir,
-                        "dest_subdir": dest_subdir,
-                        "hostname":    hostname,
-                        "size_gb":     float(row.get("size_gb", 0)),
-                    })
-
-    return sorted(mismatches, key=lambda x: x["filename"].lower())
-
-
-def generate_subdir_fix_bat(mismatches: list, src_root: str, dest_root: str) -> str:
-    """Generate robocopy bat to move files to correct subdirs on Models_bare."""
-    from collections import defaultdict
-    lines = [
-        "@echo off",
-        "REM ============================================================",
-        "REM  fix_subdir_structure.bat",
-        "REM  Copies models in Models_bare to match ImageBeast subdir structure",
-        "REM  Run this on IMAGEBEAST (or any machine with access to Models_bare)",
-        f"REM  {len(mismatches)} files to relocate",
-        "REM  SAFE: copies to new location only - delete old copies manually after verifying",
-        "REM ============================================================",
-        "",
-        f"set DST={dest_root}",
-        "",
-    ]
-
-    by_dest = defaultdict(list)
-    for m in mismatches:
-        by_dest[m["src_subdir"]].append(m)
-
-    for dest_subdir, items in sorted(by_dest.items()):
-        label = dest_subdir if dest_subdir else "(root)"
-        lines.append(f"REM === Move to: {label} ===")
-        for m in items:
-            cur_win  = m["dest_subdir"].replace("/", "\\")
-            tgt_win  = dest_subdir.replace("/", "\\")
-            cur_dir  = f'%DST%\\{cur_win}' if cur_win else "%DST%"
-            tgt_dir  = f'%DST%\\{tgt_win}' if tgt_win else "%DST%"
-            lines.append(f'REM  {m["filename"]}  ({m["size_gb"]:.2f} GB)')
-            lines.append(f'REM  FROM: {cur_dir}')
-            lines.append(f'REM  TO  : {tgt_dir}')
-            lines.append(f'robocopy "{cur_dir}" "{tgt_dir}" "{m["filename"]}" /COPY:DAT /R:2 /W:5')
-            lines.append("")
-
-    lines += [
-        "echo.",
-        "echo ============================================================",
-        "echo  COPY COMPLETE",
-        "echo  Verify files are in correct locations then delete old copies",
-        "echo  Old files were NOT auto-deleted for safety",
-        "echo ============================================================",
-        "pause",
-    ]
-    return "\n".join(lines)
-
 
 
 # ---------------------------------------------------------------------------
@@ -932,19 +800,15 @@ def main():
             )
             sync_scripts[f"sync_{script_tag}_MAYBE.bat"] = script
 
-    # Subdir mismatch analysis
-    subdir_mismatches = analyze_subdir_mismatches(data, config)
-
     # Build actions
     report_data = {
-        "machines":         data,
-        "drift":            drift,
-        "readiness":        readiness,
-        "nodes":            nodes_data,
-        "gaps":             gaps,
-        "universe":         universe,
-        "actions":          [],
-        "subdir_mismatches": subdir_mismatches,
+        "machines":  data,
+        "drift":     drift,
+        "readiness": readiness,
+        "nodes":     nodes_data,
+        "gaps":      gaps,
+        "universe":  universe,
+        "actions":   [],
     }
     report_data["actions"] = build_actions(gaps, readiness, drift, nodes_data)
 
@@ -972,31 +836,6 @@ def main():
     (output_dir / f"custom_nodes_{timestamp}.txt").write_text("\n".join(nodes_lines))
     print(f"Written: custom_nodes_{timestamp}.txt")
 
-    # Subdir mismatch report
-    if subdir_mismatches:
-        mismatch_lines = [
-            "SUBDIR MISMATCH REPORT",
-            f"Generated: {timestamp}",
-            "Models that exist on both ImageBeast and Models_bare but in different subdirectories.",
-            "Fix: run fix_subdir_structure.bat to copy to correct location, then delete old.",
-            "=" * 72,
-            "",
-        ]
-        for m in subdir_mismatches:
-            mismatch_lines.append(f"  {m['filename']}  ({m['size_gb']:.2f} GB)")
-            mismatch_lines.append(f"    ImageBeast (correct): {m['src_rel']}")
-            mismatch_lines.append(f"    Models_bare (current): {m['dest_rel']}")
-            mismatch_lines.append("")
-        mismatch_lines.append(f"Total: {len(subdir_mismatches)} mismatches")
-        (output_dir / f"subdir_mismatches_{timestamp}.txt").write_text("\n".join(mismatch_lines))
-        print(f"Written: subdir_mismatches_{timestamp}.txt")
-
-        fix_bat = generate_subdir_fix_bat(subdir_mismatches, src_models_root, dest_models_bare)
-        (output_dir / "fix_subdir_structure.bat").write_text(fix_bat)
-        print(f"Written: fix_subdir_structure.bat  ({len(subdir_mismatches)} files to relocate)")
-    else:
-        print("Subdir structure: OK (no mismatches found)")
-
     # HTML report
     html = generate_html(report_data, timestamp, year_filter)
     html_path = output_dir / f"fleet_report_{timestamp}.html"
@@ -1021,20 +860,6 @@ def main():
         p = {"high": "!!!", "medium": " ! ", "low": "   "}.get(a["priority"], "   ")
         summary_lines.append(f"  [{p}]  {a['title']}")
         summary_lines.append(f"         {a['detail']}")
-    if subdir_mismatches:
-        summary_lines.append("")
-        summary_lines.append("SUBDIR MISMATCHES")
-        summary_lines.append("-" * 60)
-        summary_lines.append(f"  {len(subdir_mismatches)} models in wrong subdir — run fix_subdir_structure.bat")
-        for m in subdir_mismatches[:10]:
-            summary_lines.append(f"  {m['filename']}")
-            summary_lines.append(f"    is  : {m['dest_rel']}")
-            summary_lines.append(f"    want: {m['src_rel']}")
-        if len(subdir_mismatches) > 10:
-            summary_lines.append(f"  ... and {len(subdir_mismatches)-10} more (see subdir_mismatches_*.txt)")
-    else:
-        summary_lines.append("")
-        summary_lines.append("SUBDIR STRUCTURE: OK")
     (output_dir / f"summary_{timestamp}.txt").write_text("\n".join(summary_lines))
     print(f"Written: summary_{timestamp}.txt")
 
