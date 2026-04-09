@@ -502,12 +502,12 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
     else:
         mismatch_html = '<p style="color:#2ecc71">All models are in the correct subdirectories.</p>'
 
-    # --- CURRENT YEAR WORKFLOW COVERAGE ---
+    # --- PRIME WORKFLOW COVERAGE ---
     if prime_coverage and prime_scan:
         json_c = prime_scan.get("json_count", 0)
         png_c  = prime_scan.get("png_count", 0)
         total  = prime_scan.get("prime_models", set())
-        prime_html = f'<p>Scanned {json_c} JSON workflows + {png_c} PNGs &nbsp;|&nbsp; {len(total)} unique model references</p>'
+        prime_html = f'<p>Scanned {json_c} JSON workflows + {png_c} PNGs from Starting Images &nbsp;|&nbsp; {len(total)} unique model references</p>'
 
         for hostname, cov in prime_coverage.items():
             confirmed = cov["confirmed"]
@@ -668,7 +668,7 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
 <h2>Starting Images — Travel Readiness</h2>
 <div class="card">{si_html}</div>
 
-<h2>Current Year Workflow Coverage ({year_filter})</h2>
+<h2>Prime Workflow Coverage</h2>
 <div class="card">{prime_html}</div>
 
 </body>
@@ -1266,7 +1266,7 @@ def main():
     prime_scan     = scan_prime_workflows(config)
     prime_coverage = analyze_prime_coverage(data, prime_scan, config)
     if prime_scan:
-        print(f"Current year workflows scanned: {prime_scan['json_count']} JSON, {prime_scan['png_count']} PNG  ({len(prime_scan['prime_models'])} unique model refs)")
+        print(f"Prime workflows scanned: {prime_scan['json_count']} JSON, {prime_scan['png_count']} PNG  ({len(prime_scan['prime_models'])} unique model refs)")
     else:
         print("Prime workflows: no prime_workflows_dir configured")
 
@@ -1370,7 +1370,7 @@ def main():
         summary_lines.append(f"         {a['detail']}")
     if prime_coverage and prime_scan:
         summary_lines.append("")
-        summary_lines.append(f"CURRENT YEAR WORKFLOW COVERAGE ({year_filter})")
+        summary_lines.append("PRIME WORKFLOW COVERAGE")
         summary_lines.append("-" * 60)
         total_prime = len(prime_scan.get("prime_models", set()))
         summary_lines.append(f"  Prime models referenced: {total_prime}")

@@ -29,16 +29,27 @@ and workflow dependencies across the fleet, then running cross-machine gap analy
 
 ## The Fleet
 
-| Machine       | GPU  | VRAM | Models | Role                          |
-|---------------|------|------|--------|-------------------------------|
-| IMAGEBEAST    | 5090 | 32GB | 147    | Source of truth, runs everything |
-| CHATWORKHORSE | 3060 | 12GB |  41    | Shares Models_bare w/ Travel  |
-| TRAVELBEAST   | 5060 |  8GB |  41    | Shares Models_bare w/ Chat    |
+| Machine       | GPU  | VRAM | Role                             |
+|---------------|------|------|----------------------------------|
+| IMAGEBEAST    | 5090 | 32GB | Source of truth, runs everything |
+| CHATWORKHORSE | 3060 | 12GB | Shares Models_bare w/ Travel     |
+| TRAVELBEAST   | 5060 |  8GB | Shares Models_bare w/ Chat       |
 
 **Models_bare** is an OneDrive folder junctioned into ComfyUI on both Chat and Travel:
 - `C:\Users\pc\...\0ComfyUI\Models_bare` (ChatWorkhorse)
 - `C:\Users\DrDen\...\0ComfyUI\Models_bare` (TravelBeast)
 - Same OneDrive folder, different local paths. Adding a model to one adds it to both.
+
+**Workflow naming convention:**
+- `###tb` — TravelBeast variant (uses Models_bare paths)
+- `###c`  — ChatWorkhorse variant (uses Models_bare paths)
+- `###i`  — ImageBeast only (large models, high VRAM)
+- `###`   — no suffix, typically ImageBeast default
+
+**000 Starting Images folder** (`workflows/000 Starting Images`):
+- Contains one PNG per prime `tb` workflow, named identically to the workflow
+- Each PNG has the workflow embedded — drag onto ComfyUI canvas to load it
+- Used by the fleet report as the definitive travel readiness check
 
 ---
 
@@ -55,6 +66,7 @@ and workflow dependencies across the fleet, then running cross-machine gap analy
 | `Run-FleetScan-CHATWORKHORSE.bat` | Wrapper — just double-click this |
 | `Run-FleetScan-TRAVELBEAST.bat` | Wrapper — just double-click this |
 | `README.md` | This file |
+| `fleet_config_reference.md` | Config file field reference |
 
 ### On OneDrive (shared, all machines) — `0ComfyUI\Work\comfy-reports\`
 
@@ -69,6 +81,8 @@ and workflow dependencies across the fleet, then running cross-machine gap analy
 | `fleet-output/custom_nodes_*.txt` | Node comparison matrix |
 | `fleet-output/sync_ModelsBase_MIN.bat` | Copy to ImageBeast and run |
 | `fleet-output/sync_ModelsBase_MAYBE.bat` | Optional — larger marginal models |
+| `fleet-output/subdir_mismatches_*.txt` | Models in wrong subdirs vs ImageBeast |
+| `fleet-output/fix_subdir_structure.bat` | Robocopy to fix subdir mismatches |
 | `history/snapshot-*.json` | Drift detection history — do not delete |
 
 ### On Mac — `~/repos/scripts/comfyui/`
@@ -103,7 +117,8 @@ C:\repos\scripts\comfyui\Get-Models.ps1 -ModelsPath "C:\ComfyUI_Models\models"
 C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 `
     -ModelsPath "C:\ComfyUI_Models\models" `
     -WorkflowDir .\user\default\workflows\ `
-    -PngDir "C:\Users\Pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output\"
+    -PngDir "C:\Users\Pc\OneDrive\...\0ComfyUI\output\" `
+    -StartingPrimesDir "C:\Users\Pc\OneDrive\...\0ComfyUI\workflows\000 Starting Images"
 ```
 
 #### TRAVELBEAST
@@ -113,12 +128,13 @@ cd C:\ComfyUI-Easy-Install\ComfyUI
 C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .
 
 C:\repos\scripts\comfyui\Get-Models.ps1 `
-    -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"
+    -ModelsPath "C:\Users\DrDen\OneDrive\...\0ComfyUI\Models_bare"
 
 C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 `
-    -ModelsPath "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" `
+    -ModelsPath "C:\Users\DrDen\OneDrive\...\0ComfyUI\Models_bare" `
     -WorkflowDir .\user\default\workflows\ `
-    -PngDir "C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output\"
+    -PngDir "C:\Users\DrDen\OneDrive\...\0ComfyUI\output\" `
+    -StartingPrimesDir "C:\Users\DrDen\OneDrive\...\0ComfyUI\workflows\000 Starting Images"
 ```
 
 #### CHATWORKHORSE
@@ -128,12 +144,13 @@ cd C:\ComfyUI_windows_portable\ComfyUI
 C:\repos\scripts\comfyui\Get-CustomNodes.ps1 .
 
 C:\repos\scripts\comfyui\Get-Models.ps1 `
-    -ModelsPath "C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare"
+    -ModelsPath "C:\Users\pc\OneDrive\...\0ComfyUI\Models_bare"
 
 C:\repos\scripts\comfyui\Get-WorkflowModelMap.ps1 `
-    -ModelsPath "C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare" `
+    -ModelsPath "C:\Users\pc\OneDrive\...\0ComfyUI\Models_bare" `
     -WorkflowDir .\user\default\workflows\ `
-    -PngDir "C:\Users\Pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output\"
+    -PngDir "C:\Users\Pc\OneDrive\...\0ComfyUI\output\" `
+    -StartingPrimesDir "C:\Users\Pc\OneDrive\...\0ComfyUI\workflows\000 Starting Images"
 ```
 
 ---
@@ -158,8 +175,8 @@ Output goes to `comfy-reports/fleet-output/`. Open the HTML report in a browser.
 ### A) Sync Models to Models_bare (run on IMAGEBEAST)
 
 ```
-fleet-output\sync_ModelsBase_MIN.bat     ← run this first (safe for 8GB VRAM)
-fleet-output\sync_ModelsBase_MAYBE.bat   ← optional, 8–12GB models
+fleet-output\sync_ModelsBase_MIN.bat     <- run this first (safe for 8GB VRAM)
+fleet-output\sync_ModelsBase_MAYBE.bat   <- optional, 8-12GB models
 ```
 
 Robocopy copies from `C:\ComfyUI_Models\models\` into `Models_bare`.
@@ -168,174 +185,104 @@ OneDrive then syncs automatically to TravelBeast and ChatWorkhorse.
 > **Note:** Uses `/COPY:DAT` flag (Data, Attributes, Timestamps).
 > Do NOT use `/COPYALL` — it requires special Windows audit privileges and will fail.
 
-### B) Install Missing Custom Nodes
+### B) Fix Subdir Structure Mismatches
 
-Open ComfyUI → Manager → Install Missing Nodes.
+If the report shows mismatches (models in wrong subdirectories vs ImageBeast):
+
+```
+fleet-output\fix_subdir_structure.bat
+```
+
+This copies files to the correct subdir location. **Does not delete originals** — verify
+first, then manually delete the old copies.
+
+### C) Install Missing Custom Nodes
+
+Open ComfyUI -> Manager -> Install Missing Nodes.
 See `fleet-output/custom_nodes_*.txt` for the full matrix of what's missing where.
 
-**Priority nodes to install on TravelBeast:**
-- `comfyui-qwenvl` — Qwen Vision Language nodes (used heavily)
-- `comfyui_ipadapter_plus` — IPAdapter face/style transfer
-- `was-ns` — WAS Node Suite, used in many workflows
-- `vantage-dreamomni2` — DreamOmni2 image editing
-- `comfyui_layerstyle` — layer compositing, blend modes
-- `comfyui-advancedliveportrait` — portrait animation
+---
+
+## HTML Report Sections Explained
+
+| Section | What it shows |
+|---------|---------------|
+| **Next Actions** | Prioritized to-do list — !!! high, ! medium, blank low |
+| **Travel / Workflow Readiness** | % of current-year workflows runnable per machine |
+| **Model Drift** | What changed since last run (models added/removed) |
+| **Model Gaps** | What's missing from Models_bare vs ImageBeast |
+| **Custom Nodes — Fleet Matrix** | Which nodes are on which machines |
+| **Unused Models on ImageBeast** | Models on disk never referenced in any workflow |
+| **Subdir Structure Mismatches** | Models at wrong paths vs ImageBeast structure |
+| **Starting Images — Travel Readiness** | Per-PNG readiness for your curated tb prime set |
+| **Current Year Workflow Coverage** | All current-year workflows across fleet, all machines |
 
 ---
 
 ## Sample Output — What Success Looks Like
 
-### Get-CustomNodes.ps1
+### Get-WorkflowModelMap.ps1 (with StartingPrimesDir)
 
 ```
-=============================================
-  ComfyUI Custom Nodes Inventory
-  Host : IMAGEBEAST
-  Root : .
-=============================================
-
-Found 46 custom node(s):
-
-  1. .disabled
-  2. __pycache__
-  3. cocotools_io
-  ...
- 44. Vantage-DreamOmni2
- 45. was-ns
- 46. zhihui_nodes_comfyui
-
-Total: 46 custom nodes
-
-Saved: .\comfy-reports\IMAGEBEAST-CustomNodes-2026-04-07_0954.txt
+Scanning Starting Images (prime set) in: C:\...\workflows\000 Starting Images
+  Found 42 PNG file(s)
+  SKIPPED (no workflow data): 703_tb_Upscale_none.png    <- fine, no-model workflows
+  SKIPPED (no workflow data): 810_tb_RemoveBackground_none.png
+  Prime processed : 37  |  Skipped (no workflow data): 5
 ```
 
-### Get-Models.ps1
+### comfy_fleet.sh (Mac) — healthy fleet
 
 ```
-=============================================
-  ComfyUI Models Inventory
-  Host : IMAGEBEAST
-  Root : C:\ComfyUI_Models\
-=============================================
-
-Scanning models...
-
-⚠ This error can be ignored — it's a Hugging Face cache folder, not a model:
-  Get-ChildItem : Access to the path 'C:\ComfyUI_Models\models\dreamomni2\.cache' is denied.
-
-Found 147 model file(s)
-
-  checkpoints       14 file(s)    112.71 GB
-  clip               1 file(s)      0.80 GB
-  clip_vision        5 file(s)     15.25 GB
-  controlnet         4 file(s)      3.37 GB
-  diffusion_models  20 file(s)    278.84 GB
-  ...
-  TOTAL            147 file(s)    613.25 GB
-
-Saved: .\comfy-reports\IMAGEBEAST-Models-2026-04-07_0958.csv
-```
-
-### Get-WorkflowModelMap.ps1
-
-```
-=============================================
-  ComfyUI Workflow -> Model Map
-  Host      : IMAGEBEAST
-  Workflows : .\user\default\workflows\
-  Models    : C:\ComfyUI_Models\models
-=============================================
-
-Building model inventory...
-  Found 147 model file(s) on disk
-
-Scanning JSON workflows in: .\user\default\workflows\
-  Found 353 JSON file(s)
-  SKIP (bad JSON): FaceLock.json          ← these are fine to skip
-  SKIP (bad JSON): pluid_fluid_test4.json
-  SKIP (bad JSON): pluid_fluid_test5.json
-  SKIP (bad JSON): img2img.json
-  Processed : 302  |  Skipped: 51
-
-Scanning PNG outputs in: C:\Users\Pc\OneDrive\...\output\
-  Found 627 PNG file(s)
-  PNG processed : 578  |  Skipped: 105
-
---- Model Usage Summary (top 20) ---
-
-model_filename                               model_size_gb  workflow_count
---------------                               -------------  --------------
-flux2-vae.safetensors                                0.313              70
-ae.safetensors                                       0.313              67
-clip_l.safetensors                                   0.229              50
-qwen_3_4b.safetensors                                7.492              47
-flux-2-klein-4b-fp8.safetensors                      3.791              33
-...
-
---- Missing Models (referenced but NOT on disk): 229 ---
-  (workflows reference models you don't have — normal for older/downloaded workflows)
-
---- Unused Models (on disk but NEVER referenced): 70 ---
-  (models installed but no workflow uses them — candidates for cleanup)
-
-Output files:
-  .\comfy-reports\IMAGEBEAST-WorkflowMap-2026-04-07_1101-full_map.csv
-  .\comfy-reports\IMAGEBEAST-WorkflowMap-2026-04-07_1101-model_usage.csv
-  .\comfy-reports\IMAGEBEAST-WorkflowMap-2026-04-07_1101-unused_models.csv
-  .\comfy-reports\IMAGEBEAST-WorkflowMap-2026-04-07_1101-missing_models.csv
-  .\comfy-reports\IMAGEBEAST-WorkflowMap-2026-04-07_1101-summary.txt
-
-Done!
-```
-
-### comfy_fleet.sh (Mac)
-
-```
-ComfyUI Fleet Analysis  2026-04-07
+ComfyUI Fleet Analysis  2026-04-09
 Year filter: 2026
 ============================================================
 READINESS
 ------------------------------------------------------------
-  IMAGEBEAST        86%  (589/685 workflows)  32GB VRAM
-  CHATWORKHORSE     29%  (201/685 workflows)  12GB VRAM  ← expected, VRAM-limited
-  TRAVELBEAST       29%  (201/683 workflows)   8GB VRAM  ← expected, VRAM-limited
+  IMAGEBEAST        87%  (795/914 workflows)  32GB VRAM
+  CHATWORKHORSE     58%  (528/914 workflows)  12GB VRAM  <- expected, VRAM-limited
+  TRAVELBEAST       58%  (526/912 workflows)   8GB VRAM  <- expected, VRAM-limited
+
+STARTING IMAGES -- TRAVEL READINESS
+------------------------------------------------------------
+  TRAVELBEAST: READY  (19 models present, 0 missing)
 
 NEXT ACTIONS
 ------------------------------------------------------------
   [!!!]  Run sync_ModelsBase_MIN.bat on ImageBeast
-         29 files, 58.80 GB
-  [ ! ]  Run sync_ModelsBase_MAYBE.bat on ImageBeast
-         6 files, 59.34 GB — marginal, test before travelling
   [ ! ]  Install missing nodes on TravelBeast via ComfyUI Manager
-         Priority: comfyui-qwenvl, comfyui_ipadapter_plus, was-ns, vantage-dreamomni2
   [   ]  Review unused models on ImageBeast
-         Run cleanup to reclaim disk space
 ```
 
-> **Note on Chat/Travel readiness %:** The 29% figure is not a problem.
-> The blocked workflows require models like `flux1-fill-dev` (22GB) or
-> `Qwen-Rapid-AIO` (26GB) that won't fit in 8–12GB VRAM regardless.
-> Those workflows are ImageBeast-only by design.
+> **Note on Chat/Travel readiness %:** 58% is expected — blocked workflows require large
+> models (flux1-fill-dev 22GB, Qwen-Rapid-AIO 26GB) that won't fit in 8-12GB VRAM.
+> Those are ImageBeast-only by design.
 
 ---
 
 ## Known Issues / Notes
 
-- **`.cache` access denied error** on ImageBeast: harmless. It's a Hugging Face
-  model cache folder inside `dreamomni2`. All 147 models are still found correctly.
+- **`.cache` access denied** on ImageBeast: harmless — Hugging Face cache folder inside
+  `dreamomni2`. All models still found correctly.
 
-- **Bad JSON skips**: `FaceLock.json`, `pluid_fluid_test4/5.json`, `img2img.json`
-  are corrupt or non-standard workflow files. Safe to ignore.
+- **Bad JSON skips**: corrupt or non-standard workflow files. Safe to ignore.
 
 - **Chat and Travel show identical model counts**: by design — they share the same
   OneDrive `Models_bare` folder via Windows junction (`mklink /j`).
 
-- **"Missing models" count is large**: most are path-format variants of models you
-  already have (e.g. `FLUX2\flux2-vae.safetensors` vs `flux2-vae.safetensors`),
-  or models from downloaded OpenArt workflows you never installed. Not a real problem.
+- **"Missing models" count is large on ImageBeast**: mostly path-format variants
+  (e.g. `FLUX2\model.safetensors` vs `model.safetensors`), not genuine gaps.
 
 - **PS1 files won't open on double-click**: Windows security feature. Use the
-  `.bat` wrapper files instead — they call PowerShell explicitly.
+  `.bat` wrappers instead.
 
 - **robocopy flag**: always use `/COPY:DAT` not `/COPYALL`.
   `/COPYALL` requires audit privileges that even admin accounts don't have by default.
+
+- **Starting Images PNGs with `_none` in name**: skipped because they have no model
+  references (resize/remove background workflows). This is correct — they will always
+  run regardless of model state.
+
+- **Subdir mismatches**: models exist on Models_bare but at different paths than
+  ImageBeast. Workflows may fail to find them until `fix_subdir_structure.bat` is run.
+  Post-trip cleanup item.
