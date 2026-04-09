@@ -15,12 +15,11 @@
 # =============================================================================
 
 param(
-    [string]$ComfyRoot         = "C:\ComfyUI_easy\ComfyUI-Easy-Install\comfyui",
-    [string]$WorkflowDir       = "",       # JSON workflow folder (defaults to ComfyRoot\user\default\workflows)
-    [string]$PngDir            = "",       # Separate folder to scan for PNG files with embedded workflows
-    [string]$ModelsPath        = "",       # Override default models dir (e.g. -ModelsPath "D:\AI\models")
-    [string]$StartingPrimesDir = "",       # 000 Starting Images folder - PNGs tagged as source=starting_images
-    [string]$OutputDir         = ".\comfy-reports",
+    [string]$ComfyRoot   = "C:\ComfyUI_easy\ComfyUI-Easy-Install\comfyui",
+    [string]$WorkflowDir = "",       # JSON workflow folder (defaults to ComfyRoot\user\default\workflows)
+    [string]$PngDir      = "",       # Separate folder to scan for PNG files with embedded workflows
+    [string]$ModelsPath  = "",       # Override default models dir (e.g. -ModelsPath "D:\AI\models")
+    [string]$OutputDir   = ".\comfy-reports",
     [switch]$NoFile
 )
 
@@ -46,9 +45,6 @@ Write-Host "  Workflows : $WorkflowDir"                   -ForegroundColor Cyan
 if ($PngDir) {
 Write-Host "  PNG Dir   : $PngDir"                        -ForegroundColor Cyan
 }
-if ($StartingPrimesDir) {
-Write-Host "  Primes Dir: $StartingPrimesDir"             -ForegroundColor Cyan
-}
 Write-Host "  Models    : $modelsPath"                    -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host ""
@@ -62,10 +58,6 @@ foreach ($p in @($modelsPath, $WorkflowDir)) {
 if ($PngDir -and !(Test-Path $PngDir)) {
     Write-Host "ERROR: PngDir not found: $PngDir" -ForegroundColor Red
     exit 1
-}
-if ($StartingPrimesDir -and !(Test-Path $StartingPrimesDir)) {
-    Write-Host "WARNING: StartingPrimesDir not found: $StartingPrimesDir" -ForegroundColor Yellow
-    $StartingPrimesDir = ""
 }
 
 # ---------------------------------------------------------------------------
@@ -363,22 +355,6 @@ foreach ($batch in $pngDirsToScan) {
 
 if ($pngDirsToScan.Count -gt 0) {
     Write-Host "  PNG processed : $pngProcessed  |  Skipped (no workflow data): $pngSkipped" -ForegroundColor Green
-}
-
-# Dedicated Starting Primes folder (tagged as source=starting_images)
-if ($StartingPrimesDir) {
-    Write-Host ""
-    Write-Host "Scanning Starting Images (prime set) in: $StartingPrimesDir" -ForegroundColor Yellow
-    $primePngs = @(Get-ChildItem -Path $StartingPrimesDir -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -eq '.png' })
-    Write-Host "  Found $($primePngs.Count) PNG file(s)" -ForegroundColor Green
-    $primeProcessed = 0
-    $primeSkipped   = 0
-    foreach ($wf in $primePngs) {
-        $ok = Process-WorkflowFile -wf $wf -sourceLabel "starting_images"
-        if ($ok) { $primeProcessed++ } else { $primeSkipped++ }
-    }
-    Write-Host "  Prime processed : $primeProcessed  |  Skipped (no workflow data): $primeSkipped" -ForegroundColor Green
 }
 
 Write-Host ""

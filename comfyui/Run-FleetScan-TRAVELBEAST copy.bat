@@ -1,19 +1,18 @@
 @echo off
 REM ============================================================
-REM  Run-FleetScan-CHATWORKHORSE.bat
+REM  Run-FleetScan-TRAVELBEAST.bat
 REM ============================================================
 
-set COMFY=C:\ComfyUI_windows_portable\ComfyUI
+set COMFY=C:\ComfyUI-Easy-Install\ComfyUI
 set SCRIPTS=C:\repos\scripts\comfyui
-set MODELS=C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare
+set MODELS=C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Models_bare
 set WFDIR=%COMFY%\user\default\workflows
-set PNGDIR=C:\Users\Pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output
-set PRIMEDIR=C:\Users\Pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\workflows\000 Starting Images
-set OUTPUT=C:\Users\pc\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Work\comfy-reports
+set PNGDIR=C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\output
+set OUTPUT=C:\Users\DrDen\OneDrive\DropBoxReplacement\MathesDropBox\0ComfyUI\Work\comfy-reports
 
 echo.
 echo =============================================
-echo  ComfyUI Fleet Scan -- CHATWORKHORSE
+echo  ComfyUI Fleet Scan -- TRAVELBEAST
 echo =============================================
 echo.
 
@@ -28,7 +27,7 @@ powershell -ExecutionPolicy Bypass -File "%SCRIPTS%\Get-Models.ps1" -ModelsPath 
 
 echo.
 echo [3/3] Mapping workflows to models...
-powershell -ExecutionPolicy Bypass -File "%SCRIPTS%\Get-WorkflowModelMap.ps1" -ModelsPath "%MODELS%" -WorkflowDir "%WFDIR%" -PngDir "%PNGDIR%" -StartingPrimesDir "%PRIMEDIR%" -OutputDir "%OUTPUT%"
+powershell -ExecutionPolicy Bypass -File "%SCRIPTS%\Get-WorkflowModelMap.ps1" -ModelsPath "%MODELS%" -WorkflowDir "%WFDIR%" -PngDir "%PNGDIR%" -OutputDir "%OUTPUT%"
 
 echo.
 echo =============================================
