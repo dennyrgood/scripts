@@ -390,8 +390,6 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
     subdir_mismatches = report_data.get("subdir_mismatches", [])
     prime_coverage    = report_data.get("prime_coverage", {})
     prime_scan        = report_data.get("prime_scan", {})
-    si_coverage       = report_data.get("si_coverage", {})
-    si_scan           = report_data.get("si_scan", {})
 
     hostnames = list(machines.keys())
 
@@ -536,56 +534,6 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
     else:
         prime_html = '<p>No prime_workflows_dir configured in fleet_config.json.</p>'
 
-    # --- STARTING IMAGES COVERAGE ---
-    if si_coverage and si_scan and si_scan.get("png_count", 0) > 0:
-        png_c   = si_scan["png_count"]
-        si_mods = si_scan.get("models", set())
-        si_html = f'<p>Based on <strong>{png_c} PNGs</strong> in 000 Starting Images &nbsp;|&nbsp; <strong>{len(si_mods)} unique model references</strong></p>'
-
-        for hostname, cov in si_coverage.items():
-            confirmed = cov["confirmed"]
-            missing   = cov["missing"]
-            beyond    = cov["beyond"]
-            total_beyond_gb = sum(b["size_gb"] for b in beyond)
-            ok_color  = "#2ecc71" if not missing else "#e74c3c"
-            si_html  += f'<h4>{hostname}</h4><p>'
-            si_html  += f'<span style="background:{ok_color};color:white;padding:2px 8px;border-radius:4px">{"READY" if not missing else "NOT READY"}</span> &nbsp; '
-            si_html  += f'<span style="color:#2ecc71">&#10003; {len(confirmed)} models present</span>'
-            if missing:
-                si_html += f' &nbsp;|&nbsp; <span style="color:#e74c3c">&#10007; {len(missing)} MISSING</span>'
-            si_html  += f' &nbsp;|&nbsp; <span style="color:#888">{len(beyond)} beyond ({total_beyond_gb:.2f} GB)</span>'
-            si_html  += '</p>'
-            if missing:
-                si_html += '<table><tr><th style="background:#e74c3c">Missing Model (must add to run these workflows)</th></tr>'
-                for m in missing:
-                    si_html += f'<tr style="background:#fff0f0"><td style="font-family:monospace">{m}</td></tr>'
-                si_html += '</table>'
-            if beyond:
-                si_html += f'<details><summary style="cursor:pointer;color:#888">Beyond starting images set — {len(beyond)} models, {total_beyond_gb:.2f} GB (click to expand)</summary>'
-                si_html += '<table><tr><th>Model</th><th>Category</th><th>Size</th></tr>'
-                for b in beyond:
-                    si_html += f'<tr><td>{b["filename"]}</td><td>{b["category"]}</td><td>{b["size_gb"]:.2f} GB</td></tr>'
-                si_html += '</table></details>'
-
-        # Per-workflow breakdown
-        si_html += '<h4>Per-Workflow Status</h4>'
-        si_html += '<table><tr><th>PNG</th><th>Models Referenced</th><th>Status</th></tr>'
-        for wf in si_scan.get("workflows", []):
-            wf_missing = []
-            for hostname, cov in si_coverage.items():
-                machine_models = set(m.lower() for m in
-                    [row["filename"] for row in data[hostname]["models"].values()])
-                wf_missing = [m for m in wf["models"] if m not in machine_models]
-                break  # just use first non-source machine for status
-            status_color = "#2ecc71" if not wf_missing else "#e74c3c"
-            status_text  = "Ready" if not wf_missing else f"Missing: {', '.join(wf_missing)}"
-            si_html += f'<tr><td style="font-family:monospace;font-size:0.85em">{wf["name"]}</td>'
-            si_html += f'<td style="font-size:0.8em">{", ".join(wf["models"])}</td>'
-            si_html += f'<td style="color:{status_color}">{status_text}</td></tr>'
-        si_html += '</table>'
-    else:
-        si_html = '<p>No Starting Images PNGs found. Add test output PNGs to the 000 Starting Images folder.</p>'
-
     # --- UNUSED ON IMAGEBEAST ---
     unused_html = ""
     source = [h for h, m in machines.items() if m["config"].get("is_source")][0] if machines else ""
@@ -667,9 +615,6 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
 
 <h2>Subdir Structure Mismatches</h2>
 <div class="card">{mismatch_html}</div>
-
-<h2>Starting Images — Travel Readiness</h2>
-<div class="card">{si_html}</div>
 
 <h2>Prime Workflow Coverage</h2>
 <div class="card">{prime_html}</div>
@@ -838,80 +783,6 @@ def analyze_prime_coverage(data: dict, prime_scan: dict, config: dict) -> dict:
             "missing":      missing,
             "beyond":       beyond_rich,
             "prime_total":  len(prime_models),
-        }
-
-    return results
-
-# ---------------------------------------------------------------------------
-# Starting Images dedicated coverage report
-# Scans ONLY the PNGs in 000 Starting Images — the curated travel set
-# ---------------------------------------------------------------------------
-
-def scan_starting_images(data: dict) -> dict:
-    """
-    Extract starting_images rows from each machine's full_map CSV.
-    These are PNGs scanned from the 000 Starting Images folder,
-    tagged source=starting_images by Get-WorkflowModelMap.ps1.
-    Returns dict with models set and per-workflow breakdown.
-    """
-    all_models = set()
-    workflows  = defaultdict(set)  # png_name -> set of model filenames
-
-    for hostname, machine in data.items():
-        for row in machine.get("full_map", []):
-            if row.get("source", "").lower() != "starting_images":
-                continue
-            fn = row.get("model_filename", "")
-            if fn and fn != "(not found on disk)":
-                key = fn.lower()
-                all_models.add(key)
-                wf_name = row["workflow_file"].replace("\\", "/").split("/")[-1]
-                workflows[wf_name].add(key)
-
-    wf_list = [
-        {"name": name, "models": sorted(models)}
-        for name, models in sorted(workflows.items())
-    ]
-
-    return {
-        "models":    all_models,
-        "workflows": wf_list,
-        "png_count": len(wf_list),
-    }
-
-
-def analyze_starting_images_coverage(data: dict, si_scan: dict) -> dict:
-    """
-    For each machine: which starting-image models are present / missing / beyond.
-    """
-    if not si_scan or not si_scan.get("models"):
-        return {}
-
-    si_models = si_scan["models"]
-    results   = {}
-
-    for hostname, machine in data.items():
-        machine_models = set(machine["models"].keys())
-
-        confirmed = sorted(si_models & machine_models)
-        missing   = sorted(si_models - machine_models)
-        beyond    = sorted(machine_models - si_models)
-
-        beyond_rich = []
-        for fn in beyond:
-            row = machine["models"].get(fn, {})
-            beyond_rich.append({
-                "filename": row.get("filename", fn),
-                "size_gb":  float(row.get("size_gb", 0)),
-                "category": row.get("category", ""),
-            })
-        beyond_rich.sort(key=lambda x: x["size_gb"], reverse=True)
-
-        results[hostname] = {
-            "confirmed": confirmed,
-            "missing":   missing,
-            "beyond":    beyond_rich,
-            "si_total":  len(si_models),
         }
 
     return results
@@ -1273,14 +1144,6 @@ def main():
     else:
         print("Prime workflows: no prime_workflows_dir configured")
 
-    # Starting Images dedicated coverage (from CSV source=starting_images rows)
-    si_scan     = scan_starting_images(data)
-    si_coverage = analyze_starting_images_coverage(data, si_scan)
-    if si_scan.get("png_count", 0) > 0:
-        print(f"Starting Images: {si_scan['png_count']} PNGs, {len(si_scan.get('models', set()))} unique model refs")
-    else:
-        print("Starting Images: no source=starting_images rows found — re-run fleet scans on Windows machines")
-
     # Build actions
     report_data = {
         "machines":         data,
@@ -1293,8 +1156,6 @@ def main():
         "subdir_mismatches": subdir_mismatches,
         "prime_coverage":   prime_coverage,
         "prime_scan":       prime_scan,
-        "si_coverage":      si_coverage,
-        "si_scan":          si_scan,
     }
     report_data["actions"] = build_actions(gaps, readiness, drift, nodes_data)
 
@@ -1384,21 +1245,6 @@ def main():
             total_beyond_gb = sum(b["size_gb"] for b in beyond)
             summary_lines.append(f"  {hostname}:")
             summary_lines.append(f"    Confirmed: {len(confirmed)}  Missing: {len(missing)}  Beyond: {len(beyond)} ({total_beyond_gb:.2f} GB)")
-            for m in missing:
-                summary_lines.append(f"    !! MISSING: {m}")
-
-    if si_coverage and si_scan and si_scan.get("png_count", 0) > 0:
-        summary_lines.append("")
-        summary_lines.append("STARTING IMAGES — TRAVEL READINESS")
-        summary_lines.append("-" * 60)
-        summary_lines.append(f"  {si_scan['png_count']} PNGs scanned | {len(si_scan.get('models', set()))} model refs")
-        for hostname, cov in si_coverage.items():
-            confirmed = cov["confirmed"]
-            missing   = cov["missing"]
-            beyond    = cov["beyond"]
-            total_beyond_gb = sum(b["size_gb"] for b in beyond)
-            status = "READY" if not missing else "NOT READY"
-            summary_lines.append(f"  {hostname}: {status}  ({len(confirmed)} present, {len(missing)} missing, {len(beyond)} beyond/{total_beyond_gb:.2f}GB)")
             for m in missing:
                 summary_lines.append(f"    !! MISSING: {m}")
 
