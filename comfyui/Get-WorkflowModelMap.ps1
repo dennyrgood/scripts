@@ -376,7 +376,10 @@ if ($StartingPrimesDir) {
     $primeSkipped   = 0
     foreach ($wf in $primePngs) {
         $ok = Process-WorkflowFile -wf $wf -sourceLabel "starting_images"
-        if ($ok) { $primeProcessed++ } else { $primeSkipped++ }
+        if ($ok) { $primeProcessed++ } else {
+            $primeSkipped++
+            Write-Host "  SKIPPED (no workflow data): $($wf.Name)" -ForegroundColor Yellow
+        }
     }
     Write-Host "  Prime processed : $primeProcessed  |  Skipped (no workflow data): $primeSkipped" -ForegroundColor Green
 }
