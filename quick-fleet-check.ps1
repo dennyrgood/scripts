@@ -17,10 +17,10 @@ Write-Host ""
 # ---- Helper functions ----
 
 function Check-Port {
-    param([string]$Label, [string]$Host, [int]$Port, [int]$Timeout = 1000)
+    param([string]$Label, [string]$HostName, [int]$Port, [int]$Timeout = 1000)
     try {
         $tcp = New-Object System.Net.Sockets.TcpClient
-        $conn = $tcp.BeginConnect($Host, $Port, $null, $null)
+        $conn = $tcp.BeginConnect($HostName, $Port, $null, $null)
         $ok = $conn.AsyncWaitHandle.WaitOne($Timeout, $false)
         $tcp.Close()
         if ($ok) {
@@ -65,17 +65,19 @@ function Section {
 # ---- Tailscale ----
 
 Section "Tailscale"
-$ts = Get-Process -Name "tailscale" -ErrorAction SilentlyContinue
-if ($ts) {
-    Write-Host "  [OK]  Tailscale running" -ForegroundColor Green
+$tsSvc = Get-Service -Name "Tailscale" -ErrorAction SilentlyContinue
+if ($tsSvc -and $tsSvc.Status -eq "Running") {
+    Write-Host "  [OK]  Tailscale service running" -ForegroundColor Green
     try {
         $tsStatus = & tailscale status 2>&1 | Select-Object -First 3
         $tsStatus | ForEach-Object { Write-Host "        $_" -ForegroundColor DarkGray }
     } catch {
         Write-Host "        (tailscale CLI not in PATH)" -ForegroundColor DarkGray
     }
+} elseif ($tsSvc) {
+    Write-Host "  [--]  Tailscale service exists but status: $($tsSvc.Status)" -ForegroundColor Red
 } else {
-    Write-Host "  [--]  Tailscale NOT running" -ForegroundColor Red
+    Write-Host "  [--]  Tailscale service NOT found" -ForegroundColor Red
 }
 
 # ---- Cloudflared ----
