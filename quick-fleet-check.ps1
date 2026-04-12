@@ -92,15 +92,15 @@ switch -Wildcard ($machine) {
         Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
         Section "OpenWebUI  (chat.ldmathes.cc)"
-        Check-Port "OpenWebUI" "localhost" 3000 | Out-Null
+        Check-Port "OpenWebUI" "localhost" 8080 | Out-Null
 
         Section "Flask APIs"
         Check-Port "Flask api.ldmathes.cc"        "localhost" 5000 | Out-Null
         Check-Port "Flask api-edit.ldmathes.cc"   "localhost" 5001 | Out-Null
-        Check-Port "Flask weatherproxy"            "localhost" 5002 | Out-Null
+        Check-Port "Flask weatherproxy"            "localhost" 5005 | Out-Null
 
         Section "Fleet Status"
-        Check-Port "Fleet Status dashboard" "localhost" 8080 | Out-Null
+        Check-Port "Fleet Status dashboard" "localhost" 5010 | Out-Null
     }
 
     # ============================================================
@@ -109,13 +109,13 @@ switch -Wildcard ($machine) {
         Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
         Section "OpenWebUI  (talk.ldmathes.cc)"
-        Check-Port "OpenWebUI" "localhost" 3000 | Out-Null
+        Check-Port "OpenWebUI" "localhost" 8080 | Out-Null
 
         Section "ComfyUI  (clips.ldmathes.cc)"
         Check-Port "ComfyUI" "localhost" 8188 | Out-Null
 
         Section "Fleet Status  (fleet-bkp.ldmathes.cc)"
-        Check-Port "Fleet Status dashboard" "localhost" 8080 | Out-Null
+        Check-Port "Fleet Status dashboard" "localhost" 5010 | Out-Null
 
         Section "NVMe Health Warning"
         Write-Host "  [!!]  ChatWorkHorse NVMe (Micron 2200s) is KNOWN FAILING" -ForegroundColor Magenta
