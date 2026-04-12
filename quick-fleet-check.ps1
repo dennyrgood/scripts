@@ -188,3 +188,4 @@ Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ForEach-Ob
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Done.  $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
+pause
