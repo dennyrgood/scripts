@@ -77,17 +77,14 @@ if ($tsSvc -and $tsSvc.Status -eq "Running") {
     Write-Host "  [--]  Tailscale service NOT found" -ForegroundColor Red
 }
 
-# ---- Cloudflared ----
-
-Section "Cloudflare Tunnel"
-Check-Process "cloudflared" "cloudflared" | Out-Null
-
 # ---- Machine-specific service checks ----
 
 switch -Wildcard ($machine) {
 
     # ============================================================
     "AMSTERDAMDESK*" {
+        Section "Cloudflare Tunnel"
+        Check-Process "cloudflared" "cloudflared" | Out-Null
         Section "Ollama"
         Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
@@ -105,6 +102,8 @@ switch -Wildcard ($machine) {
 
     # ============================================================
     "CHATWORKHORSE" {
+        Section "Cloudflare Tunnel"
+        Check-Process "cloudflared" "cloudflared" | Out-Null
         Section "Ollama  (Tailscale-only)"
         Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
@@ -124,6 +123,8 @@ switch -Wildcard ($machine) {
 
     # ============================================================
     "IMAGEBEAST" {
+        Section "Cloudflare Tunnel"
+        Check-Process "cloudflared" "cloudflared" | Out-Null
         Section "ComfyUI  (image.ldmathes.cc)"
         Check-Port "ComfyUI" "localhost" 8188 | Out-Null
 
