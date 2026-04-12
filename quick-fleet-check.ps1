@@ -87,7 +87,7 @@ Check-Process "cloudflared" "cloudflared" | Out-Null
 switch -Wildcard ($machine) {
 
     # ============================================================
-    "AMSTERDAMDESKTOP" {
+    "AMSTERDAMDESK*" {
         Section "Ollama"
         Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
