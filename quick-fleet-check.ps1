@@ -8,11 +8,9 @@ $host.UI.RawUI.WindowTitle = "Fleet Check"
 $machine = $env:COMPUTERNAME.ToUpper()
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm"
 
-Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  FLEET QUICK CHECK  |  $machine  |  $timestamp" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host ""
 
 # ---- Helper functions ----
 
@@ -58,7 +56,6 @@ function Check-URL {
 
 function Section {
     param([string]$Title)
-    Write-Host ""
     Write-Host "  --- $Title ---" -ForegroundColor Yellow
 }
 
@@ -83,7 +80,7 @@ if ($tsSvc -and $tsSvc.Status -eq "Running") {
 # ---- Cloudflared ----
 
 Section "Cloudflare Tunnel"
-Check-Process "cloudflared" "cloudflared"
+Check-Process "cloudflared" "cloudflared" | Out-Null
 
 # ---- Machine-specific service checks ----
 
@@ -92,33 +89,33 @@ switch -Wildcard ($machine) {
     # ============================================================
     "AMSTERDAMDESKTOP" {
         Section "Ollama"
-        Check-Port "Ollama API" "localhost" 11434
+        Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
         Section "OpenWebUI  (chat.ldmathes.cc)"
-        Check-Port "OpenWebUI" "localhost" 3000
+        Check-Port "OpenWebUI" "localhost" 3000 | Out-Null
 
         Section "Flask APIs"
-        Check-Port "Flask api.ldmathes.cc"        "localhost" 5000
-        Check-Port "Flask api-edit.ldmathes.cc"   "localhost" 5001
-        Check-Port "Flask weatherproxy"            "localhost" 5002
+        Check-Port "Flask api.ldmathes.cc"        "localhost" 5000 | Out-Null
+        Check-Port "Flask api-edit.ldmathes.cc"   "localhost" 5001 | Out-Null
+        Check-Port "Flask weatherproxy"            "localhost" 5002 | Out-Null
 
         Section "Fleet Status"
-        Check-Port "Fleet Status dashboard" "localhost" 8080
+        Check-Port "Fleet Status dashboard" "localhost" 8080 | Out-Null
     }
 
     # ============================================================
     "CHATWORKHORSE" {
         Section "Ollama  (Tailscale-only)"
-        Check-Port "Ollama API" "localhost" 11434
+        Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
         Section "OpenWebUI  (talk.ldmathes.cc)"
-        Check-Port "OpenWebUI" "localhost" 3000
+        Check-Port "OpenWebUI" "localhost" 3000 | Out-Null
 
         Section "ComfyUI  (clips.ldmathes.cc)"
-        Check-Port "ComfyUI" "localhost" 8188
+        Check-Port "ComfyUI" "localhost" 8188 | Out-Null
 
         Section "Fleet Status  (fleet-bkp.ldmathes.cc)"
-        Check-Port "Fleet Status dashboard" "localhost" 8080
+        Check-Port "Fleet Status dashboard" "localhost" 8080 | Out-Null
 
         Section "NVMe Health Warning"
         Write-Host "  [!!]  ChatWorkHorse NVMe (Micron 2200s) is KNOWN FAILING" -ForegroundColor Magenta
@@ -128,10 +125,10 @@ switch -Wildcard ($machine) {
     # ============================================================
     "IMAGEBEAST" {
         Section "ComfyUI  (image.ldmathes.cc)"
-        Check-Port "ComfyUI" "localhost" 8188
+        Check-Port "ComfyUI" "localhost" 8188 | Out-Null
 
         Section "Ollama  (Tailscale-only)"
-        Check-Port "Ollama API" "localhost" 11434
+        Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
         Section "RAM Note"
         $ram = (Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1GB
@@ -146,10 +143,10 @@ switch -Wildcard ($machine) {
     # ============================================================
     "TRAVELBEAST" {
         Section "ComfyUI  (local)"
-        Check-Port "ComfyUI" "localhost" 8188
+        Check-Port "ComfyUI" "localhost" 8188 | Out-Null
 
         Section "Ollama  (Tailscale-only)"
-        Check-Port "Ollama API" "localhost" 11434
+        Check-Port "Ollama API" "localhost" 11434 | Out-Null
 
         Section "OneDrive Sync"
         $od = Get-Process -Name "OneDrive" -ErrorAction SilentlyContinue
@@ -164,14 +161,13 @@ switch -Wildcard ($machine) {
 
     # ============================================================
     default {
-        Write-Host ""
         Write-Host "  [??]  Unknown machine: $machine" -ForegroundColor Magenta
         Write-Host "        Running generic checks only (Tailscale + cloudflared above)" -ForegroundColor DarkGray
 
         Section "Common Ports (generic)"
-        Check-Port "Ollama"    "localhost" 11434
-        Check-Port "ComfyUI"   "localhost" 8188
-        Check-Port "OpenWebUI" "localhost" 3000
+        Check-Port "Ollama"    "localhost" 11434 | Out-Null
+        Check-Port "ComfyUI"   "localhost" 8188  | Out-Null
+        Check-Port "OpenWebUI" "localhost" 3000  | Out-Null
     }
 }
 
@@ -189,8 +185,6 @@ Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ForEach-Ob
 
 # ---- Done ----
 
-Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Done.  $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host ""
