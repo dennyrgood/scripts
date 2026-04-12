@@ -64,12 +64,12 @@ function Section {
 Section "Tailscale"
 $tsSvc = Get-Service -Name "Tailscale" -ErrorAction SilentlyContinue
 if ($tsSvc -and $tsSvc.Status -eq "Running") {
-    Write-Host "  [OK]  Tailscale service running" -ForegroundColor Green
     try {
-        $tsStatus = & tailscale status 2>&1 | Select-Object -First 3
-        $tsStatus | ForEach-Object { Write-Host "        $_" -ForegroundColor DarkGray }
+        $tsLocal = & tailscale status 2>&1 | Select-String "^\s*100\." | Select-Object -First 1
+        $localIP = if ($tsLocal) { ($tsLocal -replace '\s+', ' ').Trim().Split(' ')[0] } else { "unknown" }
+        Write-Host "  [OK]  Tailscale running  |  $machine = $localIP" -ForegroundColor Green
     } catch {
-        Write-Host "        (tailscale CLI not in PATH)" -ForegroundColor DarkGray
+        Write-Host "  [OK]  Tailscale running  (tailscale CLI not in PATH)" -ForegroundColor Green
     }
 } elseif ($tsSvc) {
     Write-Host "  [--]  Tailscale service exists but status: $($tsSvc.Status)" -ForegroundColor Red
@@ -188,4 +188,4 @@ Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 } | ForEach-Ob
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Done.  $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
-pause
+Read-Host
