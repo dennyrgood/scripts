@@ -217,13 +217,6 @@ FLEET = [
                 "public_url": "https://weatherproxy.ldmathes.cc",
             },
             {
-                "name": "Ollama",
-                "port": 11434,
-                "priority": "B9",
-                "check_type": "ollama",
-                "public_url": None,
-            },
-            {
                 "name": "Fleet API",
                 "port": 5010,
                 "priority": "P",
