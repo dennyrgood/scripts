@@ -1117,16 +1117,9 @@ def generate_explorer_html(data: dict, timestamp: str, year_filter: str) -> str:
             src     = row.get("source", "workflows")
             wf_fname = row["workflow_file"].split("\\")[-1]
             wf_dir   = row.get("workflow_dir", "").replace("\\", "/")
-            src_type = row.get("source", "workflows")
-            if src_type == "png-outputs":
-                # Use last two segments of output dir as prefix e.g. "0ComfyUI/output"
-                _dparts = [p for p in wf_dir.split("/") if p]
-                _prefix = "/".join(_dparts[-2:]) if len(_dparts) >= 2 else _dparts[-1] if _dparts else "output"
-                wf_file = _prefix + "/" + wf_fname
-            else:
-                _ri = wf_dir.lower().find("/workflows/")
-                _sub = wf_dir[_ri + len("/workflows/"):] if _ri >= 0 else ""
-                wf_file  = _sub + "/" + wf_fname if _sub else wf_fname
+            _ri = wf_dir.lower().find("/workflows/")
+            _sub = wf_dir[_ri + len("/workflows/"):] if _ri >= 0 else ""
+            wf_file  = _sub + "/" + wf_fname if _sub else wf_fname
             wf_mod  = row.get("workflow_modified", "")[:10]
             wf_year = wf_mod[:4] if wf_mod else ""
             fn      = row.get("model_filename", "")

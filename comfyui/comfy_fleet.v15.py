@@ -1117,16 +1117,9 @@ def generate_explorer_html(data: dict, timestamp: str, year_filter: str) -> str:
             src     = row.get("source", "workflows")
             wf_fname = row["workflow_file"].split("\\")[-1]
             wf_dir   = row.get("workflow_dir", "").replace("\\", "/")
-            src_type = row.get("source", "workflows")
-            if src_type == "png-outputs":
-                # Use last two segments of output dir as prefix e.g. "0ComfyUI/output"
-                _dparts = [p for p in wf_dir.split("/") if p]
-                _prefix = "/".join(_dparts[-2:]) if len(_dparts) >= 2 else _dparts[-1] if _dparts else "output"
-                wf_file = _prefix + "/" + wf_fname
-            else:
-                _ri = wf_dir.lower().find("/workflows/")
-                _sub = wf_dir[_ri + len("/workflows/"):] if _ri >= 0 else ""
-                wf_file  = _sub + "/" + wf_fname if _sub else wf_fname
+            _ri = wf_dir.lower().find("/workflows/")
+            _sub = wf_dir[_ri + len("/workflows/"):] if _ri >= 0 else ""
+            wf_file  = _sub + "/" + wf_fname if _sub else wf_fname
             wf_mod  = row.get("workflow_modified", "")[:10]
             wf_year = wf_mod[:4] if wf_mod else ""
             fn      = row.get("model_filename", "")
@@ -1238,7 +1231,6 @@ def generate_explorer_html(data: dict, timestamp: str, year_filter: str) -> str:
     yr_wfs    = wf_list(source_filter=["workflows", "workflows-png"], year=year_filter)
     all_wfs   = wf_list(source_filter=["workflows", "workflows-png"])
     older_wfs = [w for w in all_wfs if w["year"] and w["year"] < year_filter]
-    png_wfs   = wf_list(source_filter=["png-outputs"])
     ml        = model_list()
     pm        = pruning_models()
     pw        = pruning_workflows()
@@ -1316,7 +1308,6 @@ const HS = {js(host_short)};
 const SI_WF    = {js(si_wfs)};
 const YR_WF    = {js(yr_wfs)};
 const OLDER_WF = {js(older_wfs)};
-const PNG_WF   = {js(png_wfs)};
 const ALL_WF   = {js(all_wfs)};
 const MODELS  = {js(ml)};
 const PRUNE_M  = {js(pm)};
@@ -1343,7 +1334,7 @@ function setMode(m) {{
 
 function switchTab(t) {{
   wfTab=t;
-  ['si','yr','older','png','all','pwf'].forEach(id=>{{
+  ['si','yr','older','all','pwf'].forEach(id=>{{
     const el=document.getElementById('tab-'+id);
     if(el) el.classList.toggle('active',id===t);
   }});
@@ -1432,7 +1423,6 @@ function getWfSource() {{
   if(wfTab==='si') return SI_WF;
   if(wfTab==='yr') return YR_WF;
   if(wfTab==='older') return OLDER_WF;
-  if(wfTab==='png') return PNG_WF;
   if(wfTab==='pwf') return PRUNE_WF;
   return ALL_WF;
 }}
@@ -1507,8 +1497,6 @@ function renderWf() {{
   document.getElementById('cnt-all').textContent='('+ALL_WF.length+')';
   const colder=document.getElementById('cnt-older');
   if(colder) colder.textContent='('+OLDER_WF.length+')';
-  const cpng=document.getElementById('cnt-png');
-  if(cpng) cpng.textContent='('+PNG_WF.length+')';
   const cpwf=document.getElementById('cnt-pwf');
   if(cpwf) cpwf.textContent='('+PRUNE_WF.length+')';
 
@@ -1562,7 +1550,7 @@ function renderModels() {{
 function selectWf(wfKey,wfName) {{
   if(selectedWf===wfKey){{clearSelection();return;}}
   selectedWf=wfKey; selectedModel=null;
-  const all=[...SI_WF,...YR_WF,...ALL_WF,...PNG_WF];
+  const all=[...SI_WF,...YR_WF,...ALL_WF];
   const wf=all.find(w=>w.key===wfKey);
   if(!wf) return;
   highlightedModels=new Set(wf.models||[]);
@@ -1612,7 +1600,6 @@ renderWf(); renderModels();
         <button class="tab" id="tab-si" onclick="switchTab('si')">Starting Images <span id="cnt-si"></span></button>
         <button class="tab" id="tab-yr" onclick="switchTab('yr')">{year_filter} <span id="cnt-yr"></span></button>
         <button class="tab" id="tab-older" onclick="switchTab('older')">Older <span id="cnt-older"></span></button>
-        <button class="tab" id="tab-png" onclick="switchTab('png')">PNG Outputs <span id="cnt-png"></span></button>
         <button class="tab active" id="tab-all" onclick="switchTab('all')">All <span id="cnt-all"></span></button>
         <button class="tab" id="tab-pwf" onclick="switchTab('pwf')" style="display:none">🔪 Prune <span id="cnt-pwf"></span></button>
       </div>
