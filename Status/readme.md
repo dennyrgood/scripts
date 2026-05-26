@@ -30,11 +30,11 @@ The system monitors 6 hosts across different locations:
 | Display Name        | Hostname                  | Primary Role     | Tailscale IP    | Services                          |
 |---------------------|---------------------------|------------------|-----------------|-----------------------------------|
 | ImageBeast          | `imagebeast`              | ComfyUI Primary  | 100.107.247.38  | ComfyUI, Ollama                   |
-| ChatWorkhorse       | `chatworkhorse`           | Ollama Primary   | 100.124.162.73  | ComfyUI, Ollama, OpenWebUI        |
+| ChatWorkhorse       | `chatworkhorse`           | Ollama Primary   | 100.124.253.46  | ComfyUI, Ollama, OpenWebUI        |
 | TravelBeast         | `travelbeast`             | Mobile/Travel    | 100.73.82.42    | ComfyUI, Ollama (no public URLs)  |
 | Amsterdam           | `amsterdamdesktop`        | Flask/API Primary| 100.125.37.114  | Ollama, Flask APIs, OpenWebUI, Fleet API, ComfyUI |
 | MacBook Air Prime   | `denniss-macbook-air`     | Ollama Backup    | 100.72.187.19   | Ollama                            |
-| MacBook Air 2       | `denniss-2nd-macbook-air` | Ollama Backup    | 100.84.152.110  | Ollama                            |
+| MacBook Air 2       | `denniss-2nd-macbook-air` | Ollama Backup    | 100.92.24.75 | Ollama                            |
 
 ## Architecture Diagram
 
@@ -52,10 +52,10 @@ The system monitors 6 hosts across different locations:
 │ localhost:5010          │     localhost:5010                │
 │  (fleet_api.py)          │      (fleet_api.py)               │
 │    ↓ serves               │           ↓ serves                  │
-│ https://fleet.ldmathes.cc/api/status │ https://backup.fleetldmathes.cc/api/status │
+│ https://fleet.ldmathes.cc/api/status │ https://fleet-bkp.ldmathes.cc/api/status?bkp │
 │                          │                                     │
 │ Dashboard:             │   Dashboard:                      │
-│  status.ldmathes.cc     │   backup-dash.fleetldmathes.cc  │
+│  fleet.ldmathes.cc     │   fleet-bkp.fleetldmathes.cc  │
 │  (desktop-optimized)    │      (mobile-optimized: sm/)       │
 └─────────────══════════════║═══════════╗═══════════════════╝
                               ‖‖
@@ -119,7 +119,7 @@ elif http_code >= 400: fail with reason
 
 ### 1. Checker Module Design
 
-**Note:** The actual entry point and orchestrator is `engine.py`, which handles the three-layer monitoring cascade (host → service → public endpoints).
+**Note:** The actual entry point and orchestrator is `engine.py`, which handles the three-layer monitoring cascade (host → service → public endpoints). This is inconsitent and needs to be checked.
 
 **Module Interface:** Each checker module implements `check(host, port, timeout_ms)` → returns `{status, response_time_ms, detail}`
 
@@ -381,6 +381,7 @@ To contribute to this system:
 - [ ] Test checker functionality locally (`python checker.py`)
 - [ ] Verify Flask API responds correctly (`curl http://localhost:5010/api/status`)
 - [ ] Confirm dashboard displays data (check browser console for errors)
+- [ ] Add monitoring and alerting - future enhancement
 
 ## Version Notes
 
