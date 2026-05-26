@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>FLEET_OPS | ISOLINE SCHEMATIC</title>
+    <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #040608;
+            --wireframe: #1a2d4a;
+            --glow-green: #39d353;
+            --glow-red: #f85149;
+            --glow-amber: #e3b341;
+            --text-dim: #6e7f96;
+            --ui-blue: #58a6ff;
+            --font-main: 'Antonio', sans-serif;
+            --font-data: 'Orbitron', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg);
+            color: white;
+            font-family: var(--font-main);
+            text-transform: uppercase;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background-image: 
+                radial-gradient(circle at 2px 2px, var(--wireframe) 1px, transparent 0);
+            background-size: 40px 40px;
+        }
+
+        header {
+            padding: 20px 40px;
+            border-bottom: 2px solid var(--wireframe);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(4, 6, 8, 0.9);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left h1 {
+            font-family: var(--font-data);
+            font-size: 1.8rem;
+            letter-spacing: 4px;
+            color: var(--ui-blue);
+            text-shadow: 0 0 10px var(--ui-blue);
+        }
+
+        .header-right {
+            text-align: right;
+            font-family: var(--font-data);
+        }
+
+        main {
+            flex-grow: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #staleBanner {
+            display: none;
+            width: 100%;
+            background: var(--glow-amber);
+            color: black;
+            text-align: center;
+            padding: 10px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            font-family: var(--font-data);
+            animation: pulse-amber 2s infinite;
+        }
+
+        @keyframes pulse-amber {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .overview-strip {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 40px;
+            border: 1px solid var(--wireframe);
+            padding: 20px;
+            background: rgba(26, 45, 74, 0.1);
+            backdrop-filter: blur(5px);
+        }
+
+        .ov-stat { display: flex; flex-direction: column; }
+        .ov-label { color: var(--text-dim); font-size: 0.8rem; }
+        .ov-value { font-size: 1.5rem; color: white; font-family: var(--font-data); }
+
+        .schematic-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+            gap: 30px;
+            width: 100%;
+            max-width: 1400px;
+        }
+
+        .deck-panel {
+            background: rgba(10, 15, 25, 0.8);
+            border: 1px solid var(--wireframe);
+            padding: 20px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .deck-panel:hover {
+            border-color: var(--ui-blue);
+            box-shadow: 0 0 20px rgba(88, 166, 255, 0.2);
+        }
+
+        .deck-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--wireframe);
+            padding-bottom: 10px;
+        }
+
+        .deck-title {
+            font-family: var(--font-data);
+            font-size: 1.2rem;
+            color: var(--glow-green);
+        }
+        
+        .deck-panel.down .deck-title { color: var(--glow-red); }
+
+        .deck-meta {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-align: right;
+        }
+
+        .subsystem {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: 1fr 80px;
+            gap: 10px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border-left: 3px solid var(--wireframe);
+        }
+
+        .subsystem.up { border-left-color: var(--glow-green); }
+        .subsystem.down { border-left-color: var(--glow-red); }
+
+        .ss-info { display: flex; flex-direction: column; }
+        .ss-name { font-size: 0.9rem; color: white; }
+        .ss-detail { font-size: 0.7rem; color: var(--text-dim); font-style: italic; }
+        .ss-latency {
+            font-family: var(--font-data);
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            color: var(--ui-blue);
+        }
+
+        footer {
+            padding: 20px 40px;
+            border-top: 1px solid var(--wireframe);
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            background: var(--bg);
+        }
+
+        footer a { color: var(--ui-blue); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            .schematic-grid { grid-template-columns: 1fr; }
+            header { flex-direction: column; gap: 10px; text-align: center; }
+            .overview-strip { flex-wrap: wrap; justify-content: center; gap: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <h1>FLEET_ISOLINE_v1.0</h1>
+    </div>
+    <div class="header-right">
+        <div id="clock">00:00:00</div>
+        <div id="stardate" style="font-size: 0.7rem; color: var(--text-dim);">SD --</div>
+    </div>
+</header>
+
+<main>
+    <div id="staleBanner">WARNING: SYSTEM TELEMETRY STALE - LINK DEGRADED</div>
+
+    <section class="overview-strip" id="summary">
+        </section>
+
+    <div class="schematic-grid" id="fleetGrid">
+        <div style="padding: 100px; text-align: center; grid-column: 1/-1; color: var(--ui-blue); font-family: var(--font-data);">
+            LOADING PRIMARY SCHEMATIC...
+        </div>
+    </div>
+</main>
+
+<footer>
+    <div>
+        <a id="altFeedLink" href="#">SECONDARY DATA FEED</a>
+    </div>
+    <div id="metaInfo">NOMINAL OPERATION</div>
+</footer>
+
+<script>
+    /** * DATA ACCESS LOGIC (DO NOT MODIFY)
+     * Replicated exactly from user original
+     */
+    const params = new URLSearchParams(window.location.search);
+    const isBkp = params.has('bkp');
+    const API_URL = isBkp
+      ? 'https://fleet-bkp.ldmathes.cc/api/status'
+      : 'https://fleet.ldmathes.cc/api/status';
+
+    // Point the footer link to the opposite feed
+    document.getElementById('altFeedLink').href = isBkp
+      ? 'https://fleet.ldmathes.cc/panel/index.html'
+      : 'https://fleet-bkp.ldmathes.cc/panel/index.html?bkp'; 
+
+    const POLL_MS = 30000;
+    const STALE_S = 60;
+    let lastData = null;
+
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('clock').textContent = now.toISOString().split('T')[1].split('.')[0];
+        // trek stardate simulation
+        const sd = (now.getTime() / 10000000).toFixed(3);
+        document.getElementById('stardate').textContent = `SD ${sd}`;
+    }
+
+    function renderSummary(summary) {
+        document.getElementById('summary').innerHTML = `
+            <div class="ov-stat">
+                <span class="ov-label">Fleet Strength</span>
+                <span class="ov-value">${summary.machines_up}/${summary.machines_total} UNITS</span>
+            </div>
+            <div class="ov-stat">
+                <span class="ov-label">Subsystems</span>
+                <span class="ov-value" style="color: var(--ui-blue)">${summary.services_up} ACTIVE</span>
+            </div>
+            <div class="ov-stat">
+                <span class="ov-label">Public Uplinks</span>
+                <span class="ov-value">${summary.public_endpoints_up} READY</span>
+            </div>
+        `;
+    }
+
+    function renderShips(machines) {
+        const grid = document.getElementById('fleetGrid');
+        grid.innerHTML = machines.map(m => {
+            const isUp = m.host.status === 'up';
+            
+            const servicesHtml = (m.services || []).map(s => {
+                const tsUp = s.tailscale_check?.status === 'up';
+                const latency = s.tailscale_check?.response_time_ms ? s.tailscale_check.response_time_ms + 'ms' : '--';
+                const detail = s.tailscale_check?.detail || '';
+                const pub = s.public_check ? (s.public_check.status === 'up' ? ' [PUB OK]' : ' [PUB ERR]') : '';
+
+                return `
+                    <div class="subsystem ${tsUp ? 'up' : 'down'}">
+                        <div class="ss-info">
+                            <span class="ss-name">${s.name} <small style="color:var(--text-dim)">:${s.port}</small></span>
+                            <span class="ss-detail">${detail}${pub}</span>
+                        </div>
+                        <div class="ss-latency">${latency}</div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <article class="deck-panel ${isUp ? '' : 'down'}">
+                    <div class="deck-header">
+                        <div>
+                            <div class="deck-title">${m.machine.display_name}</div>
+                            <div style="font-size: 0.75rem; color: var(--ui-blue); margin-top: 2px;">${m.machine.primary_role}</div>
+                        </div>
+                        <div class="deck-meta">
+                            <div style="color: ${isUp ? 'var(--glow-green)' : 'var(--glow-red)'}">
+                                ${isUp ? m.host.response_time_ms + ' ms' : 'DISCONNECTED'}
+                            </div>
+                            <div style="opacity: 0.5;">${m.machine.tailscale_ip}</div>
+                        </div>
+                    </div>
+                    <div class="service-list">
+                        ${servicesHtml}
+                    </div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    async function poll() {
+        try {
+            const res = await fetch(API_URL, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            lastData = data;
+
+            const dataTime = new Date(data.meta.timestamp_utc).getTime();
+            const now = Date.now();
+            const ageS = (now - dataTime) / 1000;
+            const isStale = ageS > STALE_S;
+
+            document.getElementById('staleBanner').style.display = isStale ? 'block' : 'none';
+            
+            renderSummary(data.summary);
+            renderShips(data.machines);
+            
+            document.getElementById('metaInfo').textContent = 
+                `CHECKER: ${(data.meta.checker_host || '—').toUpperCase()} // CYCLE: ${data.meta.cycle_duration_ms || '—'}MS // AGE: ${Math.round(ageS)}S`;
+            
+        } catch (error) {
+            console.error('Link failure:', error);
+            document.getElementById('metaInfo').textContent = `ERROR: ${error.message}`;
+            if (!lastData) {
+                document.getElementById('fleetGrid').innerHTML = `
+                    <div style="grid-column: 1/-1; padding: 100px; border: 1px solid var(--glow-red); text-align: center;">
+                        <h2 style="color: var(--glow-red); font-family: var(--font-data);">PRIMARY DATA LINK SEVERED</h2>
+                        <p style="margin-top: 10px; color: var(--text-dim); font-family: sans-serif;">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+    }
+
+    setInterval(updateClock, 1000);
+    setInterval(poll, POLL_MS);
+    updateClock();
+    poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>FLEET_OPS | TACTICAL COMMAND</title>
+    <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --lcars-orange: #ff9900; --lcars-gold: #ffcc00; --lcars-blue: #99ccff;
+            --lcars-periwinkle: #9999ff; --lcars-pink: #cc99cc; --lcars-red: #cc0000;
+            --lcars-bg: #030508; --status-green: #00ff88; --lcars-amber: #e3b341;
+            --font-main: 'Antonio', sans-serif; --font-data: 'Share Tech Mono', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--lcars-bg); color: white;
+            font-family: var(--font-main); text-transform: uppercase;
+            height: 100vh; overflow: hidden; display: flex;
+            user-select: none;
+        }
+
+        /* CRT EFFECT OVERLAY */
+        body::before {
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 2000; background-size: 100% 3px, 3px 100%; pointer-events: none;
+        }
+
+        /* LEFT PANEL: ADVANCED TACTICAL DATA */
+        #detail-panel {
+            width: 480px; height: 100%; border-right: 6px solid var(--lcars-periwinkle);
+            display: flex; flex-direction: column; background: rgba(5, 7, 12, 0.98);
+            position: relative; z-index: 2100;
+        }
+
+        .lcars-bracket {
+            position: absolute; right: -16px; top: 10%; height: 80%; width: 10px;
+            background: var(--lcars-periwinkle); border-radius: 0 15px 15px 0;
+        }
+
+        .panel-header {
+            background: var(--lcars-periwinkle); color: black; padding: 15px 25px;
+            font-weight: 900; font-size: 1.4rem; letter-spacing: 2px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .sub-header {
+            background: #111; color: var(--lcars-pink);
+            padding: 8px 25px; font-size: 0.8rem; border-bottom: 2px solid var(--lcars-pink);
+            display: flex; justify-content: space-between;
+        }
+
+        #detail-content {
+            flex-grow: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--lcars-blue) transparent;
+        }
+
+        .data-section-title {
+            background: rgba(153, 153, 255, 0.1); color: var(--lcars-periwinkle);
+            padding: 8px 25px; font-size: 0.8rem; font-weight: bold; letter-spacing: 1px;
+            border-bottom: 1px solid #222; margin-top: 10px;
+        }
+
+        .data-grid { padding: 15px 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .data-cell { border-left: 4px solid var(--lcars-blue); padding-left: 10px; padding-top: 2px; padding-bottom: 2px; }
+        .data-cell.full { grid-column: span 2; }
+        .cell-label { font-size: 0.7rem; color: var(--lcars-periwinkle); font-weight: bold; opacity: 0.8; }
+        .cell-value { font-family: var(--font-data); font-size: 1.1rem; color: var(--lcars-gold); word-break: break-all; }
+
+        .service-card {
+            background: rgba(153, 204, 255, 0.05); border-left: 8px solid var(--lcars-gold);
+            margin: 5px 20px 10px; padding: 10px; position: relative;
+        }
+        .service-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }
+        .service-details { font-family: var(--font-data); font-size: 0.8rem; color: #aaa; margin-top: 5px; padding-top: 5px; border-top: 1px solid #333; }
+
+        .service-status-dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+
+        /* RIGHT SIDE: INTERACTIVE TACTICAL STAGE */
+        .schematic-container { flex-grow: 1; display: flex; flex-direction: column; position: relative; cursor: grab; }
+        .schematic-container:active { cursor: grabbing; }
+
+        header {
+            height: 90px; border-bottom: 20px solid var(--lcars-orange);
+            display: flex; align-items: flex-end; justify-content: flex-end;
+            padding: 0 60px 10px 0; margin-left: 40px; border-bottom-right-radius: 45px;
+            z-index: 2100; position: relative; background: var(--lcars-bg);
+        }
+
+        .header-title { font-size: 3rem; font-weight: 700; color: var(--lcars-gold); letter-spacing: 5px; }
+
+        #schematic-stage { 
+            flex-grow: 1; position: relative; overflow: hidden; 
+            background: radial-gradient(circle at center, #0a1421 0%, #000 80%);
+        }
+
+        #svgCanvas { width: 100%; height: 100%; display: block; }
+        #viewport-group { transition: transform 0.05s linear; transform-origin: 0 0; }
+
+        /* SVG VIBRANCY */
+        .conduit { fill: none; stroke-width: 3; opacity: 0.3; transition: opacity 0.5s; }
+        .conduit.up { stroke: var(--lcars-blue); filter: drop-shadow(0 0 2px var(--lcars-blue)); }
+        .conduit.down { stroke: var(--lcars-red); stroke-width: 6; opacity: 0.6; }
+        .conduit.active { opacity: 1; stroke-width: 5; stroke: var(--lcars-gold); filter: drop-shadow(0 0 12px var(--lcars-gold)); }
+
+        .node-rect { fill: rgba(10, 20, 30, 0.95); stroke-width: 3; transition: 0.3s; }
+        .node-group:hover .node-rect { fill: rgba(30, 50, 80, 0.95); }
+        .node-group.selected .node-rect { stroke: var(--lcars-gold); stroke-width: 5; animation: node-pulse 2s infinite; }
+
+        @keyframes node-pulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.5); } }
+        
+        .label-main { fill: #fff; font-size: 18px; font-weight: 700; font-family: var(--font-data); }
+        .label-sub { fill: var(--lcars-periwinkle); font-size: 12px; }
+        .label-meta { font-size: 11px; font-family: var(--font-data); font-weight: bold; }
+        .service-warn-rect { fill: var(--lcars-red); animation: warn-flash 0.8s infinite alternate; }
+        @keyframes warn-flash { from { opacity: 0.2; } to { opacity: 1; } }
+
+        .zoom-controls {
+            position: absolute; bottom: 60px; right: 20px; z-index: 2200;
+            display: flex; flex-direction: column; gap: 5px;
+        }
+        .zoom-btn {
+            width: 40px; height: 40px; background: var(--lcars-periwinkle); color: black;
+            border: none; font-weight: bold; font-size: 1.2rem; cursor: pointer;
+            border-radius: 4px; display: flex; align-items: center; justify-content: center;
+        }
+        .zoom-btn:hover { background: var(--lcars-gold); }
+
+        footer { height: 50px; background: #000; display: flex; justify-content: space-between; align-items: center; padding: 0 40px; font-size: 0.9rem; border-top: 5px solid var(--lcars-blue); z-index: 2100; position: relative; }
+        
+        /* RED ALERT STATE */
+        body.red-alert::after {
+            content: ""; position: fixed; inset: 0; pointer-events: none;
+            border: 20px solid var(--lcars-red); z-index: 3000;
+            animation: alert-flash 1.5s infinite alternate;
+        }
+        @keyframes alert-flash { from { opacity: 0; } to { opacity: 0.3; } }
+    </style>
+</head>
+<body id="body">
+
+<div id="detail-panel">
+    <div class="lcars-bracket"></div>
+    <div class="panel-header">
+        <span>STRATEGIC_INTEL</span>
+        <span id="node-tag" style="font-size: 0.9rem; opacity: 0.7;">LINK_OFFLINE</span>
+    </div>
+    
+    <div class="sub-header">
+        <span>STATUS: <span id="unit-status">--</span></span>
+        <span id="stardate-top">SD 00000.0</span>
+    </div>
+
+    <div id="detail-content">
+        <div style="padding: 40px; text-align: center; color: var(--lcars-blue); opacity: 0.5;">
+            SELECT NODE FOR FULL TELEMETRY
+        </div>
+    </div>
+
+    <div style="padding: 20px; display: flex; gap: 5px; background: #000;">
+        <div style="flex: 2; height: 40px; background: var(--lcars-orange); border-radius: 20px 0 0 20px; cursor: pointer; color: black; display: flex; align-items: center; justify-content: center; font-weight: 900; letter-spacing: 1px;" onclick="location.reload()">REFRESH_LINK</div>
+        <div style="flex: 1; height: 40px; background: var(--lcars-pink);"></div>
+        <div style="flex: 1; height: 40px; background: var(--lcars-blue); border-radius: 0 20px 20px 0;"></div>
+    </div>
+</div>
+
+<div class="schematic-container" id="stage-container">
+    <header>
+        <div class="header-title">TACTICAL FLEET SCHEMATIC</div>
+    </header>
+
+    <div id="schematic-stage">
+        <div class="zoom-controls">
+            <button class="zoom-btn" onclick="adjustZoom(1.2)">+</button>
+            <button class="zoom-btn" onclick="autoFitFleet()" title="Center Fleet">TARGET</button>
+            <button class="zoom-btn" onclick="adjustZoom(0.8)">-</button>
+        </div>
+
+        <svg id="svgCanvas">
+            <defs>
+                <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            </defs>
+            
+            <g id="viewport-group">
+                <g id="conduitGroup"></g>
+                <g id="hubGroup"></g>
+                <g id="nodeGroup"></g>
+            </g>
+        </svg>
+    </div>
+
+    <footer>
+        <div id="metaInfo">SCANNING_FLEET...</div>
+        <div style="display: flex; gap: 30px; align-items: center;">
+            <a id="altFeedLink" href="#" style="color: var(--lcars-gold); text-decoration: none; border: 1px solid var(--lcars-gold); padding: 3px 15px; font-weight: bold;">BKUP_CHANNEL</a>
+            <span style="color: var(--lcars-periwinkle); font-weight: bold;">LCARS_OS_8.1.1</span>
+        </div>
+    </footer>
+</div>
+
+<script>
+    const params = new URLSearchParams(window.location.search);
+    const isBkp = params.has('bkp');
+    const API_URL = isBkp ? 'https://fleet-bkp.ldmathes.cc/api/status' : 'https://fleet.ldmathes.cc/api/status';
+
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    const viewport = document.getElementById('viewport-group');
+    const container = document.getElementById('stage-container');
+    const svg = document.getElementById('svgCanvas');
+
+    function applyTransform() {
+        viewport.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+    }
+
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomSpeed = 0.001;
+        const delta = Math.exp(-e.deltaY * zoomSpeed);
+        const rect = svg.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const newScale = Math.min(Math.max(0.1, scale * delta), 10);
+        translateX = mouseX - (mouseX - translateX) * (newScale / scale);
+        translateY = mouseY - (mouseY - translateY) * (newScale / scale);
+        scale = newScale;
+        applyTransform();
+    }, { passive: false });
+
+    let isDragging = false;
+    let startX, startY;
+
+    container.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.zoom-controls') || e.target.closest('.node-group')) return;
+        isDragging = true;
+        startX = e.clientX - translateX;
+        startY = e.clientY - translateY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        translateX = e.clientX - startX;
+        translateY = e.clientY - startY;
+        applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => isDragging = false);
+
+    function adjustZoom(factor) {
+        const rect = svg.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const newScale = Math.min(Math.max(0.1, scale * factor), 10);
+        translateX = centerX - (centerX - translateX) * (newScale / scale);
+        translateY = centerY - (centerY - translateY) * (newScale / scale);
+        scale = newScale;
+        applyTransform();
+    }
+
+    function autoFitFleet() {
+        const bbox = viewport.getBBox();
+        if (bbox.width === 0) return;
+        const padding = 100;
+        const rect = svg.getBoundingClientRect();
+        const scaleX = rect.width / (bbox.width + padding * 2);
+        const scaleY = rect.height / (bbox.height + padding * 2);
+        scale = Math.min(scaleX, scaleY, 1);
+        translateX = (rect.width / 2) - (bbox.x + bbox.width / 2) * scale;
+        translateY = (rect.height / 2) - (bbox.y + bbox.height / 2) * scale;
+        applyTransform();
+    }
+
+    function updateDetail(m) {
+        document.querySelectorAll('.node-group').forEach(n => n.classList.remove('selected'));
+        const nodeEl = document.getElementById('node-' + m.machine.tailscale_name);
+        if (nodeEl) nodeEl.classList.add('selected');
+
+        const isUp = m.host.status === 'up';
+        const anySvcDown = m.services.some(s => s.tailscale_check?.status !== 'up');
+
+        document.getElementById('node-tag').textContent = `ID_${m.machine.tailscale_name.toUpperCase()}`;
+        document.getElementById('unit-status').textContent = isUp ? (anySvcDown ? 'DEGRADED' : 'NOMINAL') : 'LINK_SEVERED';
+        document.getElementById('unit-status').style.color = !isUp ? 'var(--lcars-red)' : (anySvcDown ? 'var(--lcars-orange)' : 'var(--status-green)');
+
+        const content = document.getElementById('detail-content');
+        
+        let servicesHtml = m.services.map(s => {
+            const up = s.tailscale_check?.status === 'up';
+            const color = up ? 'var(--status-green)' : 'var(--lcars-red)';
+            const border = up ? 'var(--lcars-blue)' : 'var(--lcars-red)';
+            return `
+                <div class="service-card" style="border-left-color: ${border}">
+                    <div class="service-header">
+                        <div>
+                            <div style="font-size: 1rem; font-weight: 900; color: #fff;">${s.name.toUpperCase()}</div>
+                            <div style="font-size: 0.7rem; color: var(--lcars-gold); font-family: var(--font-data);">PORT: ${s.port} // PRIORITY: ${s.priority}</div>
+                        </div>
+                        <div class="service-status-dot" style="background:${color}; color:${color}"></div>
+                    </div>
+                    <div class="service-details">
+                        STATUS: ${s.tailscale_check?.status?.toUpperCase() || 'UNKNOWN'}<br>
+                        LATENCY: ${s.tailscale_check?.response_time_ms || '0'} MS<br>
+                        DETAIL: ${s.tailscale_check?.detail || 'NO_DATA'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        content.innerHTML = `
+            <div class="data-section-title">CORE_MACHINE_SPECS</div>
+            <div class="data-grid">
+                <div class="data-cell"><div class="cell-label">NAME</div><div class="cell-value">${m.machine.display_name}</div></div>
+                <div class="data-cell"><div class="cell-label">ROLE</div><div class="cell-value">${m.machine.primary_role}</div></div>
+                <div class="data-cell full"><div class="cell-label">TAILSCALE_IP</div><div class="cell-value">${m.machine.tailscale_ip}</div></div>
+                <div class="data-cell full"><div class="cell-label">FQDN</div><div class="cell-value">${m.machine.tailscale_name}</div></div>
+            </div>
+
+            <div class="data-section-title">HOST_TELEMETRY</div>
+            <div class="data-grid">
+                <div class="data-cell"><div class="cell-label">LINK_STATE</div><div class="cell-value" style="color:${isUp?'var(--status-green)':'var(--lcars-red)'}">${m.host.status.toUpperCase()}</div></div>
+                <div class="data-cell"><div class="cell-label">PING</div><div class="cell-value">${m.host.response_time_ms} MS</div></div>
+                <div class="data-cell full"><div class="cell-label">HOST_DETAIL</div><div class="cell-value">${m.host.detail}</div></div>
+            </div>
+
+            <div class="data-section-title">POLL_METADATA</div>
+            <div class="data-grid">
+                <div class="data-cell"><div class="cell-label">CHECKER</div><div class="cell-value">${m.poll.checker_host}</div></div>
+                <div class="data-cell"><div class="cell-label">DURATION</div><div class="cell-value">${m.poll.poll_duration_ms} MS</div></div>
+                <div class="data-cell full"><div class="cell-label">UTC_TIMESTAMP</div><div class="cell-value" style="font-size:0.8rem">${m.poll.timestamp_utc}</div></div>
+            </div>
+
+            <div class="data-section-title">ACTIVE_SUBSYSTEMS (${m.services.length})</div>
+            ${servicesHtml}
+        `;
+
+        document.querySelectorAll('.conduit').forEach(c => c.classList.remove('active'));
+        const path = document.getElementById('path-' + m.machine.tailscale_name);
+        if (path) path.classList.add('active');
+    }
+
+    function renderSchematic(data) {
+        const conduitGroup = document.getElementById('conduitGroup');
+        const nodeGroup = document.getElementById('nodeGroup');
+        const hubGroup = document.getElementById('hubGroup');
+        conduitGroup.innerHTML = ''; nodeGroup.innerHTML = ''; hubGroup.innerHTML = '';
+
+        const machines = data.machines || [];
+        const centerX = 800; 
+        const centerY = 400;
+
+        hubGroup.innerHTML = `
+            <g transform="translate(${centerX}, ${centerY})">
+                <circle r="80" fill="none" stroke="var(--lcars-gold)" stroke-width="1.5" stroke-dasharray="10 15" opacity="0.3">
+                    <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="40s" repeatCount="indefinite" />
+                </circle>
+                <circle r="30" fill="var(--lcars-gold)" filter="url(#glow)" />
+                <circle r="15" fill="black" />
+                <text y="110" text-anchor="middle" fill="var(--lcars-gold)" style="font-size: 18px; font-weight: bold; letter-spacing: 4px;">FLEET_HUB_ALPHA</text>
+            </g>
+        `;
+
+        machines.forEach((m, i) => {
+            const total = machines.length;
+            const spacing = 120;
+            const totalHeight = (total - 1) * spacing;
+            const targetX = 100;
+            const targetY = (centerY - totalHeight/2) + (i * spacing);
+            
+            const isUp = m.host.status === 'up';
+            const anySvcDown = m.services.some(s => s.tailscale_check?.status !== 'up');
+
+            const cp1X = centerX - 250;
+            const cp2X = centerX - 450;
+            const pathD = `M ${centerX} ${centerY} C ${cp1X} ${centerY} ${cp2X} ${targetY} ${targetX + 240} ${targetY}`;
+            
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("id", 'path-' + m.machine.tailscale_name);
+            path.setAttribute("d", pathD);
+            path.setAttribute("class", `conduit ${isUp ? 'up' : 'down'}`);
+            conduitGroup.appendChild(path);
+
+            if (isUp) {
+                const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                particle.setAttribute("r", "3");
+                particle.setAttribute("fill", "#fff");
+                particle.setAttribute("filter", "url(#glow)");
+                const anim = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+                anim.setAttribute("dur", (Math.random() * 2 + 1) + "s");
+                anim.setAttribute("repeatCount", "indefinite");
+                anim.setAttribute("path", pathD);
+                particle.appendChild(anim);
+                conduitGroup.appendChild(particle);
+            }
+
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            g.setAttribute("class", "node-group");
+            g.setAttribute("id", "node-" + m.machine.tailscale_name);
+            g.style.cursor = "pointer";
+            g.onclick = (e) => { e.stopPropagation(); updateDetail(m); };
+
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("x", targetX); rect.setAttribute("y", targetY - 45);
+            rect.setAttribute("width", "260"); rect.setAttribute("height", "90");
+            rect.setAttribute("rx", "4"); rect.setAttribute("class", "node-rect");
+            rect.setAttribute("stroke", !isUp ? 'var(--lcars-red)' : (anySvcDown ? 'var(--lcars-orange)' : 'var(--lcars-periwinkle)'));
+            g.appendChild(rect);
+
+            // SERVICE ALERT INDICATOR ON NODE
+            if (anySvcDown) {
+                const alertBar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                alertBar.setAttribute("x", targetX); alertBar.setAttribute("y", targetY - 45);
+                alertBar.setAttribute("width", "8"); alertBar.setAttribute("height", "90");
+                alertBar.setAttribute("class", "service-warn-rect");
+                g.appendChild(alertBar);
+            }
+
+            const t1 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            t1.setAttribute("x", targetX + 15); t1.setAttribute("y", targetY - 15);
+            t1.setAttribute("class", "label-main"); t1.textContent = m.machine.display_name.toUpperCase();
+            g.appendChild(t1);
+
+            const t2 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            t2.setAttribute("x", targetX + 15); t2.setAttribute("y", targetY + 10);
+            t2.setAttribute("class", "label-sub"); t2.textContent = m.machine.primary_role;
+            g.appendChild(t2);
+
+            const t3 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            t3.setAttribute("x", targetX + 15); t3.setAttribute("y", targetY + 32);
+            t3.setAttribute("class", "label-meta");
+            t3.setAttribute("fill", isUp ? 'var(--status-green)' : 'var(--lcars-red)');
+            t3.textContent = isUp ? `${anySvcDown ? 'DEGRADED' : 'ONLINE'} // ${m.host.response_time_ms}ms` : 'LINK_SEVERED';
+            g.appendChild(t3);
+
+            nodeGroup.appendChild(g);
+        });
+
+        const criticalFailure = machines.some(m => m.host.status !== 'up' || m.services.some(s => s.tailscale_check?.status !== 'up'));
+        document.getElementById('body').className = criticalFailure ? 'red-alert' : '';
+        document.getElementById('metaInfo').textContent = criticalFailure ? "!!! SYSTEM_DEGRADATION_DETECTED !!!" : "FLEET_INTEGRITY: 100% // ENCRYPTION_ACTIVE";
+        
+        if (!window.initialFitDone) {
+            setTimeout(autoFitFleet, 100);
+            window.initialFitDone = true;
+        }
+    }
+
+    async function poll() {
+        try {
+            const res = await fetch(API_URL, { cache: 'no-store' });
+            const data = await res.json();
+            renderSchematic(data);
+            document.getElementById('stardate-top').textContent = `SD ${Math.floor(Date.now()/10000)}.${Math.floor(Date.now()%1000)}`;
+        } catch (e) { 
+            document.getElementById('metaInfo').textContent = "COMMS_INTERRUPTED: " + e.message;
+        }
+    }
+
+    setInterval(poll, 30000);
+    poll();
+</script>
+</body>
+</html>

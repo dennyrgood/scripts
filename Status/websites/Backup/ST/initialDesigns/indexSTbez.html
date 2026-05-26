@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>FLEET DEPLOYMENT SCHEMATIC</title>
+    <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --lcars-orange: #ff9900;
+            --lcars-gold: #ffcc00;
+            --lcars-blue: #99ccff;
+            --lcars-periwinkle: #9999ff;
+            --lcars-pink: #cc99cc;
+            --lcars-red: #cc0000;
+            --lcars-bg: #000000;
+            --lcars-font: 'Antonio', sans-serif;
+            --lcars-amber: #e3b341;
+            --status-green: #39d353;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--lcars-bg);
+            color: white;
+            font-family: var(--lcars-font);
+            text-transform: uppercase;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+        }
+
+        /* Sidebar Structure */
+        .sidebar {
+            width: 160px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 10px;
+        }
+
+        .elbow {
+            height: 100px; width: 140px; background: var(--lcars-periwinkle);
+            border-top-left-radius: 60px; border-bottom-left-radius: 60px; position: relative;
+            margin-bottom: 10px;
+        }
+        .elbow::after {
+            content: ""; position: absolute; top: 20px; left: 40px; right: 0; bottom: 0;
+            background: var(--lcars-bg); border-top-left-radius: 40px;
+        }
+
+        .side-block {
+            width: 110px; height: 45px; background: var(--lcars-orange);
+            display: flex; align-items: center; justify-content: flex-end;
+            padding-right: 10px; font-weight: bold; color: black; font-size: 0.9rem;
+        }
+
+        .main-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px 20px 10px 0;
+        }
+
+        header {
+            height: 80px;
+            border-bottom: 15px solid var(--lcars-periwinkle);
+            border-bottom-right-radius: 40px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            padding: 0 40px 10px 0;
+            margin-bottom: 10px;
+        }
+
+        .header-title { font-size: 2.5rem; color: var(--lcars-gold); letter-spacing: 2px; }
+
+        /* Schematic Area */
+        #schematic-stage {
+            flex-grow: 1;
+            position: relative;
+            background: radial-gradient(circle at center, #0a111a 0%, #000 75%);
+            border: 1px solid #1a1a1a;
+            overflow: hidden;
+        }
+
+        svg { width: 100%; height: 100%; }
+
+        /* Dynamic Alerts */
+        .alert-banner {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            color: black; padding: 8px 30px; font-weight: bold; font-size: 1.1rem;
+            z-index: 10; display: none; border-radius: 4px;
+        }
+
+        /* SVG Styles */
+        .conduit { fill: none; stroke-width: 2; transition: stroke 0.5s; opacity: 0.5; }
+        .conduit.up { stroke: var(--status-green); }
+        .conduit.down { stroke: var(--lcars-red); stroke-width: 3; opacity: 1; }
+        
+        .particle { filter: blur(1px); }
+        
+        .node-circle { stroke: #000; stroke-width: 2; }
+        
+        .hub-glow {
+            animation: hub-pulse 4s infinite ease-in-out;
+        }
+        @keyframes hub-pulse {
+            0% { r: 15; opacity: 0.4; }
+            50% { r: 40; opacity: 0.1; }
+            100% { r: 15; opacity: 0.4; }
+        }
+
+        footer {
+            height: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 0.8rem;
+            color: var(--lcars-orange);
+        }
+        footer a { color: var(--lcars-blue); text-decoration: none; font-weight: bold;}
+        footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="elbow"></div>
+    <div class="side-block gold">SYS-01</div>
+    <div class="side-block pink">FLT-02</div>
+    <div class="side-block blue">CMD-03</div>
+    <div class="side-block" style="flex-grow: 1; opacity: 0.2; background: var(--lcars-orange);"></div>
+    <div class="side-block gold" style="height: 30px; font-size: 0.6rem;">LCARS 9.5</div>
+</div>
+
+<div class="main-container">
+    <header id="mainHeader">
+        <div class="header-title">FLEET DEPLOYMENT SCHEMATIC</div>
+        <div id="summaryText" style="color: var(--lcars-blue); font-size: 1.2rem;">CALIBRATING...</div>
+    </header>
+
+    <div id="schematic-stage">
+        <div id="alertBanner" class="alert-banner"></div>
+        <div id="staleBanner" class="alert-banner" style="background: var(--lcars-amber); top: 60px;">LINK DEGRADED: TELEMETRY STALE</div>
+
+        <svg id="svgCanvas" viewBox="0 0 1000 800" preserveAspectRatio="xMidYMid meet">
+            <defs>
+                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="3" result="blur"/>
+                    <feMerge>
+                        <feMergeNode in="blur"/>
+                        <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                </filter>
+            </defs>
+            
+            <g id="conduitGroup"></g>
+            <g id="nodeGroup"></g>
+            
+            <circle id="hubPulse" cx="500" cy="400" r="20" fill="var(--lcars-gold)" class="hub-glow"></circle>
+            <circle cx="500" cy="400" r="12" fill="var(--lcars-gold)" id="centerHub"></circle>
+            <text x="500" y="425" text-anchor="middle" fill="var(--lcars-gold)" style="font-size: 11px; font-weight: bold; letter-spacing: 1px;">CHECKER CORE</text>
+        </svg>
+    </div>
+
+    <footer>
+        <div id="metaInfo">STARDATE: INITIALIZING...</div>
+        <a id="altFeedLink" href="#">SECONDARY FEED ACCESS</a>
+    </footer>
+</div>
+
+<script>
+    /** * DATA ACCESS LOGIC
+     * Replicated exactly from your working codebase
+     */
+    const params = new URLSearchParams(window.location.search);
+    const isBkp = params.has('bkp');
+    const API_URL = isBkp
+      ? 'https://fleet-bkp.ldmathes.cc/api/status'
+      : 'https://fleet.ldmathes.cc/api/status';
+
+    document.getElementById('altFeedLink').href = isBkp
+      ? 'https://fleet.ldmathes.cc/panel/index.html'
+      : 'https://fleet-bkp.ldmathes.cc/panel/index.html?bkp'; 
+
+    const POLL_MS = 30000;
+    const STALE_S = 60;
+    let lastData = null;
+
+    const conduitGroup = document.getElementById('conduitGroup');
+    const nodeGroup = document.getElementById('nodeGroup');
+
+    function createSchematic(data) {
+        conduitGroup.innerHTML = '';
+        nodeGroup.innerHTML = '';
+        
+        const machines = data.machines || [];
+        const centerX = 500;
+        const centerY = 400;
+        const radius = 280; // Distance to endpoint panels
+        
+        machines.forEach((m, i) => {
+            const angle = (i / machines.length) * Math.PI * 2 - Math.PI / 2;
+            const targetX = centerX + Math.cos(angle) * radius;
+            const targetY = centerY + Math.sin(angle) * radius;
+            
+            const isUp = m.host.status === 'up';
+            const color = isUp ? 'var(--status-green)' : 'var(--lcars-red)';
+
+            // 1. Organic Arc Generation
+            // Sweeps the control point at an offset to give curves their organic bend
+            const cpX = centerX + Math.cos(angle - 0.6) * (radius * 0.55);
+            const cpY = centerY + Math.sin(angle - 0.6) * (radius * 0.55);
+            const pathD = `M ${centerX} ${centerY} Q ${cpX} ${cpY} ${targetX} ${targetY}`;
+            
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", pathD);
+            path.setAttribute("class", `conduit ${isUp ? 'up' : 'down'}`);
+            path.setAttribute("filter", "url(#glow)");
+            conduitGroup.appendChild(path);
+
+            // 2. Animated Moving Conduit Particles
+            if (isUp) {
+                const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                particle.setAttribute("r", "2.5");
+                particle.setAttribute("fill", "#ffffff");
+                particle.setAttribute("class", "particle");
+                particle.setAttribute("filter", "url(#glow)");
+                
+                const anim = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+                anim.setAttribute("dur", "2.5s");
+                anim.setAttribute("repeatCount", "indefinite");
+                anim.setAttribute("path", pathD);
+                particle.appendChild(anim);
+                conduitGroup.appendChild(particle);
+            }
+
+            // 3. Endpoint Panels
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            g.setAttribute("transform", `translate(${targetX}, ${targetY})`);
+
+            // Small glowing ring connecting the path to the panel
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", "0");
+            circle.setAttribute("cy", "0");
+            circle.setAttribute("r", "6");
+            circle.setAttribute("fill", color);
+            circle.setAttribute("class", "node-circle");
+            circle.setAttribute("filter", "url(#glow)");
+            g.appendChild(circle);
+
+            // Draw data panel box
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            // Position panel to avoid central collision overlap
+            const rectX = Math.cos(angle) >= 0 ? 15 : -175;
+            const rectY = -30;
+            
+            rect.setAttribute("x", rectX);
+            rect.setAttribute("y", rectY);
+            rect.setAttribute("width", "160");
+            rect.setAttribute("height", "60");
+            rect.setAttribute("rx", "4");
+            rect.setAttribute("fill", "rgba(10, 15, 25, 0.85)");
+            rect.setAttribute("stroke", color);
+            rect.setAttribute("stroke-width", "1.5");
+            g.appendChild(rect);
+
+            // Machine Name
+            const textName = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            textName.setAttribute("x", rectX + 10);
+            textName.setAttribute("y", rectY + 20);
+            textName.setAttribute("fill", "var(--lcars-gold)");
+            textName.setAttribute("font-size", "13px");
+            textName.setAttribute("font-weight", "bold");
+            textName.textContent = m.machine.display_name;
+            g.appendChild(textName);
+
+            // Machine Role
+            const textSub = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            textSub.setAttribute("x", rectX + 10);
+            textSub.setAttribute("y", rectY + 35);
+            textSub.setAttribute("fill", "var(--lcars-blue)");
+            textSub.setAttribute("font-size", "10px");
+            textSub.textContent = m.machine.primary_role;
+            g.appendChild(textSub);
+
+            // Machine Latency
+            const textLat = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            textLat.setAttribute("x", rectX + 10);
+            textLat.setAttribute("y", rectY + 50);
+            textLat.setAttribute("fill", isUp ? "var(--status-green)" : "var(--lcars-red)");
+            textLat.setAttribute("font-size", "10px");
+            textLat.textContent = isUp ? `ONLINE | ${m.host.response_time_ms}ms` : 'OFFLINE';
+            g.appendChild(textLat);
+
+            nodeGroup.appendChild(g);
+        });
+
+        // Calculate System Health State
+        const anyDown = machines.some(m => m.host.status !== 'up');
+        const hub = document.getElementById('centerHub');
+        const hubPulse = document.getElementById('hubPulse');
+        const alertBanner = document.getElementById('alertBanner');
+        
+        const hubColor = anyDown ? 'var(--lcars-red)' : 'var(--lcars-gold)';
+        hub.setAttribute('fill', hubColor);
+        hubPulse.setAttribute('fill', hubColor);
+        
+        document.getElementById('summaryText').textContent = 
+            anyDown ? "SYSTEM DEGRADED" : "FLEET NOMINAL";
+        document.getElementById('summaryText').style.color = anyDown ? 'var(--lcars-red)' : 'var(--lcars-blue)';
+
+        if (anyDown) {
+            alertBanner.style.display = 'block';
+            alertBanner.style.backgroundColor = 'var(--lcars-red)';
+            alertBanner.textContent = 'ALERT STATUS: RED — SYSTEM DEGRADED';
+        } else {
+            alertBanner.style.display = 'none';
+        }
+    }
+
+    async function poll() {
+        try {
+            const res = await fetch(API_URL, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            lastData = data;
+
+            const dataTime = new Date(data.meta.timestamp_utc).getTime();
+            const now = Date.now();
+            const ageS = (now - dataTime) / 1000;
+            const isStale = ageS > STALE_S;
+
+            document.getElementById('staleBanner').style.display = isStale ? 'block' : 'none';
+            document.getElementById('mainHeader').style.borderBottomColor = isStale ? 'var(--lcars-amber)' : 'var(--lcars-periwinkle)';
+
+            createSchematic(data);
+            
+            document.getElementById('metaInfo').textContent = 
+                `STARDATE: ${Math.floor(Date.now()/100000)} // CHECKER: ${(data.meta.checker_host || '—').toUpperCase()} // AGE: ${Math.round(ageS)}S`;
+            
+        } catch (error) {
+            console.error('Data link severed:', error);
+            document.getElementById('summaryText').textContent = "ERROR: LINK SEVERED";
+            document.getElementById('summaryText').style.color = 'var(--lcars-red)';
+        }
+    }
+
+    setInterval(poll, POLL_MS);
+    poll();
+</script>
+</body>
+</html>
