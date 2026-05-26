@@ -1270,8 +1270,8 @@ def generate_explorer_html(data: dict, timestamp: str, year_filter: str) -> str:
 
     si_wfs    = wf_list(source_filter=["starting_images"])
     yr_wfs    = wf_list(source_filter=["workflows", "workflows-png"], year=year_filter)
-    all_wfs   = wf_list()  # no filter — truly all sources including png-outputs
-    older_wfs = [w for w in wf_list(source_filter=["workflows", "workflows-png"]) if w["year"] and w["year"] < year_filter]
+    all_wfs   = wf_list(source_filter=["workflows", "workflows-png"])
+    older_wfs = [w for w in all_wfs if w["year"] and w["year"] < year_filter]
     png_wfs   = wf_list(source_filter=["png-outputs"])
     ml        = model_list()
     pm        = pruning_models()

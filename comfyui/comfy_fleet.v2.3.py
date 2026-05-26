@@ -888,15 +888,11 @@ def scan_starting_images(data: dict) -> dict:
         for row in machine.get("full_map", []):
             if row.get("source", "").lower() != "starting_images":
                 continue
-            wf_name = row["workflow_file"].replace("\\", "/").split("/")[-1]
-            # Exclude (i) PNGs — ImageBeast-only workflows don't belong in the
-            # travel readiness set even if they live in 000 Starting Images.
-            if "(i)" in wf_name.lower():
-                continue
             fn = row.get("model_filename", "")
             if fn and fn != "(not found on disk)":
                 key = fn.lower()
                 all_models.add(key)
+                wf_name = row["workflow_file"].replace("\\", "/").split("/")[-1]
                 workflows[wf_name].add(key)
 
     wf_list = [
@@ -1270,8 +1266,8 @@ def generate_explorer_html(data: dict, timestamp: str, year_filter: str) -> str:
 
     si_wfs    = wf_list(source_filter=["starting_images"])
     yr_wfs    = wf_list(source_filter=["workflows", "workflows-png"], year=year_filter)
-    all_wfs   = wf_list()  # no filter — truly all sources including png-outputs
-    older_wfs = [w for w in wf_list(source_filter=["workflows", "workflows-png"]) if w["year"] and w["year"] < year_filter]
+    all_wfs   = wf_list(source_filter=["workflows", "workflows-png"])
+    older_wfs = [w for w in all_wfs if w["year"] and w["year"] < year_filter]
     png_wfs   = wf_list(source_filter=["png-outputs"])
     ml        = model_list()
     pm        = pruning_models()

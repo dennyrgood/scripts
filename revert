@@ -1,0 +1,17 @@
+#!/bin/bash
+
+echo "=== DRY RUN ==="
+git status
+echo ""
+git clean -ndx
+
+echo ""
+read -p "Proceed with reset and clean? (y/N) " answer
+
+if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
+    git reset --hard HEAD
+    git clean -fdx
+    echo "Done."
+else
+    echo "Aborted."
+fi

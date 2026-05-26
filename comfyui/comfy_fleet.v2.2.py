@@ -174,16 +174,6 @@ def build_workflow_model_data(data: dict, year_filter: str) -> dict:
         for row in machine["full_map"]:
             if not row.get("workflow_modified", "").startswith(year_filter):
                 continue
-            # Only JSON workflows drive the prime/gap analysis.
-            # png-outputs = historical ImageBeast output folder, not executable.
-            # workflows-png = Starting Images PNGs, handled by their own pipeline.
-            # starting_images = same PNGs via separate scan, also handled separately.
-            if row.get("source", "") != "workflows":
-                continue
-            # 999 Other = experiments, tutorials, Pixaroma reference material —
-            # not production workflows, exclude from prime/gap analysis.
-            if "999 Other" in row.get("workflow_dir", ""):
-                continue
             fn   = row["model_filename"]
             ref  = row["model_ref"]
             ref_base = ref.replace("\\", "/").split("/")[-1]
@@ -285,16 +275,10 @@ def compute_readiness(data: dict, wf_model_data: dict, hostname: str, year_filte
     wf_missing = defaultdict(set)
     wf_total   = set()
 
-    is_source = data.get(hostname, {}).get("config", {}).get("is_source", False)
-
     for row in machine["full_map"]:
         if not row.get("workflow_modified", "").startswith(year_filter):
             continue
         wf = row["workflow_file"].split("\\")[-1]
-        # Non-source machines (Chat/Travel) cannot run (i) workflows — exclude them
-        # so they don't inflate the missing count or drive unnecessary sync candidates.
-        if not is_source and "(i)" in wf.lower():
-            continue
         wf_total.add(wf)
         if row["on_disk"] == "NO":
             wf_missing[wf].add(row["model_ref"].replace("\\", "/").split("/")[-1])
@@ -888,15 +872,11 @@ def scan_starting_images(data: dict) -> dict:
         for row in machine.get("full_map", []):
             if row.get("source", "").lower() != "starting_images":
                 continue
-            wf_name = row["workflow_file"].replace("\\", "/").split("/")[-1]
-            # Exclude (i) PNGs — ImageBeast-only workflows don't belong in the
-            # travel readiness set even if they live in 000 Starting Images.
-            if "(i)" in wf_name.lower():
-                continue
             fn = row.get("model_filename", "")
             if fn and fn != "(not found on disk)":
                 key = fn.lower()
                 all_models.add(key)
+                wf_name = row["workflow_file"].replace("\\", "/").split("/")[-1]
                 workflows[wf_name].add(key)
 
     wf_list = [
@@ -1270,8 +1250,8 @@ def generate_explorer_html(data: dict, timestamp: str, year_filter: str) -> str:
 
     si_wfs    = wf_list(source_filter=["starting_images"])
     yr_wfs    = wf_list(source_filter=["workflows", "workflows-png"], year=year_filter)
-    all_wfs   = wf_list()  # no filter — truly all sources including png-outputs
-    older_wfs = [w for w in wf_list(source_filter=["workflows", "workflows-png"]) if w["year"] and w["year"] < year_filter]
+    all_wfs   = wf_list(source_filter=["workflows", "workflows-png"])
+    older_wfs = [w for w in all_wfs if w["year"] and w["year"] < year_filter]
     png_wfs   = wf_list(source_filter=["png-outputs"])
     ml        = model_list()
     pm        = pruning_models()
@@ -1819,11 +1799,11 @@ def main():
             machine = data[hostname]
             for fn_lower in wf_data:
                 if fn_lower not in machine["models"] and fn_lower in source_models:
-                    # Only check source machine workflow names — other machines
-                    # share the same workflow folder so their sets are redundant,
-                    # and mixing them would dilute the (i) filter.
-                    source_wf_names = wf_data[fn_lower]["workflows"].get(source_host, set())
-                    has_non_i = any("(i)" not in wf.lower() for wf in source_wf_names)
+                    # Check if any referencing workflow is non-(i)
+                    all_wf_names = set()
+                    for wf_set in wf_data[fn_lower]["workflows"].values():
+                        all_wf_names |= wf_set
+                    has_non_i = any("(i)" not in wf.lower() for wf in all_wf_names)
                     if has_non_i:
                         missing_keys.add(fn_lower)
 

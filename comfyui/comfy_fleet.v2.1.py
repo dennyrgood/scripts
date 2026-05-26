@@ -174,16 +174,6 @@ def build_workflow_model_data(data: dict, year_filter: str) -> dict:
         for row in machine["full_map"]:
             if not row.get("workflow_modified", "").startswith(year_filter):
                 continue
-            # Only JSON workflows drive the prime/gap analysis.
-            # png-outputs = historical ImageBeast output folder, not executable.
-            # workflows-png = Starting Images PNGs, handled by their own pipeline.
-            # starting_images = same PNGs via separate scan, also handled separately.
-            if row.get("source", "") != "workflows":
-                continue
-            # 999 Other = experiments, tutorials, Pixaroma reference material —
-            # not production workflows, exclude from prime/gap analysis.
-            if "999 Other" in row.get("workflow_dir", ""):
-                continue
             fn   = row["model_filename"]
             ref  = row["model_ref"]
             ref_base = ref.replace("\\", "/").split("/")[-1]
@@ -285,16 +275,10 @@ def compute_readiness(data: dict, wf_model_data: dict, hostname: str, year_filte
     wf_missing = defaultdict(set)
     wf_total   = set()
 
-    is_source = data.get(hostname, {}).get("config", {}).get("is_source", False)
-
     for row in machine["full_map"]:
         if not row.get("workflow_modified", "").startswith(year_filter):
             continue
         wf = row["workflow_file"].split("\\")[-1]
-        # Non-source machines (Chat/Travel) cannot run (i) workflows — exclude them
-        # so they don't inflate the missing count or drive unnecessary sync candidates.
-        if not is_source and "(i)" in wf.lower():
-            continue
         wf_total.add(wf)
         if row["on_disk"] == "NO":
             wf_missing[wf].add(row["model_ref"].replace("\\", "/").split("/")[-1])
@@ -544,15 +528,11 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
                 prime_html += '</table>'
             if beyond:
                 total_beyond_gb = sum(b["size_gb"] for b in beyond)
-                prime_html += (
-                    f'<details><summary style="cursor:pointer;color:#888;margin:6px 0">'
-                    f'Beyond prime set — {len(beyond)} models, {total_beyond_gb:.2f} GB (click to expand)'
-                    f'</summary>'
-                    f'<table><tr><th>Model</th><th>Category</th><th>Size</th></tr>'
-                )
+                prime_html += f'<p><strong>Beyond prime set ({len(beyond)} models, {total_beyond_gb:.2f} GB):</strong></p>'
+                prime_html += '<table><tr><th>Model</th><th>Category</th><th>Size</th></tr>'
                 for b in beyond:
                     prime_html += f'<tr><td>{b["filename"]}</td><td>{b["category"]}</td><td>{b["size_gb"]:.2f} GB</td></tr>'
-                prime_html += '</table></details>'
+                prime_html += '</table>'
     else:
         prime_html = '<p>No prime_workflows_dir configured in fleet_config.json.</p>'
 
@@ -590,22 +570,16 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
         # Per-workflow breakdown — use first non-source machine's confirmed set for status
         first_cov = next(iter(si_coverage.values()), {})
         confirmed_set = set(first_cov.get("confirmed", []))
-        wf_rows = ""
+        si_html += '<h4>Per-Workflow Status</h4>'
+        si_html += '<table><tr><th>PNG</th><th>Models Referenced</th><th>Status</th></tr>'
         for wf in si_scan.get("workflows", []):
             wf_missing = [m for m in wf["models"] if m not in confirmed_set]
             status_color = "#2ecc71" if not wf_missing else "#e74c3c"
             status_text  = "Ready" if not wf_missing else f"Missing: {', '.join(wf_missing)}"
-            wf_rows += f'<tr><td style="font-family:monospace;font-size:0.85em">{wf["name"]}</td>'
-            wf_rows += f'<td style="font-size:0.8em">{", ".join(wf["models"])}</td>'
-            wf_rows += f'<td style="color:{status_color}">{status_text}</td></tr>'
-        si_html += (
-            '<details><summary style="cursor:pointer;color:#666;margin:10px 0">'
-            f'Per-Workflow Status — {len(si_scan.get("workflows", []))} PNGs (click to expand)'
-            '</summary>'
-            '<table><tr><th>PNG</th><th>Models Referenced</th><th>Status</th></tr>'
-            + wf_rows +
-            '</table></details>'
-        )
+            si_html += f'<tr><td style="font-family:monospace;font-size:0.85em">{wf["name"]}</td>'
+            si_html += f'<td style="font-size:0.8em">{", ".join(wf["models"])}</td>'
+            si_html += f'<td style="color:{status_color}">{status_text}</td></tr>'
+        si_html += '</table>'
     else:
         si_html = '<p>No Starting Images PNGs found. Add test output PNGs to the 000 Starting Images folder.</p>'
 
@@ -676,30 +650,26 @@ def generate_html(report_data: dict, timestamp: str, year_filter: str) -> str:
 <h2>Travel / Workflow Readiness ({year_filter})</h2>
 <div class="card">{readiness_html}</div>
 
-<h2>Starting Images — Travel Readiness</h2>
-<div class="card">{si_html}</div>
+<h2>Model Drift (vs Last Run)</h2>
+<div class="card">{drift_html}</div>
 
 <h2>Model Gaps</h2>
 <div class="card">{gaps_html}</div>
 
+<h2>Custom Nodes — Fleet Matrix</h2>
+<div class="card">{node_matrix_html}</div>
+
+<h2>Unused Models on ImageBeast</h2>
+<div class="card">{unused_html if unused_html else "<p>No unused models data available.</p>"}</div>
+
 <h2>Subdir Structure Mismatches</h2>
 <div class="card">{mismatch_html}</div>
 
-<h2>Model Drift (vs Last Run)</h2>
-<div class="card">{drift_html}</div>
+<h2>Starting Images — Travel Readiness</h2>
+<div class="card">{si_html}</div>
 
 <h2>Current Year Workflow Coverage ({year_filter})</h2>
 <div class="card">{prime_html}</div>
-
-<details>
-<summary style="cursor:pointer;font-size:1.2em;font-weight:bold;color:#2c3e50;margin:30px 0 10px;padding-left:12px;border-left:4px solid #3498db">Unused Models on ImageBeast</summary>
-<div class="card">{unused_html if unused_html else "<p>No unused models data available.</p>"}</div>
-</details>
-
-<details>
-<summary style="cursor:pointer;font-size:1.2em;font-weight:bold;color:#2c3e50;margin:30px 0 10px;padding-left:12px;border-left:4px solid #3498db">Custom Nodes — Fleet Matrix</summary>
-<div class="card">{node_matrix_html}</div>
-</details>
 
 </body>
 </html>"""
@@ -888,15 +858,11 @@ def scan_starting_images(data: dict) -> dict:
         for row in machine.get("full_map", []):
             if row.get("source", "").lower() != "starting_images":
                 continue
-            wf_name = row["workflow_file"].replace("\\", "/").split("/")[-1]
-            # Exclude (i) PNGs — ImageBeast-only workflows don't belong in the
-            # travel readiness set even if they live in 000 Starting Images.
-            if "(i)" in wf_name.lower():
-                continue
             fn = row.get("model_filename", "")
             if fn and fn != "(not found on disk)":
                 key = fn.lower()
                 all_models.add(key)
+                wf_name = row["workflow_file"].replace("\\", "/").split("/")[-1]
                 workflows[wf_name].add(key)
 
     wf_list = [
@@ -1270,8 +1236,8 @@ def generate_explorer_html(data: dict, timestamp: str, year_filter: str) -> str:
 
     si_wfs    = wf_list(source_filter=["starting_images"])
     yr_wfs    = wf_list(source_filter=["workflows", "workflows-png"], year=year_filter)
-    all_wfs   = wf_list()  # no filter — truly all sources including png-outputs
-    older_wfs = [w for w in wf_list(source_filter=["workflows", "workflows-png"]) if w["year"] and w["year"] < year_filter]
+    all_wfs   = wf_list(source_filter=["workflows", "workflows-png"])
+    older_wfs = [w for w in all_wfs if w["year"] and w["year"] < year_filter]
     png_wfs   = wf_list(source_filter=["png-outputs"])
     ml        = model_list()
     pm        = pruning_models()
@@ -1809,22 +1775,14 @@ def main():
         vram = min(config["machines"][h].get("vram_gb", 99) for h in hostnames_in_group)
         group_label = " + ".join(hostnames_in_group)
 
-        # Union of what ALL machines in this group are missing.
-        # Only consider models referenced by at least one workflow that does NOT
-        # have (i) in its filename — (i) marks ImageBeast-only workflows.
-        # Models referenced exclusively by (i) workflows stay on ImageBeast only.
-        # (c) = ChatWorkhorse-targeted, (tb) = TravelBeast-targeted, no tag = general.
+        # Union of what ALL machines in this group are missing
+        # (if they share Models_bare, missing set is identical, but union is safe)
         missing_keys = set()
         for hostname in hostnames_in_group:
             machine = data[hostname]
             for fn_lower in wf_data:
                 if fn_lower not in machine["models"] and fn_lower in source_models:
-                    # Only check source machine workflow names — other machines
-                    # share the same workflow folder so their sets are redundant,
-                    # and mixing them would dilute the (i) filter.
-                    source_wf_names = wf_data[fn_lower]["workflows"].get(source_host, set())
-                    has_non_i = any("(i)" not in wf.lower() for wf in source_wf_names)
-                    if has_non_i:
+                    if max_wf_count(wf_data[fn_lower]) >= 3:
                         missing_keys.add(fn_lower)
 
         missing = []
