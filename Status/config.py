@@ -20,7 +20,8 @@ ONEDRIVE_PATH = Path(
     or Path.home() / "OneDrive"
 )
 
-STATUS_DIR = ONEDRIVE_PATH / "_sync_monitor" / CHECKER_HOST
+# STATUS_DIR = ONEDRIVE_PATH / "_sync_monitor" / CHECKER_HOST
+STATUS_DIR = Path("c:/fleet_monitor") / CHECKER_HOST
 MASTER_STATUS_FILE = STATUS_DIR / "server_status_all.json"
 
 
