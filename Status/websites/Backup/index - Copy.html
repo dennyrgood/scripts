@@ -90,15 +90,14 @@
         }
 
         /* Mapping thumbnails to your files */
-        .thumb-zones    { background-image: url('SCR-20260308-nokk.png'); }
-        .thumb-organic  { background-image: url('SCR-20260308-nnyx.png'); }
-        .thumb-organic-l{ background-image: url('SCR-20260308-ntns.png'); }
-        .thumb-panel    { background-image: url('SCR-20260308-nogl.png'); }
-        .thumb-mobile   { background-image: url('SCR-20260308-nnuq.png'); }
-        .thumb-orig     { background-image: url('SCR-20260308-nocl.png'); }
-        .thumb-ST       { background-image: url('SCR-20260402-jnel.png'); }
-        .thumb-ST2      { background-image: url('SCR-20260404-byqk.png'); }
-        .thumb-tiles    { background-image: url('SCR-20260527-nrwv.png'); }
+        .thumb-zones { background-image: url('SCR-20260308-nokk.png'); }
+        .thumb-organic { background-image: url('SCR-20260308-nnyx.png'); }
+        .thumb-organic-l { background-image: url('SCR-20260308-ntns.png'); }
+        .thumb-panel { background-image: url('SCR-20260308-nogl.png'); }
+        .thumb-mobile { background-image: url('SCR-20260308-nnuq.png'); }
+        .thumb-orig { background-image: url('SCR-20260308-nocl.png'); }
+        .thumb-ST { background-image: url('SCR-20260402-jnel.png'); }
+        .thumb-ST2 { background-image: url('SCR-20260404-byqk.png'); }
     </style>
 </head>
 <body>
@@ -108,14 +107,6 @@
     </header>
 
     <div class="grid">
-        <a href="tiles/index.html" class="card">
-            <div class="thumb thumb-tiles"></div>
-            <div class="info">
-                <h2>Tiles</h2>
-                <p>Host tile overview. Primary service metrics at a glance with drill-down detail.</p>
-            </div>
-        </a>
-
         <a href="zones/index.html" class="card">
             <div class="thumb thumb-zones"></div>
             <div class="info">
@@ -128,15 +119,16 @@
             <div class="thumb thumb-organic"></div>
             <div class="info">
                 <h2>Organic</h2>
-                <p>Dynamic graph-based topology. View interconnected service mesh and health hubs.</p>
+                <p>Dynamic graph-based topology. View interconnected service mesh and health Hubs.</p>
             </div>
         </a>
+
 
         <a href="organic/index_by_latency.html" class="card">
             <div class="thumb thumb-organic-l"></div>
             <div class="info">
                 <h2>Organic by Latency</h2>
-                <p>Dynamic graph-based topology. View interconnected service mesh and health hubs.</p>
+                <p>Dynamic graph-based topology. View interconnected service mesh and health Hubs.</p>
             </div>
         </a>
 
@@ -171,7 +163,6 @@
                 <p>Star Trek based interface for core service monitoring.</p>
             </div>
         </a>
-
         <a href="ST/index_LCARS.html" class="card">
             <div class="thumb thumb-ST2"></div>
             <div class="info">
@@ -179,28 +170,34 @@
                 <p>Star Trek based LCARS interface for core service monitoring.</p>
             </div>
         </a>
-    </div>
-
+    </div> 
+    </div> 
+    
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         const params = new URLSearchParams(window.location.search);
-
+        
+        // Check if bkp is present in the current URL
         if (params.has('bkp')) {
             const links = document.querySelectorAll('.grid a.card');
-
+            
             links.forEach(link => {
                 const originalHref = link.getAttribute('href');
+                
+                // Manually append ?bkp to the end of the href
+                // This avoids the automatic "=" added by the URLSearchParams object
                 link.href = originalHref + '?bkp';
             });
 
             // Visual confirmation: Change header slashes to orange
             const accent = document.querySelector('h1 span');
             if (accent) accent.style.color = '#ff9100';
-
+            
             console.log("Routing configured for Backup API (Clean URL).");
         }
     });
 </script>
+
 
 </body>
 </html>
