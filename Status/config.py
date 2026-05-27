@@ -112,7 +112,7 @@ FLEET = [
             {
                 "name": "Ollama",
                 "port": 11434,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "ollama",
                 "public_url": None,
             },    
@@ -142,7 +142,7 @@ FLEET = [
             {
                 "name": "ComfyUI",
                 "port": 8188,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "comfyui",
                 "public_url": "https://clips.ldmathes.cc",
             },
@@ -271,7 +271,7 @@ FLEET = [
             {
                 "name": "Syncthing",
                 "port": 8384,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "syncthing",
                 "public_url": None,
             },
@@ -294,7 +294,7 @@ FLEET = [
             {
                 "name": "Syncthing",
                 "port": 8384,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "syncthing",
                 "public_url": None,
             },
@@ -324,7 +324,7 @@ FLEET = [
             {
                 "name": "Syncthing",
                 "port": 8384,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "syncthing",
                 "public_url": None,
             },
