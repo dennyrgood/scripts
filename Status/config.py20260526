@@ -20,8 +20,7 @@ ONEDRIVE_PATH = Path(
     or Path.home() / "OneDrive"
 )
 
-# STATUS_DIR = ONEDRIVE_PATH / "_sync_monitor" / CHECKER_HOST
-STATUS_DIR = Path("c:/fleet_monitor") / CHECKER_HOST
+STATUS_DIR = ONEDRIVE_PATH / "_sync_monitor" / CHECKER_HOST
 MASTER_STATUS_FILE = STATUS_DIR / "server_status_all.json"
 
 
@@ -32,7 +31,7 @@ MASTER_STATUS_FILE = STATUS_DIR / "server_status_all.json"
 
 POLL_INTERVAL_SECONDS = 30
 TIMEOUT_TCP_MS = 3000         # Layer 1 host reachability
-TIMEOUT_HTTP_MS = 3500        # Layer 2 Tailscale service checks
+TIMEOUT_HTTP_MS = 1500        # Layer 2 Tailscale service checks
 TIMEOUT_PUBLIC_MS = 3000      # Layer 3 public endpoint checks
 
 # ------ Plex Configuration ------
@@ -83,10 +82,6 @@ SYNCTHING_CONFIG = {
 #   "flask"     — Flask alive (GET /)
 #   "onedrive_heartbeat" — OneDrive sync heartbeat check (requires check_params: {target_host})
 #
-# priority: service display priority
-#   "P"  — primary service for this host; featured on tile with full metrics
-#   "S"  — secondary; shown as status dot on tile, full detail in drill-down
-#
 # probe_port: port used for Layer 1 TCP host reachability check.
 #             Pick the most reliably open port on that machine.
 #             Port 22 (SSH) is NOT used — most machines are Windows without SSH.
@@ -112,7 +107,7 @@ FLEET = [
             {
                 "name": "Ollama",
                 "port": 11434,
-                "priority": "S",
+                "priority": "B2",
                 "check_type": "ollama",
                 "public_url": None,
             },    
@@ -135,28 +130,28 @@ FLEET = [
             {
                 "name": "OpenWebUI",
                 "port": 8080,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "openwebui",
                 "public_url": "https://talk.ldmathes.cc",
             },
             {
                 "name": "ComfyUI",
                 "port": 8188,
-                "priority": "S",
+                "priority": "B2",
                 "check_type": "comfyui",
                 "public_url": "https://clips.ldmathes.cc",
             },
             {
                 "name": "Fleet API",
                 "port": 5010,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "flask",
                 "public_url": "https://fleet-bkp.ldmathes.cc",
             },
             {
                 "name": "Amsterdam Desktop Heartbeat Check",
                 "port": 0,  # Not applicable for heartbeat check
-                "priority": "S",
+                "priority": "B99",
                 "check_type": "onedrive_heartbeat",
                 "public_url": None,
                 "check_params": {"target_host": "amsterdamdesktop"}
@@ -173,14 +168,14 @@ FLEET = [
             {
                 "name": "ComfyUI",
                 "port": 8188,
-                "priority": "P",
+                "priority": "B5",
                 "check_type": "comfyui",
                 "public_url": None,
             },
             {
                 "name": "Ollama",
                 "port": 11434,
-                "priority": "P",
+                "priority": "B5",
                 "check_type": "ollama",
                 "public_url": None,
             },
@@ -203,14 +198,14 @@ FLEET = [
             {
                 "name": "Flask/API",
                 "port": 5000,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "flask",
                 "public_url": "https://api.ldmathes.cc",
             },
             {
                 "name": "Flask/API-Edit",
                 "port": 5001,
-                "priority": "S",
+                "priority": "P",
                 "check_type": "flask",
                 "public_url": "https://api-edit.ldmathes.cc",
             },
@@ -231,7 +226,7 @@ FLEET = [
             {
                 "name": "ChatWorkhorse Heartbeat Check",
                 "port": 0,  # Not applicable for heartbeat check
-                "priority": "S",
+                "priority": "B99",
                 "check_type": "onedrive_heartbeat",
                 "public_url": None,
                 "check_params": {"target_host": "chatworkhorse"}
@@ -242,13 +237,13 @@ FLEET = [
         "display_name": "MacBook Air Prime",
         "tailscale_name": "denniss-macbook-air",
         "tailscale_ip": "100.72.187.19",
-        "primary_role": "Ollama",
+        "primary_role": "Ollama B99",
         "probe_port": 11434,  # Ollama port (ignored; Tailscale ping used instead)
         "services": [
             {
                 "name": "Ollama",
                 "port": 11434,
-                "priority": "P",
+                "priority": "B99",
                 "check_type": "ollama",
                 "public_url": None,
             },
@@ -271,7 +266,7 @@ FLEET = [
             {
                 "name": "Syncthing",
                 "port": 8384,
-                "priority": "S",
+                "priority": "B1",
                 "check_type": "syncthing",
                 "public_url": None,
             },
@@ -294,7 +289,7 @@ FLEET = [
             {
                 "name": "Syncthing",
                 "port": 8384,
-                "priority": "S",
+                "priority": "B1",
                 "check_type": "syncthing",
                 "public_url": None,
             },
@@ -304,17 +299,17 @@ FLEET = [
         "display_name": "MacBook Air 2",
         "tailscale_name": "denniss-2nd-macbook-air",
         "tailscale_ip": "100.92.24.75",
-        "primary_role": "Plex / Ollama",
+        "primary_role": "Ollama B99",
         "probe_port": 22,
         "services": [
             {
                 "name": "Ollama",
                 "port": 11434,
-                "priority": "P",
+                "priority": "B99",
                 "check_type": "ollama",
                 "public_url": None,
             },
-            {
+                        {
                 "name": "Plex",
                 "port": 32400,
                 "priority": "P",
@@ -324,10 +319,11 @@ FLEET = [
             {
                 "name": "Syncthing",
                 "port": 8384,
-                "priority": "S",
+                "priority": "B1",
                 "check_type": "syncthing",
                 "public_url": None,
             },
         ],
 },
 ]
+
