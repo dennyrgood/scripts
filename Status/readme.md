@@ -30,7 +30,7 @@ The system monitors 6 hosts across different locations:
 | Display Name        | Hostname                  | Primary Role     | Tailscale IP    | Services                          |
 |---------------------|---------------------------|------------------|-----------------|-----------------------------------|
 | ImageBeast          | `imagebeast`              | ComfyUI Primary  | 100.107.247.38  | ComfyUI, Ollama                   |
-| ChatWorkhorse       | `chatworkhorse`           | Ollama Primary   | 100.124.253.46  | ComfyUI, Ollama, OpenWebUI        |
+| ChatWorkhorse       | `chatworkhorse`           | Ollama Primary   | 100.110.253.46  | ComfyUI, Ollama, OpenWebUI        |
 | TravelBeast         | `travelbeast`             | Mobile/Travel    | 100.73.82.42    | ComfyUI, Ollama (no public URLs)  |
 | Amsterdam           | `amsterdamdesktop`        | Flask/API Primary| 100.125.37.114  | Ollama, Flask APIs, OpenWebUI, Fleet API, ComfyUI |
 | MacBook Air Prime   | `denniss-macbook-air`     | Ollama Backup    | 100.72.187.19   | Ollama                            |
