@@ -6,22 +6,21 @@
   <title>FLEET_OPS // LCARS</title>
   <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <style>
+
     :root {
       --bg:          #080a0f;
       --bg2:         #0d1018;
       --bg3:         #121520;
 
-      /* LCARS status colors */
       --up:          #00e5c8;
-      --up-dim:      rgba(0,229,200,0.12);
+      --up-dim:      rgba(0,229,200,0.07);
       --warn:        #f5a623;
-      --warn-dim:    rgba(245,166,35,0.12);
+      --warn-dim:    rgba(245,166,35,0.07);
       --down:        #ff3b5c;
-      --down-dim:    rgba(255,59,92,0.12);
+      --down-dim:    rgba(255,59,92,0.07);
       --unknown:     #4a5568;
-      --unknown-dim: rgba(74,85,104,0.12);
+      --unknown-dim: rgba(74,85,104,0.07);
 
-      /* LCARS chrome colors */
       --lcars-tan:   #ffb84d;
       --lcars-blue:  #9b9eff;
       --lcars-pink:  #cc88ff;
@@ -35,11 +34,10 @@
       --display:     'Antonio', sans-serif;
 
       --header-h:    64px;
-      --elbow-w:     180px;
+      --rail-w:      44px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       background: var(--bg);
       color: var(--text);
@@ -48,7 +46,7 @@
       overflow-x: hidden;
     }
 
-    /* ── LCARS HEADER ──────────────────────────────── */
+    /* ── HEADER ─────────────────────────────────────── */
     #header {
       height: var(--header-h);
       background: var(--bg);
@@ -62,32 +60,49 @@
 
     /* left elbow */
     .hdr-elbow {
-      width: var(--elbow-w);
+      width: 160px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .hdr-elbow-top {
+      height: 20px;
+      background: var(--lcars-tan);
+      border-radius: 20px 0 0 0;
+    }
+    .hdr-elbow-bot {
+      flex: 1;
+      width: 56px;
+      background: var(--lcars-tan);
+      border-radius: 0 0 0 16px;
+    }
+
+    /* right elbow */
+    .hdr-elbow-right {
+      width: 100px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      padding-right: 0;
     }
-    .hdr-elbow-top {
-      height: 18px;
-      background: var(--lcars-tan);
+    .hdr-elbow-right-top {
+      height: 20px;
+      background: var(--lcars-blue);
       width: 100%;
-      border-radius: 18px 0 0 0;
+      border-radius: 0 20px 0 0;
     }
-    .hdr-elbow-pill {
+    .hdr-elbow-right-bot {
       flex: 1;
-      background: var(--lcars-tan);
-      width: 52px;
-      border-radius: 0 0 0 18px;
+      width: 56px;
+      background: var(--lcars-blue);
+      border-radius: 0 0 16px 0;
     }
 
-    /* title block */
     .hdr-title-block {
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 0 24px;
+      padding: 0 20px;
       gap: 2px;
       flex-shrink: 0;
     }
@@ -101,14 +116,12 @@
       text-transform: uppercase;
     }
     .hdr-subtitle {
-      font-family: var(--mono);
       font-size: 10px;
       color: var(--text-dim);
       letter-spacing: 3px;
       text-transform: uppercase;
     }
 
-    /* header stats bar */
     .hdr-stats {
       flex: 1;
       display: flex;
@@ -140,13 +153,12 @@
       text-transform: uppercase;
     }
 
-    /* right info */
     .hdr-right {
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: flex-end;
-      padding: 0 20px 0 16px;
+      padding: 0 16px;
       gap: 3px;
       font-size: 10px;
       color: var(--text-dim);
@@ -156,63 +168,93 @@
     .hdr-right .src { color: var(--lcars-blue); }
     #sync-age { color: var(--warn); }
     #sync-age.fresh { color: var(--up); }
+    #sync-age.stale { color: var(--down); animation: stale-pulse 1.5s ease-in-out infinite; }
+    @keyframes stale-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-    /* right elbow */
-    .hdr-elbow-right {
-      width: 80px;
+    /* ── ALERT STRIP ────────────────────────────────── */
+    #alert-strip {
+      display: none;
+      background: rgba(255,59,92,0.08);
+      border-bottom: 1px solid rgba(255,59,92,0.3);
+      padding: 6px 16px 6px calc(var(--rail-w) + 16px);
+      font-size: 10px;
+      color: var(--down);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    #alert-strip.visible { display: flex; }
+    .alert-label {
+      color: var(--down);
+      font-family: var(--display);
+      font-size: 12px;
+      letter-spacing: 2px;
+      margin-right: 8px;
       flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
     }
-    .hdr-elbow-right-top {
-      height: 18px;
-      background: var(--lcars-blue);
-      width: 100%;
-      border-radius: 0 18px 0 0;
-    }
-    .hdr-elbow-right-pill {
-      flex: 1;
-      background: var(--lcars-blue);
-      width: 52px;
-      border-radius: 0 0 18px 0;
-      align-self: flex-end;
+    .alert-item {
+      background: rgba(255,59,92,0.12);
+      border: 1px solid rgba(255,59,92,0.35);
+      border-radius: 3px;
+      padding: 2px 8px;
+      font-size: 10px;
+      letter-spacing: 1px;
     }
 
-    /* ── SIDE RAIL + CONTENT LAYOUT ────────────────── */
+    /* ── LAYOUT ─────────────────────────────────────── */
     #layout {
       display: flex;
       min-height: calc(100vh - var(--header-h));
     }
 
-    /* left rail */
+    /* ── RAIL ───────────────────────────────────────── */
     #rail {
-      width: var(--elbow-w);
+      width: var(--rail-w);
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      padding: 16px 0 16px 16px;
+      gap: 5px;
+      padding: 12px 0 12px 8px;
     }
-    .rail-block {
-      height: 36px;
-      border-radius: 18px 0 0 18px;
-      background: var(--lcars-pink);
-      opacity: 0.6;
+    .rail-host {
+      flex: 1;
+      min-height: 28px;
+      border-radius: 12px 0 0 12px;
+      background: var(--unknown);
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding-left: 6px;
+      overflow: hidden;
     }
-    .rail-block:nth-child(2) { background: var(--lcars-coral); height: 20px; opacity: 0.5; }
-    .rail-block:nth-child(3) { background: var(--lcars-teal);  height: 54px; opacity: 0.45; }
-    .rail-block:nth-child(4) { background: var(--lcars-tan);   height: 24px; opacity: 0.5; }
-    .rail-block:nth-child(5) { background: var(--lcars-blue);  height: 44px; opacity: 0.4; }
-    .rail-block:nth-child(6) { background: var(--lcars-pink);  height: 20px; opacity: 0.45; }
-    .rail-block:nth-child(7) { background: var(--lcars-coral); height: 60px; opacity: 0.4; }
-    .rail-block:nth-child(8) { background: var(--lcars-teal);  height: 28px; opacity: 0.45; }
-    .rail-block:nth-child(9) { background: var(--lcars-tan);   height: 36px; opacity: 0.4; }
+    .rail-host:hover { opacity: 0.85; transform: translateX(2px); }
+    .rail-host.up      { background: var(--up); }
+    .rail-host.down    { background: var(--down); }
+    .rail-host.warn    { background: var(--warn); }
+    .rail-host.unknown { background: var(--unknown); }
+    .rail-host-label {
+      font-size: 7px;
+      font-family: var(--display);
+      color: rgba(0,0,0,0.7);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      white-space: nowrap;
+      overflow: hidden;
+      max-height: 100%;
+    }
 
-    /* main content */
+    /* ── MAIN ───────────────────────────────────────── */
     #main {
       flex: 1;
       min-width: 0;
-      padding: 16px 16px 16px 8px;
+      padding: 12px 12px 12px 6px;
     }
 
     /* ── GRID ───────────────────────────────────────── */
@@ -223,7 +265,7 @@
       max-width: 1400px;
     }
 
-    /* ── TILE ───────────────────────────────────────── */
+    /* ── TILE — LCARS SHAPE ─────────────────────────── */
     .tile {
       background: var(--bg2);
       border-radius: 4px;
@@ -231,37 +273,74 @@
       flex-direction: column;
       cursor: pointer;
       position: relative;
-      overflow: hidden;
+      overflow: visible;
       transition: background 0.15s;
-      border: 1px solid rgba(255,255,255,0.04);
+      /* status tint via box-shadow inner */
     }
+    .tile.status-up      { box-shadow: inset 0 0 0 1px rgba(0,229,200,0.15); }
+    .tile.status-down    { box-shadow: inset 0 0 0 1px rgba(255,59,92,0.25); }
+    .tile.status-warn    { box-shadow: inset 0 0 0 1px rgba(245,166,35,0.2); }
+    .tile.status-unknown { box-shadow: inset 0 0 0 1px rgba(74,85,104,0.2); }
     .tile:hover { background: var(--bg3); }
 
-    /* thick left bar = LCARS elbow feel */
-    .tile-lbar {
-      position: absolute;
-      left: 0; top: 0; bottom: 0;
-      width: 6px;
-      background: var(--up);
-    }
-    .tile.status-down .tile-lbar  { background: var(--down); }
-    .tile.status-warn .tile.tile-lbar { background: var(--warn); }
-
-    /* tile header — LCARS pill style */
+    /* LCARS pill header */
     .tile-head {
       display: flex;
-      align-items: center;
-      padding: 0 10px 0 16px;
-      height: 36px;
+      align-items: stretch;
+      height: 38px;
       flex-shrink: 0;
-      gap: 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      background: rgba(255,255,255,0.02);
+      border-radius: 4px 4px 0 0;
+      overflow: hidden;
     }
+
+    /* chunky left elbow piece */
+    .tile-elbow {
+      width: 48px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .tile-elbow-top {
+      flex: 1;
+      border-radius: 4px 0 0 0;
+    }
+    .tile-elbow-bot {
+      height: 10px;
+      background: var(--bg2);
+      border-radius: 0 10px 0 0;
+    }
+    .tile.status-up      .tile-elbow-top { background: var(--up); }
+    .tile.status-down    .tile-elbow-top { background: var(--down); }
+    .tile.status-warn    .tile-elbow-top { background: var(--warn); }
+    .tile.status-unknown .tile-elbow-top { background: var(--unknown); }
+
+    /* title pill — fills rest of header */
+    .tile-title-pill {
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      padding: 0 10px 0 8px;
+      border-radius: 0 4px 0 0;
+      gap: 8px;
+      padding-bottom: 0;
+    }
+    .tile-title-inner {
+      flex: 1;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 14px 14px 0 0;
+      padding: 0 12px;
+    }
+    .tile.status-up      .tile-title-inner { background: var(--up-dim); border: 1px solid rgba(0,229,200,0.2); border-bottom: none; }
+    .tile.status-down    .tile-title-inner { background: var(--down-dim); border: 1px solid rgba(255,59,92,0.25); border-bottom: none; }
+    .tile.status-warn    .tile-title-inner { background: var(--warn-dim); border: 1px solid rgba(245,166,35,0.2); border-bottom: none; }
+    .tile.status-unknown .tile-title-inner { background: var(--unknown-dim); border: 1px solid rgba(74,85,104,0.15); border-bottom: none; }
 
     .tile-name {
       font-family: var(--display);
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
       letter-spacing: 2px;
       text-transform: uppercase;
@@ -270,56 +349,55 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .tile.status-up   .tile-name { color: var(--up); }
-    .tile.status-down .tile-name { color: var(--down); }
-    .tile.status-warn .tile-name { color: var(--warn); }
+    .tile.status-up      .tile-name { color: var(--up); }
+    .tile.status-down    .tile-name { color: var(--down); }
+    .tile.status-warn    .tile-name { color: var(--warn); }
     .tile.status-unknown .tile-name { color: var(--unknown); }
 
-    .tile-ping {
-      font-size: 10px;
-      color: var(--text-dim);
-      flex-shrink: 0;
-    }
+    .tile-ping { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
     .tile-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      background: var(--up);
+      width: 8px; height: 8px;
+      border-radius: 50%; flex-shrink: 0;
     }
-    .tile.status-down .tile-dot    { background: var(--down); }
-    .tile.status-warn .tile-dot    { background: var(--warn); }
+    .tile.status-up      .tile-dot { background: var(--up); }
+    .tile.status-down    .tile-dot { background: var(--down); }
+    .tile.status-warn    .tile-dot { background: var(--warn); }
     .tile.status-unknown .tile-dot { background: var(--unknown); }
+
+    /* separator line under header */
+    .tile-sep {
+      height: 1px;
+      margin: 0 0 0 48px;
+    }
+    .tile.status-up      .tile-sep { background: rgba(0,229,200,0.2); }
+    .tile.status-down    .tile-sep { background: rgba(255,59,92,0.25); }
+    .tile.status-warn    .tile-sep { background: rgba(245,166,35,0.2); }
+    .tile.status-unknown .tile-sep { background: rgba(74,85,104,0.15); }
 
     .tile-role {
       font-size: 9px;
       color: var(--text-dim);
       letter-spacing: 2px;
       text-transform: uppercase;
-      padding: 5px 10px 4px 16px;
+      padding: 5px 10px 3px 14px;
       flex-shrink: 0;
     }
 
     /* P services */
     .tile-primary {
-      padding: 4px 10px 8px 16px;
+      padding: 4px 10px 8px 14px;
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
     .p-service { display: flex; flex-direction: column; gap: 2px; }
     .p-svc-name {
-      font-size: 9px;
-      color: var(--text-dim);
-      letter-spacing: 2px;
-      text-transform: uppercase;
+      font-size: 9px; color: var(--text-dim);
+      letter-spacing: 2px; text-transform: uppercase;
     }
     .p-svc-metric {
-      font-size: 11px;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-size: 11px; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .p-svc-metric .val  { color: var(--text-bright); }
     .p-svc-metric .ok   { color: var(--up); }
@@ -327,44 +405,38 @@
     .p-svc-metric .err  { color: var(--down); }
 
     .vram-bar-wrap {
-      height: 3px;
+      height: 8px;
       background: rgba(255,255,255,0.05);
-      border-radius: 2px;
+      border-radius: 3px;
       overflow: hidden;
-      margin-top: 2px;
+      margin-top: 3px;
     }
-    .vram-bar-fill { height: 100%; background: var(--up); border-radius: 2px; transition: width 0.4s; }
+    .vram-bar-fill {
+      height: 100%; background: var(--up);
+      border-radius: 3px; transition: width 0.4s;
+    }
     .vram-bar-fill.warn { background: var(--warn); }
     .vram-bar-fill.crit { background: var(--down); }
 
-    /* S service dots */
+    /* S dots */
     .tile-secondary {
-      padding: 5px 10px 8px 16px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+      padding: 5px 10px 8px 14px;
+      display: flex; flex-wrap: wrap; gap: 8px;
       border-top: 1px solid rgba(255,255,255,0.04);
       flex-shrink: 0;
     }
     .s-dot-wrap { display: flex; align-items: center; gap: 4px; }
-    .s-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--up);
-    }
+    .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--up); }
     .s-dot.down    { background: var(--down); }
     .s-dot.warn    { background: var(--warn); }
     .s-dot.unknown { background: var(--unknown); }
     .s-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; }
 
-    /* ── MODAL OVERLAY ──────────────────────────────── */
+    /* ── OVERLAY ────────────────────────────────────── */
     #overlay {
-      position: fixed;
-      inset: 0;
+      position: fixed; inset: 0;
       background: rgba(0,0,0,0.75);
-      z-index: 200;
-      opacity: 0;
-      pointer-events: none;
+      z-index: 200; opacity: 0; pointer-events: none;
       transition: opacity 0.2s;
     }
     #overlay.open { opacity: 1; pointer-events: all; }
@@ -372,143 +444,121 @@
     /* ── MODAL ──────────────────────────────────────── */
     #modal {
       position: fixed;
-      top: 50%;
-      left: 50%;
+      top: 50%; left: 50%;
       transform: translate(-50%, -50%) scale(0.96);
       width: min(860px, 96vw);
       max-height: 88vh;
       background: var(--bg);
       z-index: 201;
-      display: flex;
-      flex-direction: column;
-      opacity: 0;
-      pointer-events: none;
+      display: flex; flex-direction: column;
+      opacity: 0; pointer-events: none;
       transition: opacity 0.2s, transform 0.2s;
-      border-radius: 4px;
-      overflow: hidden;
+      border-radius: 4px; overflow: hidden;
     }
-    #modal.open {
-      opacity: 1;
-      pointer-events: all;
-      transform: translate(-50%, -50%) scale(1);
-    }
+    #modal.open { opacity: 1; pointer-events: all; transform: translate(-50%, -50%) scale(1); }
 
-    /* modal — LCARS top bar */
+    /* modal topbar */
     #modal-topbar {
-      display: flex;
-      align-items: stretch;
-      height: 52px;
-      flex-shrink: 0;
+      display: flex; align-items: stretch; height: 52px; flex-shrink: 0;
     }
     .modal-tb-pill {
-      width: 140px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
+      width: 140px; flex-shrink: 0;
+      display: flex; flex-direction: column;
     }
     .modal-tb-pill-top {
-      flex: 1;
-      background: var(--lcars-tan);
-      border-radius: 26px 0 0 0;
+      flex: 1; border-radius: 26px 0 0 0;
+      transition: background 0.2s;
     }
-    .modal-tb-pill-bot {
-      height: 10px;
-      background: var(--bg);
-    }
+    .modal-tb-pill-bot { height: 10px; background: var(--bg); }
+
     .modal-tb-center {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      padding: 0 20px;
-      gap: 16px;
-      border-bottom: 3px solid var(--lcars-tan);
+      flex: 1; display: flex; align-items: center;
+      padding: 0 20px; gap: 16px;
     }
+    /* border-bottom color set dynamically by JS */
     #modal-title {
       font-family: var(--display);
-      font-size: 24px;
-      font-weight: 700;
-      letter-spacing: 4px;
-      color: var(--text-bright);
+      font-size: 24px; font-weight: 700;
+      letter-spacing: 4px; color: var(--text-bright);
       text-transform: uppercase;
     }
     #modal-status-badge {
-      font-size: 11px;
-      letter-spacing: 2px;
-      padding: 3px 12px;
-      border-radius: 3px;
-      text-transform: uppercase;
-      font-weight: 700;
+      font-size: 11px; letter-spacing: 2px;
+      padding: 3px 12px; border-radius: 3px;
+      text-transform: uppercase; font-weight: 700;
     }
-    #modal-status-badge.up      { background: var(--up-dim);   color: var(--up);   border: 1px solid var(--up); }
-    #modal-status-badge.down    { background: var(--down-dim); color: var(--down); border: 1px solid var(--down); }
-    #modal-status-badge.warn    { background: var(--warn-dim); color: var(--warn); border: 1px solid var(--warn); }
+    #modal-status-badge.up      { background: var(--up-dim);      color: var(--up);      border: 1px solid var(--up); }
+    #modal-status-badge.down    { background: var(--down-dim);    color: var(--down);    border: 1px solid var(--down); }
+    #modal-status-badge.warn    { background: var(--warn-dim);    color: var(--warn);    border: 1px solid var(--warn); }
     #modal-status-badge.unknown { background: var(--unknown-dim); color: var(--unknown); border: 1px solid var(--unknown); }
 
+    #modal-role {
+      font-size: 10px; color: var(--text-dim);
+      letter-spacing: 2px; text-transform: uppercase; margin-left: auto;
+    }
+
     .modal-tb-close-wrap {
-      width: 80px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
+      width: 80px; flex-shrink: 0;
+      display: flex; flex-direction: column;
     }
     .modal-tb-close-top {
-      flex: 1;
-      background: var(--down);
+      flex: 1; background: var(--down);
       border-radius: 0 26px 0 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
       cursor: pointer;
-      font-family: var(--display);
-      font-size: 13px;
-      font-weight: 700;
-      color: #000;
-      letter-spacing: 2px;
+      font-family: var(--display); font-size: 13px; font-weight: 700;
+      color: #000; letter-spacing: 2px;
       transition: opacity 0.15s;
     }
     .modal-tb-close-top:hover { opacity: 0.8; }
     .modal-tb-close-bot { height: 10px; background: var(--bg); }
 
-    /* modal body */
+    /* modal alert banner */
+    #modal-alert {
+      display: none;
+      background: rgba(255,59,92,0.1);
+      border-bottom: 1px solid rgba(255,59,92,0.3);
+      padding: 8px 20px;
+      font-size: 10px; color: var(--down);
+      letter-spacing: 1.5px; text-transform: uppercase;
+      flex-wrap: wrap; gap: 6px; align-items: center;
+    }
+    #modal-alert.visible { display: flex; }
+    .modal-alert-label {
+      font-family: var(--display); font-size: 13px;
+      letter-spacing: 2px; margin-right: 8px; flex-shrink: 0;
+    }
+    .modal-alert-item {
+      background: rgba(255,59,92,0.15);
+      border: 1px solid rgba(255,59,92,0.4);
+      border-radius: 3px; padding: 2px 8px;
+      font-size: 10px; letter-spacing: 1px;
+    }
+
     #modal-body {
-      flex: 1;
-      overflow-y: auto;
+      flex: 1; overflow-y: auto;
       padding: 20px 24px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+      display: flex; flex-direction: column; gap: 16px;
     }
     #modal-body::-webkit-scrollbar { width: 3px; }
     #modal-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
 
-    /* modal bottom rail */
     #modal-bottombar {
-      height: 14px;
-      flex-shrink: 0;
-      display: flex;
-      gap: 4px;
-      padding: 0 0 0 0;
+      height: 14px; flex-shrink: 0;
+      display: flex; gap: 4px;
     }
-    .mbb-seg {
-      height: 100%;
-      background: var(--lcars-blue);
-      opacity: 0.5;
-      border-radius: 0 0 0 0;
-    }
-    .mbb-seg:first-child { width: 140px; border-radius: 0 0 0 4px; background: var(--lcars-tan); }
+    .mbb-seg { height: 100%; background: var(--lcars-blue); opacity: 0.5; }
+    .mbb-seg:first-child { width: 140px; border-radius: 0 0 0 4px; background: var(--lcars-tan); opacity: 0.7; }
     .mbb-seg:last-child  { flex: 1; border-radius: 0 0 4px 0; }
 
-    /* ── MODAL SECTIONS ─────────────────────────────── */
+    /* modal sections */
     .m-section-title {
-      font-size: 9px;
-      color: var(--lcars-tan);
-      letter-spacing: 3px;
-      text-transform: uppercase;
+      font-size: 9px; color: var(--lcars-tan);
+      letter-spacing: 3px; text-transform: uppercase;
       padding-bottom: 6px;
       border-bottom: 1px solid rgba(255,184,77,0.2);
       margin-bottom: 10px;
     }
-
-    /* host info grid */
     .m-info-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -517,26 +567,17 @@
     .m-info-cell {
       background: rgba(255,255,255,0.02);
       border: 1px solid rgba(255,255,255,0.05);
-      border-radius: 3px;
-      padding: 8px 10px;
+      border-radius: 3px; padding: 8px 10px;
     }
     .m-info-lbl {
-      font-size: 9px;
-      color: var(--text-dim);
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin-bottom: 4px;
+      font-size: 9px; color: var(--text-dim);
+      letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;
     }
-    .m-info-val {
-      font-size: 12px;
-      color: var(--text-bright);
-      word-break: break-all;
-    }
+    .m-info-val { font-size: 12px; color: var(--text-bright); word-break: break-all; }
     .m-info-val.up   { color: var(--up); }
     .m-info-val.down { color: var(--down); }
     .m-info-val.warn { color: var(--warn); }
 
-    /* service cards */
     .m-svc-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -545,160 +586,96 @@
     .m-svc-card {
       background: rgba(255,255,255,0.02);
       border: 1px solid rgba(255,255,255,0.05);
-      border-radius: 3px;
-      padding: 10px 12px;
+      border-radius: 3px; padding: 10px 12px;
       border-left: 3px solid var(--unknown);
     }
-    .m-svc-card.up   { border-left-color: var(--up); }
-    .m-svc-card.down { border-left-color: var(--down); }
-    .m-svc-card.warn { border-left-color: var(--warn); }
-
+    .m-svc-card.up      { border-left-color: var(--up); }
+    .m-svc-card.down    { border-left-color: var(--down); }
+    .m-svc-card.warn    { border-left-color: var(--warn); }
     .m-svc-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 8px;
     }
     .m-svc-name {
-      font-family: var(--display);
-      font-size: 13px;
-      letter-spacing: 1.5px;
-      color: var(--text-bright);
-      text-transform: uppercase;
+      font-family: var(--display); font-size: 13px;
+      letter-spacing: 1.5px; color: var(--text-bright); text-transform: uppercase;
     }
-    .m-svc-badge {
-      font-size: 9px;
-      padding: 1px 6px;
-      border-radius: 2px;
-      letter-spacing: 1px;
-    }
+    .m-svc-badge { font-size: 9px; padding: 1px 6px; border-radius: 2px; letter-spacing: 1px; }
     .m-svc-badge.P { background: rgba(155,158,255,0.15); color: var(--lcars-blue); border: 1px solid rgba(155,158,255,0.3); }
-    .m-svc-badge.S { background: rgba(255,255,255,0.04); color: var(--text-dim);   border: 1px solid rgba(255,255,255,0.07); }
-
+    .m-svc-badge.S { background: rgba(255,255,255,0.04); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.07); }
     .m-svc-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 10px;
-      margin-bottom: 3px;
-      gap: 8px;
+      display: flex; justify-content: space-between;
+      font-size: 10px; margin-bottom: 3px; gap: 8px;
     }
     .m-svc-row .lbl { color: var(--text-dim); flex-shrink: 0; letter-spacing: 1px; }
     .m-svc-row .val { color: var(--text-bright); text-align: right; word-break: break-all; }
     .m-svc-row .val.up   { color: var(--up); }
     .m-svc-row .val.down { color: var(--down); }
     .m-svc-row .val.warn { color: var(--warn); }
-
     .m-vram-wrap {
-      height: 3px;
-      background: rgba(255,255,255,0.05);
-      border-radius: 2px;
-      overflow: hidden;
-      margin: 4px 0 2px;
+      height: 8px; background: rgba(255,255,255,0.05);
+      border-radius: 3px; overflow: hidden; margin: 4px 0 2px;
     }
-    .m-vram-fill { height: 100%; background: var(--up); border-radius: 2px; }
+    .m-vram-fill { height: 100%; background: var(--up); border-radius: 3px; }
     .m-vram-fill.warn { background: var(--warn); }
     .m-vram-fill.crit { background: var(--down); }
 
-    /* raw JSON */
     .m-raw-toggle {
-      font-family: var(--mono);
-      font-size: 10px;
-      color: var(--text-dim);
-      cursor: pointer;
-      padding: 6px 0 4px;
-      display: block;
-      letter-spacing: 1px;
-      border: none;
-      background: none;
-      text-align: left;
-      width: 100%;
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      cursor: pointer; padding: 6px 0 4px; display: block;
+      letter-spacing: 1px; border: none; background: none;
+      text-align: left; width: 100%;
     }
     .m-raw-toggle:hover { color: var(--lcars-tan); }
     .m-raw-pre {
-      font-family: var(--mono);
-      font-size: 9px;
-      color: #3a5060;
+      font-family: var(--mono); font-size: 9px; color: #3a5060;
       background: rgba(0,0,0,0.4);
       border: 1px solid rgba(255,255,255,0.04);
-      border-radius: 3px;
-      padding: 10px;
-      overflow-x: auto;
-      white-space: pre;
-      display: none;
-      margin-top: 4px;
-      line-height: 1.7;
+      border-radius: 3px; padding: 10px;
+      overflow-x: auto; white-space: pre;
+      display: none; margin-top: 4px; line-height: 1.7;
     }
     .m-raw-pre.open { display: block; }
 
-    /* ── FOOTER ─────────────────────────────────────── */
+    /* footer */
     #footer {
-      text-align: center;
-      padding: 10px;
-      font-size: 9px;
-      color: var(--text-dim);
+      text-align: center; padding: 10px;
+      font-size: 9px; color: var(--text-dim);
       letter-spacing: 2px;
       border-top: 1px solid rgba(255,255,255,0.03);
     }
-    #footer a {
-      color: var(--lcars-blue);
-      text-decoration: none;
-      margin-left: 16px;
-    }
+    #footer a { color: var(--lcars-blue); text-decoration: none; margin-left: 16px; }
     #footer a:hover { color: var(--lcars-tan); }
 
-    /* loading / error */
     #loading {
       display: flex; align-items: center; justify-content: center;
-      height: 300px;
-      font-size: 12px;
-      color: var(--text-dim);
-      letter-spacing: 3px;
-      text-transform: uppercase;
+      height: 300px; font-size: 12px; color: var(--text-dim);
+      letter-spacing: 3px; text-transform: uppercase;
     }
-    #error-msg {
-      display: none;
-      text-align: center;
-      padding: 40px;
-      font-size: 11px;
-      color: var(--down);
-      letter-spacing: 1px;
-    }
-
-    /* blinking cursor on loading */
+    #loading::after { content: '█'; margin-left: 4px; animation: blink 1s infinite; color: var(--up); }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-    #loading::after {
-      content: '█';
-      margin-left: 4px;
-      animation: blink 1s infinite;
-      color: var(--up);
+
+    #error-msg {
+      display: none; text-align: center; padding: 40px;
+      font-size: 11px; color: var(--down); letter-spacing: 1px;
     }
   </style>
 </head>
 <body>
 
-  <!-- HEADER -->
   <div id="header">
     <div class="hdr-elbow">
       <div class="hdr-elbow-top"></div>
-      <div class="hdr-elbow-pill"></div>
+      <div class="hdr-elbow-bot"></div>
     </div>
     <div class="hdr-title-block">
       <div class="hdr-title">FLEET_OPS</div>
       <div class="hdr-subtitle">LCARS INTERFACE</div>
     </div>
     <div class="hdr-stats">
-      <div class="hdr-stat">
-        <div class="hdr-stat-val" id="h-hosts">–/–</div>
-        <div class="hdr-stat-lbl">HOSTS</div>
-      </div>
-      <div class="hdr-stat">
-        <div class="hdr-stat-val" id="h-svc">–/–</div>
-        <div class="hdr-stat-lbl">SERVICES</div>
-      </div>
-      <div class="hdr-stat">
-        <div class="hdr-stat-val" id="h-pub">–/–</div>
-        <div class="hdr-stat-lbl">PUBLIC</div>
-      </div>
+      <div class="hdr-stat"><div class="hdr-stat-val" id="h-hosts">–/–</div><div class="hdr-stat-lbl">HOSTS</div></div>
+      <div class="hdr-stat"><div class="hdr-stat-val" id="h-svc">–/–</div><div class="hdr-stat-lbl">SERVICES</div></div>
+      <div class="hdr-stat"><div class="hdr-stat-val" id="h-pub">–/–</div><div class="hdr-stat-lbl">PUBLIC</div></div>
     </div>
     <div class="hdr-right">
       <span>SRC: <span class="src" id="h-src">–</span></span>
@@ -707,41 +684,29 @@
     </div>
     <div class="hdr-elbow-right">
       <div class="hdr-elbow-right-top"></div>
-      <div class="hdr-elbow-right-pill"></div>
+      <div class="hdr-elbow-right-bot"></div>
     </div>
   </div>
 
-  <!-- LAYOUT -->
+  <div id="alert-strip">
+    <span class="alert-label">⚠ SYSTEM ALERT</span>
+  </div>
+
   <div id="layout">
-    <div id="rail">
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-      <div class="rail-block"></div>
-    </div>
+    <div id="rail"></div>
     <div id="main">
-      <div id="grid">
-        <div id="loading">INITIALIZING LCARS</div>
-      </div>
+      <div id="grid"><div id="loading">INITIALIZING LCARS</div></div>
       <div id="error-msg"></div>
     </div>
   </div>
 
-  <!-- FOOTER -->
   <div id="footer">
     FLEET_OPS // LCARS INTERFACE
     <a id="altFeedLink" href="#">BACKUP FEED</a>
   </div>
 
-  <!-- OVERLAY -->
   <div id="overlay"></div>
 
-  <!-- MODAL -->
   <div id="modal">
     <div id="modal-topbar">
       <div class="modal-tb-pill">
@@ -751,12 +716,15 @@
       <div class="modal-tb-center">
         <div id="modal-title">–</div>
         <div id="modal-status-badge" class="unknown">UNKNOWN</div>
-        <div id="modal-role" style="font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-left:auto"></div>
+        <div id="modal-role"></div>
       </div>
       <div class="modal-tb-close-wrap">
         <div class="modal-tb-close-top" id="modal-close">CLOSE</div>
         <div class="modal-tb-close-bot"></div>
       </div>
+    </div>
+    <div id="modal-alert">
+      <span class="modal-alert-label">⚠ ALERT</span>
     </div>
     <div id="modal-body"></div>
     <div id="modal-bottombar">
@@ -768,11 +736,11 @@
   </div>
 
   <script>
-    // ── API / ROUTING ────────────────────────────────
-    const WARN_MS = 3500;
-    const params  = new URLSearchParams(window.location.search);
-    const isBkp   = params.has('bkp');
-    const API_URL = isBkp
+    const WARN_MS   = 3500;
+    const STALE_MS  = 3 * 60 * 1000; // 3 minutes
+    const params    = new URLSearchParams(window.location.search);
+    const isBkp     = params.has('bkp');
+    const API_URL   = isBkp
       ? 'https://fleet-bkp.ldmathes.cc/api/status'
       : 'https://fleet.ldmathes.cc/api/status';
 
@@ -784,7 +752,7 @@
     let lastTimestamp = null;
     let ageTimer      = null;
 
-    // ── PARSERS (identical to tiles/index.html) ──────
+    // ── PARSERS ──────────────────────────────────────
     function parseVRAM(detail) {
       if (!detail) return null;
       const m = detail.match(/VRAM:\s*([\d.]+)GB\s*\/\s*([\d.]+)GB/);
@@ -820,10 +788,7 @@
       if (!detail) return null;
       const folders = detail.match(/(\d+)\s+folders?/i);
       const state   = detail.match(/^(\w+)/);
-      return {
-        state:   state   ? state[1] : null,
-        folders: folders ? parseInt(folders[1]) : null,
-      };
+      return { state: state ? state[1] : null, folders: folders ? parseInt(folders[1]) : null };
     }
     function parseHeartbeat(detail) {
       if (!detail) return null;
@@ -859,15 +824,15 @@
           html += `<div class="p-svc-metric"><span class="val">${vram.used}/${vram.total}GB</span><span style="color:var(--text-dim)"> VRAM</span></div>
           <div class="vram-bar-wrap"><div class="vram-bar-fill ${bc}" style="width:${pct}%"></div></div>`;
         }
-        if (queue) {
-          html += `<div class="p-svc-metric"><span class="${queue==='idle'?'ok':'warn'}">${queue.toUpperCase()}</span></div>`;
-        }
+        if (queue) html += `<div class="p-svc-metric"><span class="${queue==='idle'?'ok':'warn'}">${queue.toUpperCase()}</span></div>`;
+
       } else if (svc.name === 'Ollama' || ct === 'ollama') {
         const ol = parseOllama(detail);
         if (ol) {
           html += `<div class="p-svc-metric"><span class="val">${ol.count}</span><span style="color:var(--text-dim)"> models</span></div>
           <div class="p-svc-metric"><span class="${ol.active==='none active'?'ok':'warn'}">${ol.active}</span></div>`;
         }
+
       } else if (svc.name === 'Plex' || ct === 'plex') {
         const pl = parsePlex(detail);
         if (pl) {
@@ -878,14 +843,24 @@
           </div>`;
           if (pl.libs !== null) html += `<div class="p-svc-metric"><span style="color:var(--text-dim)">${pl.libs} libraries</span></div>`;
         }
+
       } else if (ct === 'openwebui') {
         const ms = svc.tailscale_check?.response_time_ms;
         html += `<div class="p-svc-metric"><span class="${status==='up'?'ok':'err'}">${status.toUpperCase()}</span>${ms?`<span style="color:var(--text-dim)"> · ${ms}ms</span>`:''}</div>`;
+
       } else if (ct === 'flask') {
         const ms = svc.tailscale_check?.response_time_ms;
         html += `<div class="p-svc-metric"><span class="${status==='up'?'ok':'err'}">${detail||status.toUpperCase()}</span>${ms?`<span style="color:var(--text-dim)"> · ${ms}ms</span>`:''}</div>`;
+
       } else {
-        html += `<div class="p-svc-metric"><span class="${status==='up'?'ok':'err'}">${status.toUpperCase()}</span></div>`;
+        // heartbeat age
+        const age = parseHeartbeat(detail);
+        if (age !== null) {
+          const ac = age > 180 ? 'err' : age > 90 ? 'warn' : 'ok';
+          html += `<div class="p-svc-metric"><span class="${ac}">${age}s AGO</span></div>`;
+        } else {
+          html += `<div class="p-svc-metric"><span class="${status==='up'?'ok':'err'}">${status.toUpperCase()}</span></div>`;
+        }
       }
       return html;
     }
@@ -899,11 +874,10 @@
 
       let primaryHtml = '';
       for (const svc of pSvcs) {
-        primaryHtml += `
-          <div class="p-service">
-            <div class="p-svc-name">${svc.name}</div>
-            ${renderPrimaryMetric(svc)}
-          </div>`;
+        primaryHtml += `<div class="p-service">
+          <div class="p-svc-name">${svc.name}</div>
+          ${renderPrimaryMetric(svc)}
+        </div>`;
       }
       if (!primaryHtml) primaryHtml = `<div class="p-svc-metric" style="color:var(--text-dim)">NO PRIMARY SERVICES</div>`;
 
@@ -920,12 +894,20 @@
       tile.className = `tile status-${status}`;
       tile.dataset.name = machine.machine.display_name;
       tile.innerHTML = `
-        <div class="tile-lbar"></div>
         <div class="tile-head">
-          <span class="tile-name">${machine.machine.display_name}</span>
-          <span class="tile-ping">${ping != null ? ping+'ms' : '–'}</span>
-          <span class="tile-dot"></span>
+          <div class="tile-elbow">
+            <div class="tile-elbow-top"></div>
+            <div class="tile-elbow-bot"></div>
+          </div>
+          <div class="tile-title-pill">
+            <div class="tile-title-inner">
+              <span class="tile-name">${machine.machine.display_name}</span>
+              <span class="tile-ping">${ping != null ? ping+'ms' : '–'}</span>
+              <span class="tile-dot"></span>
+            </div>
+          </div>
         </div>
+        <div class="tile-sep"></div>
         <div class="tile-role">${machine.machine.primary_role || ''}</div>
         <div class="tile-primary">${primaryHtml}</div>
         ${secondaryHtml ? `<div class="tile-secondary">${secondaryHtml}</div>` : ''}
@@ -935,12 +917,59 @@
       return tile;
     }
 
+    // ── RAIL ─────────────────────────────────────────
+    function renderRail(machines) {
+      const rail = document.getElementById('rail');
+      rail.innerHTML = '';
+      for (const machine of machines) {
+        const status = hostStatus(machine);
+        const block = document.createElement('div');
+        block.className = `rail-host ${status}`;
+        block.title = machine.machine.display_name;
+        block.innerHTML = `<span class="rail-host-label">${machine.machine.display_name}</span>`;
+        block.addEventListener('click', () => openModal(machine));
+        rail.appendChild(block);
+      }
+    }
+
+    // ── ALERT STRIP ──────────────────────────────────
+    function updateAlertStrip(machines) {
+      const strip = document.getElementById('alert-strip');
+      // remove old alert items
+      strip.querySelectorAll('.alert-item').forEach(el => el.remove());
+
+      const alerts = [];
+      for (const machine of machines) {
+        if (machine.host?.status !== 'up') {
+          alerts.push(machine.machine.display_name + ' HOST DOWN');
+          continue;
+        }
+        const failingSvcs = (machine.services || []).filter(s =>
+          s.priority === 'P' && s.tailscale_check?.status !== 'up'
+        );
+        for (const svc of failingSvcs) {
+          alerts.push(`${machine.machine.display_name} · ${svc.name}`);
+        }
+      }
+
+      if (alerts.length) {
+        for (const a of alerts) {
+          const el = document.createElement('span');
+          el.className = 'alert-item';
+          el.textContent = a;
+          strip.appendChild(el);
+        }
+        strip.classList.add('visible');
+      } else {
+        strip.classList.remove('visible');
+      }
+    }
+
     // ── MODAL ────────────────────────────────────────
     function openModal(machine) {
       const status = hostStatus(machine);
       const ping   = machine.host?.response_time_ms;
       const ip     = machine.machine.tailscale_ip;
-      const os     = machine.machine.os || '–';
       const dur    = machine.poll?.poll_duration_ms;
 
       document.getElementById('modal-title').textContent = machine.machine.display_name.toUpperCase();
@@ -950,24 +979,46 @@
       badge.textContent = status.toUpperCase();
       badge.className   = status;
 
-      // update top pill colour to match status
-      const pillTop = document.querySelector('.modal-tb-pill-top');
-      pillTop.style.background = status === 'up' ? 'var(--up)' : status === 'down' ? 'var(--down)' : 'var(--warn)';
+      // pill + topbar border color = status
+      const statusColor = status === 'up' ? 'var(--up)' : status === 'down' ? 'var(--down)' : status === 'warn' ? 'var(--warn)' : 'var(--unknown)';
+      document.querySelector('.modal-tb-pill-top').style.background = statusColor;
+      document.querySelector('.modal-tb-center').style.borderBottom = `3px solid ${statusColor}`;
 
-      // ── HOST INFO ──
+      // modal alert for failing P services
+      const modalAlert = document.getElementById('modal-alert');
+      modalAlert.querySelectorAll('.modal-alert-item').forEach(el => el.remove());
+      const failingSvcs = (machine.services || []).filter(s =>
+        s.priority === 'P' && s.tailscale_check?.status !== 'up'
+      );
+      if (machine.host?.status !== 'up' || failingSvcs.length) {
+        if (machine.host?.status !== 'up') {
+          const el = document.createElement('span');
+          el.className = 'modal-alert-item';
+          el.textContent = 'HOST UNREACHABLE';
+          modalAlert.appendChild(el);
+        }
+        for (const svc of failingSvcs) {
+          const el = document.createElement('span');
+          el.className = 'modal-alert-item';
+          el.textContent = svc.name + ' · ' + (svcStatus(svc)).toUpperCase();
+          modalAlert.appendChild(el);
+        }
+        modalAlert.classList.add('visible');
+      } else {
+        modalAlert.classList.remove('visible');
+      }
+
+      const pSvcs = (machine.services || []).filter(s => s.priority === 'P');
+      const sSvcs = (machine.services || []).filter(s => s.priority === 'S');
+
       let html = `<div class="m-section-title">HOST INFORMATION</div>
         <div class="m-info-grid">
           <div class="m-info-cell"><div class="m-info-lbl">STATUS</div><div class="m-info-val ${status}">${status.toUpperCase()}</div></div>
           <div class="m-info-cell"><div class="m-info-lbl">LATENCY</div><div class="m-info-val">${ping != null ? ping+'ms' : '–'}</div></div>
           <div class="m-info-cell"><div class="m-info-lbl">TAILSCALE IP</div><div class="m-info-val" style="font-size:11px">${ip || '–'}</div></div>
-          <div class="m-info-cell"><div class="m-info-lbl">OS</div><div class="m-info-val">${os}</div></div>
           ${dur != null ? `<div class="m-info-cell"><div class="m-info-lbl">POLL DURATION</div><div class="m-info-val">${dur}ms</div></div>` : ''}
           ${machine.host?.detail ? `<div class="m-info-cell" style="grid-column:1/-1"><div class="m-info-lbl">DETAIL</div><div class="m-info-val" style="font-size:10px;color:var(--text)">${machine.host.detail}</div></div>` : ''}
         </div>`;
-
-      // ── PRIMARY SERVICES ──
-      const pSvcs = (machine.services || []).filter(s => s.priority === 'P');
-      const sSvcs = (machine.services || []).filter(s => s.priority === 'S');
 
       if (pSvcs.length) {
         html += `<div><div class="m-section-title">PRIMARY SERVICES</div><div class="m-svc-grid">`;
@@ -980,13 +1031,11 @@
         html += `</div></div>`;
       }
 
-      // ── RAW JSON ──
-      html += `
-        <div>
-          <div class="m-section-title">RAW DATA</div>
-          <button class="m-raw-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'▲ HIDE JSON':'▼ SHOW JSON'">▼ SHOW JSON</button>
-          <pre class="m-raw-pre">${JSON.stringify(machine, null, 2)}</pre>
-        </div>`;
+      html += `<div>
+        <div class="m-section-title">RAW DATA</div>
+        <button class="m-raw-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'▲ HIDE JSON':'▼ SHOW JSON'">▼ SHOW JSON</button>
+        <pre class="m-raw-pre">${JSON.stringify(machine, null, 2)}</pre>
+      </div>`;
 
       document.getElementById('modal-body').innerHTML = html;
       document.getElementById('modal').classList.add('open');
@@ -1044,7 +1093,7 @@
       } else if (ct === 'onedrive_heartbeat') {
         const age = parseHeartbeat(detail);
         if (age != null) {
-          const ac = age > 120 ? 'down' : age > 60 ? 'warn' : 'up';
+          const ac = age > 180 ? 'down' : age > 90 ? 'warn' : 'up';
           rows += `<div class="m-svc-row"><span class="lbl">AGE</span><span class="val ${ac}">${age}s</span></div>`;
         }
         if (detail) rows += `<div class="m-svc-row"><span class="lbl">DETAIL</span><span class="val">${detail}</span></div>`;
@@ -1053,28 +1102,25 @@
         rows += `<div class="m-svc-row"><span class="lbl">DETAIL</span><span class="val">${detail}</span></div>`;
       }
 
-      // public check
       if (svc.public_check) {
         const pc = svc.public_check;
         rows += `<div class="m-svc-row"><span class="lbl">PUBLIC</span><span class="val ${pc.status}">${pc.status.toUpperCase()} · ${pc.http_code} · ${pc.response_time_ms}ms</span></div>
         <div class="m-svc-row"><span class="lbl">URL</span><span class="val" style="font-size:9px">${pc.url}</span></div>`;
       }
 
-      return `
-        <div class="m-svc-card ${ss}">
-          <div class="m-svc-head">
-            <span class="m-svc-name">${svc.name}</span>
-            <span class="m-svc-badge ${svc.priority}">${svc.priority}</span>
-          </div>
-          ${rows}
-        </div>`;
+      return `<div class="m-svc-card ${ss}">
+        <div class="m-svc-head">
+          <span class="m-svc-name">${svc.name}</span>
+          <span class="m-svc-badge ${svc.priority}">${svc.priority}</span>
+        </div>
+        ${rows}
+      </div>`;
     }
 
     function closeModal() {
       document.getElementById('modal').classList.remove('open');
       document.getElementById('overlay').classList.remove('open');
     }
-
     document.getElementById('modal-close').addEventListener('click', closeModal);
     document.getElementById('overlay').addEventListener('click', closeModal);
 
@@ -1101,7 +1147,9 @@
         const age = Math.floor((Date.now() - lastTimestamp) / 1000);
         const el  = document.getElementById('sync-age');
         el.textContent = age + 's AGO';
-        el.className   = age < 60 ? 'fresh' : '';
+        if (age >= 180)    el.className = 'stale';
+        else if (age < 60) el.className = 'fresh';
+        else               el.className = '';
       }, 1000);
     }
 
@@ -1110,9 +1158,14 @@
       updateHeader(data);
       const grid = document.getElementById('grid');
       grid.innerHTML = '';
+
       const machines = [...(data.machines || [])].sort((a, b) =>
         a.machine.display_name.localeCompare(b.machine.display_name)
       );
+
+      renderRail(machines);
+      updateAlertStrip(machines);
+
       for (const machine of machines) {
         grid.appendChild(renderTile(machine));
       }
@@ -1137,7 +1190,6 @@
       }
     }
 
-    // ── INIT ─────────────────────────────────────────
     refresh();
     startAgeTimer();
     setInterval(refresh, 30000);
