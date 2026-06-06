@@ -68,7 +68,8 @@
     .hdr-row2 {
       display: flex;
       align-items: center;
-      height: 26px;
+      min-height: 26px;
+      flex-wrap: wrap;
       border-top: 1px solid rgba(255,255,255,0.05);
       padding: 0 0;
     }
@@ -133,14 +134,6 @@
       color: var(--text-dim);
       letter-spacing: 3px;
       text-transform: uppercase;
-    }
-
-    /* row 2 left indent matches left elbow width */
-    .hdr-row2-indent {
-      width: 120px;
-      flex-shrink: 0;
-      background: rgba(255,184,77,0.08);
-      border-right: 1px solid rgba(255,255,255,0.05);
     }
 
     .hdr-stats {
@@ -608,7 +601,6 @@
       </div>
     </div>
     <div class="hdr-row2">
-      <div class="hdr-row2-indent"></div>
       <div class="hdr-stats">
         <div class="hdr-stat"><div class="hdr-stat-val" id="h-hosts">–/–</div><div class="hdr-stat-lbl">HOSTS</div></div>
         <div class="hdr-stat"><div class="hdr-stat-val" id="h-svc">–/–</div><div class="hdr-stat-lbl">SERVICES</div></div>
