@@ -578,21 +578,16 @@
         top: 0;
       }
 
-      /* row 1: elbows + title */
-      .hdr-elbow,
-      .hdr-title-block,
-      .hdr-elbow-right {
-        /* keep in first row */
-      }
+      /* row 1: elbows + title — explicit order */
+      .hdr-elbow       { order: 1; }
+      .hdr-title-block { order: 2; flex: 1; }
+      .hdr-elbow-right { order: 3; }
 
       /* shrink elbows on mobile */
       .hdr-elbow        { width: 60px; }
       .hdr-elbow-bot    { width: 28px; }
-      .hdr-elbow-right  { width: 48px; margin-left: auto; }
+      .hdr-elbow-right  { width: 48px; }
       .hdr-elbow-right-bot { width: 28px; }
-
-      /* title smaller */
-      .hdr-title-block  { flex: 1; }
       .hdr-title    { font-size: 16px; letter-spacing: 3px; }
       .hdr-subtitle { font-size: 8px; letter-spacing: 2px; }
 
