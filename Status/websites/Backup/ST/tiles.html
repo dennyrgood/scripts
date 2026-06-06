@@ -566,6 +566,72 @@
       display: none; text-align: center; padding: 40px;
       font-size: 11px; color: var(--down); letter-spacing: 1px;
     }
+
+    /* ── MOBILE / NARROW HEADER ─────────────────────── */
+    @media (max-width: 768px) {
+      :root { --header-h: auto; }
+
+      #header {
+        flex-wrap: wrap;
+        height: auto;
+        position: sticky;
+        top: 0;
+      }
+
+      /* row 1: elbows + title */
+      .hdr-elbow,
+      .hdr-title-block,
+      .hdr-elbow-right {
+        /* keep in first row */
+      }
+
+      /* shrink elbows on mobile */
+      .hdr-elbow        { width: 60px; }
+      .hdr-elbow-bot    { width: 28px; }
+      .hdr-elbow-right  { width: 48px; }
+      .hdr-elbow-right-bot { width: 28px; }
+
+      /* title smaller */
+      .hdr-title    { font-size: 16px; letter-spacing: 3px; }
+      .hdr-subtitle { font-size: 8px; letter-spacing: 2px; }
+
+      /* stats + right info: drop to second row, full width */
+      .hdr-stats {
+        order: 10;
+        width: 100%;
+        justify-content: center;
+        padding: 4px 8px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        gap: 0;
+        flex-wrap: nowrap;
+      }
+      .hdr-stat {
+        padding: 0 12px;
+        border-right: 1px solid rgba(255,255,255,0.06);
+      }
+      .hdr-stat:last-child { border-right: none; }
+      .hdr-stat-val  { font-size: 15px; }
+      .hdr-stat-lbl  { font-size: 8px; }
+
+      .hdr-right {
+        order: 10;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 3px 8px 5px;
+        gap: 10px;
+        font-size: 9px;
+        border-top: 1px solid rgba(255,255,255,0.04);
+      }
+
+      /* grid single column on very narrow */
+      #grid {
+        grid-template-columns: 1fr;
+        padding: 10px;
+        gap: 8px;
+      }
+    }
   </style>
 </head>
 <body>
