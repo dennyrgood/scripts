@@ -6,12 +6,15 @@ passes to all reporters. Three-layer architecture:
   Layer 1 — TCP host reachability (skip L2/L3 if down)
   Layer 2 — Tailscale service health (per check_type)
   Layer 3 — Public endpoint check (if public_url defined)
-Last updated: 2026-06-15 18:31 UTC
+Last updated: 2026-06-15 20:01 UTC
 """
 
+import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from config import (
     FLEET,
@@ -39,8 +42,27 @@ CHECKER_MAP = {
     "syncthing": syncthing_checker,
 }
 
+# OneDrive _sync_monitor path — same resolution as heartbeat checker
+_ONEDRIVE_PATH = Path(
+    os.environ.get("OneDriveConsumer")
+    or os.environ.get("OneDrive")
+    or (Path.home() / "OneDrive")
+)
+_SYNC_MONITOR = _ONEDRIVE_PATH / "_sync_monitor"
 
-def run_forever() -> None:
+
+def _read_machine_info(tailscale_name: str) -> dict | None:
+    """
+    Read machine_info_{tailscale_name}.json from OneDrive _sync_monitor.
+    Returns parsed dict or None if missing or unreadable — never raises.
+    """
+    info_file = _SYNC_MONITOR / f"machine_info_{tailscale_name}.json"
+    if not info_file.exists():
+        return None
+    try:
+        return json.loads(info_file.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return None() -> None:
     """Main entry point. Runs poll loop indefinitely."""
     logger.info("Fleet Checker starting — host: %s, interval: %ss", CHECKER_HOST, POLL_INTERVAL_SECONDS)
     while True:
@@ -106,13 +128,13 @@ def _check_machine(machine_cfg: dict, cycle_timestamp: str) -> dict:
 
         service_results.append(svc_result)
 
-    # Hoist machine_info from heartbeat checker result up to machine level,
-    # then strip the temporary _machine_info key from the service result.
-    machine_info = None
+    # Read machine_info sidecar directly from OneDrive _sync_monitor
+    # Works for all machines regardless of whether they have a heartbeat service
+    machine_info = _read_machine_info(tailscale_name)
+
+    # Strip any _machine_info keys left by heartbeat checker (legacy path, no-op if absent)
     for svc_result in service_results:
-        mi = svc_result.pop("_machine_info", None)
-        if mi is not None and machine_info is None:
-            machine_info = mi
+        svc_result.pop("_machine_info", None)
 
     poll_duration_ms = round((time.monotonic() - check_start) * 1000)
 
