@@ -6,7 +6,7 @@ passes to all reporters. Three-layer architecture:
   Layer 1 — TCP host reachability (skip L2/L3 if down)
   Layer 2 — Tailscale service health (per check_type)
   Layer 3 — Public endpoint check (if public_url defined)
-Last updated: 2026-06-15 20:01 UTC
+Last updated: 2026-06-15 20:14 UTC
 """
 
 import json
@@ -24,6 +24,7 @@ from config import (
     TIMEOUT_TCP_MS,
     TIMEOUT_HTTP_MS,
     TIMEOUT_PUBLIC_MS,
+    ONEDRIVE_PATH,
 )
 from checkers import tcp_checker, http_checker
 from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker, onedrive_heartbeat_checker, syncthing_checker
@@ -42,13 +43,8 @@ CHECKER_MAP = {
     "syncthing": syncthing_checker,
 }
 
-# OneDrive _sync_monitor path — same resolution as heartbeat checker
-_ONEDRIVE_PATH = Path(
-    os.environ.get("OneDriveConsumer")
-    or os.environ.get("OneDrive")
-    or (Path.home() / "OneDrive")
-)
-_SYNC_MONITOR = _ONEDRIVE_PATH / "_sync_monitor"
+# OneDrive _sync_monitor path — imported from config for consistency
+_SYNC_MONITOR = ONEDRIVE_PATH / "_sync_monitor"
 
 
 def _read_machine_info(tailscale_name: str) -> dict | None:
@@ -62,7 +58,10 @@ def _read_machine_info(tailscale_name: str) -> dict | None:
     try:
         return json.loads(info_file.read_text(encoding="utf-8-sig"))
     except Exception:
-        return None() -> None:
+        return None
+
+
+def run_forever() -> None:
     """Main entry point. Runs poll loop indefinitely."""
     logger.info("Fleet Checker starting — host: %s, interval: %ss", CHECKER_HOST, POLL_INTERVAL_SECONDS)
     while True:
@@ -204,11 +203,6 @@ def _check_service(tailscale_name: str, svc_cfg: dict) -> dict:
                 "detail": raw.get("detail"),
             }
 
-            # If this is a heartbeat checker, carry machine_info through temporarily
-            # using a private key — hoisted to machine level in _check_machine()
-            if check_type == "onedrive_heartbeat" and "machine_info" in raw:
-                tailscale_check["_machine_info"] = raw["machine_info"]
-
     # --- Layer 3: Public endpoint check (if configured) ---
     public_url = svc_cfg.get("public_url")
     public_check = None
@@ -217,8 +211,6 @@ def _check_service(tailscale_name: str, svc_cfg: dict) -> dict:
         pub_raw = http_checker.get(public_url, TIMEOUT_PUBLIC_MS)
         code = pub_raw.get("http_code")
 
-        # Any HTTP response = passing (including Zero Trust 302/401)
-        # Only timeout/DNS/5xx = failing (already handled in http_checker)
         pub_detail = None
         if code == 302:
             pub_detail = "Zero Trust redirect"
