@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 19:07 UTC -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -348,6 +349,50 @@
     .s-dot.warn    { background: var(--warn); }
     .s-dot.unknown { background: var(--unknown); }
     .s-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; }
+
+    /* ── TILE SYSINFO STRIP ─────────────────────────── */
+    .tile-sysinfo {
+      padding: 6px 12px 8px;
+      display: flex; flex-direction: column; gap: 4px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      flex-shrink: 0;
+    }
+    .si-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 9px; color: var(--text-dim);
+    }
+    .si-lbl {
+      letter-spacing: 1.5px; text-transform: uppercase;
+      flex-shrink: 0; width: 36px;
+    }
+    .si-val { color: var(--text); flex-shrink: 0; }
+    .si-val.warn { color: var(--warn); }
+    .si-val.crit { color: var(--down); }
+    .si-bar-wrap {
+      flex: 1; height: 5px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 2px; overflow: hidden;
+    }
+    .si-bar-fill {
+      height: 100%; border-radius: 2px;
+      background: var(--up); transition: width 0.4s;
+    }
+    .si-bar-fill.warn { background: var(--warn); }
+    .si-bar-fill.crit { background: var(--down); }
+    .si-extra { color: var(--text-dim); font-size: 9px; flex-shrink: 0; }
+    .si-sep { height: 1px; background: rgba(255,255,255,0.04); margin: 2px 0; }
+    .si-meta-row {
+      display: flex; flex-wrap: wrap; gap: 6px 12px;
+      font-size: 9px; color: var(--text-dim);
+    }
+    .si-meta-item { display: flex; gap: 4px; }
+    .si-meta-lbl { letter-spacing: 1px; text-transform: uppercase; }
+    .si-meta-val { color: var(--text); }
+    .si-meta-val.warn { color: var(--warn); }
+    .si-pending {
+      font-size: 9px; color: var(--warn);
+      letter-spacing: 1px; text-transform: uppercase;
+    }
 
     /* ── OVERLAY ────────────────────────────────────── */
     #overlay {
@@ -772,6 +817,69 @@
       return html;
     }
 
+    // ── RENDER SYSINFO STRIP ─────────────────────────
+    function renderSysInfo(machine) {
+      const mi = machine.machine_info;
+      if (!mi) return '';
+
+      const ramPct  = mi.ram_total_gb ? Math.round(mi.ram_used_gb / mi.ram_total_gb * 100) : null;
+      const ramCls  = ramPct > 85 ? 'crit' : ramPct > 65 ? 'warn' : '';
+      const cpuCls  = mi.cpu_percent > 85 ? 'crit' : mi.cpu_percent > 65 ? 'warn' : '';
+
+      let html = '<div class="tile-sysinfo">';
+
+      // RAM row
+      if (mi.ram_total_gb != null) {
+        html += `<div class="si-row">
+          <span class="si-lbl">RAM</span>
+          <span class="si-val ${ramCls}">${mi.ram_used_gb}/${mi.ram_total_gb}GB</span>
+          <div class="si-bar-wrap"><div class="si-bar-fill ${ramCls}" style="width:${ramPct}%"></div></div>
+          <span class="si-extra">${ramPct}%</span>
+        </div>`;
+      }
+
+      // CPU row
+      if (mi.cpu_percent != null) {
+        html += `<div class="si-row">
+          <span class="si-lbl">CPU</span>
+          <span class="si-val ${cpuCls}">${mi.cpu_percent}%</span>
+          <div class="si-bar-wrap"><div class="si-bar-fill ${cpuCls}" style="width:${mi.cpu_percent}%"></div></div>
+        </div>`;
+      }
+
+      // Disk rows
+      if (mi.disks && mi.disks.length) {
+        for (const d of mi.disks) {
+          const pct = d.total_gb ? Math.round(d.used_gb / d.total_gb * 100) : 0;
+          const cls = pct > 90 ? 'crit' : pct > 75 ? 'warn' : '';
+          html += `<div class="si-row">
+            <span class="si-lbl">${d.drive}</span>
+            <span class="si-val ${cls}">${d.used_gb}/${d.total_gb}GB</span>
+            <div class="si-bar-wrap"><div class="si-bar-fill ${cls}" style="width:${pct}%"></div></div>
+            <span class="si-extra">${pct}%</span>
+          </div>`;
+        }
+      }
+
+      // Separator
+      html += '<div class="si-sep"></div>';
+
+      // Reboot / WU meta row
+      html += '<div class="si-meta-row">';
+      if (mi.last_reboot)    html += `<div class="si-meta-item"><span class="si-meta-lbl">REBOOT</span><span class="si-meta-val">${mi.last_reboot}</span></div>`;
+      if (mi.last_wu_reboot) html += `<div class="si-meta-item"><span class="si-meta-lbl">WU</span><span class="si-meta-val">${mi.last_wu_reboot}</span></div>`;
+      if (mi.os_build)       html += `<div class="si-meta-item"><span class="si-meta-lbl">OS</span><span class="si-meta-val">${mi.os_build}</span></div>`;
+      html += '</div>';
+
+      // Pending reboot badge
+      if (mi.pending_reboot) {
+        html += `<div class="si-pending">⚠ PENDING REBOOT</div>`;
+      }
+
+      html += '</div>';
+      return html;
+    }
+
     // ── RENDER TILE ──────────────────────────────────
     function renderTile(machine) {
       const status = hostStatus(machine);
@@ -808,6 +916,7 @@
         <div class="tile-role">${machine.machine.primary_role || ''}</div>
         <div class="tile-primary">${primaryHtml}</div>
         ${secondaryHtml ? `<div class="tile-secondary">${secondaryHtml}</div>` : ''}
+        ${renderSysInfo(machine)}
       `;
       tile.addEventListener('click', () => openModal(machine));
       return tile;
