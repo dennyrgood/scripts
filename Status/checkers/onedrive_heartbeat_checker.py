@@ -3,7 +3,7 @@ checkers/onedrive_heartbeat_checker.py — OneDrive sync health check via heartb
 Layer 2: Read timestamp from ONE Drive _sync_monitor folder, compute age.
 Detects whether writer machine crashed or stopped sending heartbeats.
 Stale threshold: 5 minutes (configurable via STALE_THRESHOLD_MINUTES)
-Last updated: 2026-06-15 23:45 UTC — subdirectory lookup for Mac writers
+Last updated: 2026-06-15 23:50 UTC — subdirectory lookup for Mac writers, BOM fix
 """
 
 import json
@@ -92,7 +92,7 @@ def check(tailscale_name: str, port: int, timeout_ms: int, **kwargs) -> dict:
 
     # Read file content
     try:
-        raw = HEARTBEAT_FILE.read_text().strip()
+        raw = HEARTBEAT_FILE.read_text(encoding="utf-8-sig").strip()
     except Exception as e:
         elapsed_ms = round((datetime.now(timezone.utc).timestamp() - start_time.timestamp()) * 1000)
         return {
@@ -206,7 +206,7 @@ if __name__ == "__main__":
             for f in HEARTBEAT_DIR.iterdir():
                 if f.name.startswith("heartbeat_"):
                     try:
-                        content = f.read_text().strip()
+                        content = f.read_text(encoding="utf-8-sig").strip()
                         age_raw = datetime.fromisoformat(content.replace("Z", "+00:00"))
                         age_total_secs = int((datetime.now(timezone.utc) - age_raw).total_seconds())
                         status_str = "OK" if age_total_secs < (5 * 60) else "STALE"
