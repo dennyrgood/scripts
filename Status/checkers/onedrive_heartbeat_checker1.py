@@ -3,7 +3,7 @@ checkers/onedrive_heartbeat_checker.py — OneDrive sync health check via heartb
 Layer 2: Read timestamp from ONE Drive _sync_monitor folder, compute age.
 Detects whether writer machine crashed or stopped sending heartbeats.
 Stale threshold: 5 minutes (configurable via STALE_THRESHOLD_MINUTES)
-Last updated: 2026-06-15 23:45 UTC — subdirectory lookup for Mac writers
+Last updated: 2026-06-15 18:54 UTC
 """
 
 import json
@@ -71,10 +71,6 @@ def check(tailscale_name: str, port: int, timeout_ms: int, **kwargs) -> dict:
     # Configuration
     ONE_DRIVE_PATH = _get_onedrive_path()
     HEARTBEAT_DIR = ONE_DRIVE_PATH / "_sync_monitor"
-    # If a host-specific subdirectory exists, use it (Mac writers store files there)
-    subdir = HEARTBEAT_DIR / target_host
-    if subdir.is_dir():
-        HEARTBEAT_DIR = subdir
     HEARTBEAT_FILE = HEARTBEAT_DIR / f"heartbeat_{target_host}.txt"
     STALE_THRESHOLD_MINUTES = DEFAULT_STALE_THRESHOLD_MINUTES
 
