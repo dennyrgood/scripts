@@ -1,0 +1,1 @@
+ Get-WinEvent -LogName System | Where-Object {$_.Id -eq 1074} | Select-Object -First 3 TimeCreated, Message
