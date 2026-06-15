@@ -3,10 +3,8 @@ checkers/onedrive_heartbeat_checker.py — OneDrive sync health check via heartb
 Layer 2: Read timestamp from ONE Drive _sync_monitor folder, compute age.
 Detects whether writer machine crashed or stopped sending heartbeats.
 Stale threshold: 5 minutes (configurable via STALE_THRESHOLD_MINUTES)
-Last updated: 2026-06-15 18:25 UTC
 """
 
-import json
 import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -26,20 +24,6 @@ def _get_onedrive_path():
     )
 
 
-def _read_machine_info(heartbeat_dir: Path, target_host: str) -> dict | None:
-    """
-    Read machine_info_{target_host}.json sidecar if present.
-    Returns parsed dict or None if missing or unreadable — never raises.
-    """
-    info_file = heartbeat_dir / f"machine_info_{target_host}.json"
-    if not info_file.exists():
-        return None
-    try:
-        return json.loads(info_file.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
-
 def check(tailscale_name: str, port: int, timeout_ms: int, **kwargs) -> dict:
     """
     Check heartbeat file for specific writer machine on OneDrive.
@@ -52,8 +36,7 @@ def check(tailscale_name: str, port: int, timeout_ms: int, **kwargs) -> dict:
             - target_host (str): The Tailscale name of the target host to check heartbeat for
 
     Returns:
-        dict: Standardized service check result with status, response time, and detail.
-              On success, also includes optional 'machine_info' key with sidecar data.
+        dict: Standardized service check result with status, response time, and detail
     """
     start_time = datetime.now(timezone.utc)
     
@@ -139,19 +122,13 @@ def check(tailscale_name: str, port: int, timeout_ms: int, **kwargs) -> dict:
             "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
-    # Heartbeat is OK — build result, attach machine_info sidecar if available
-    result = {
+    # Heartbeat is OK
+    return {
         "status": "up",
         "response_time_ms": elapsed_ms,
         "detail": f"{age_seconds} sec old on {target_host}",
         "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
-
-    machine_info = _read_machine_info(HEARTBEAT_DIR, target_host)
-    if machine_info is not None:
-        result["machine_info"] = machine_info
-
-    return result
 
 
 # ── Standalone test mode ───────────────────────────────────────
@@ -210,7 +187,7 @@ if __name__ == "__main__":
                     except Exception as e:
                         print(f"  ✦ {f.name}: Could not parse — {e}")
         else:
-            print("Heartbeat directory NOT FOUND - OneDrive may not be synced.")
+            print("Heaartbeat directory NOT FOUND - OneDrive may not be synced.")
         
         print("\n--- Running check for", target_host, "---")
 
@@ -223,6 +200,7 @@ if __name__ == "__main__":
     )
     
     # Output as JSON (matching Status engine output format)
+    import json
     if args.debug:
         print(f"\nResult:")
         print(json.dumps(result, indent=2))
