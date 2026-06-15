@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 20:21 UTC -->
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 20:29 UTC -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -670,7 +670,7 @@
 
   <div id="footer">
     FLEET_OPS // LCARS INTERFACE
-    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 20:21 UTC</span>
+    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 20:29 UTC</span>
     <a id="altFeedLink" href="#">BACKUP FEED</a>
   </div>
 
@@ -874,7 +874,8 @@
         // Reboot / WU meta row
         html += '<div class="si-meta-row">';
         if (mi.last_reboot)    html += `<div class="si-meta-item"><span class="si-meta-lbl">REBOOT</span><span class="si-meta-val">${mi.last_reboot}</span></div>`;
-        if (mi.last_wu_reboot) html += `<div class="si-meta-item"><span class="si-meta-lbl">WU</span><span class="si-meta-val">${mi.last_wu_reboot}</span></div>`;
+        if (mi.last_wu_date)   html += `<div class="si-meta-item"><span class="si-meta-lbl">WU INST</span><span class="si-meta-val">${mi.last_wu_date}</span></div>`;
+        if (mi.last_wu_reboot) html += `<div class="si-meta-item"><span class="si-meta-lbl">WU REBOOT</span><span class="si-meta-val">${mi.last_wu_reboot}</span></div>`;
         if (mi.os_build)       html += `<div class="si-meta-item"><span class="si-meta-lbl">OS</span><span class="si-meta-val">${mi.os_build}</span></div>`;
         html += '</div>';
 
