@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 19:22 UTC -->
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 20:21 UTC -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -670,7 +670,7 @@
 
   <div id="footer">
     FLEET_OPS // LCARS INTERFACE
-    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 19:22 UTC</span>
+    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 20:21 UTC</span>
     <a id="altFeedLink" href="#">BACKUP FEED</a>
   </div>
 
@@ -1155,7 +1155,8 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         lastData = data;
-        document.getElementById('loading').style.display = 'none';
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
         document.getElementById('error-msg').style.display = 'none';
         render(data);
       } catch (err) {
