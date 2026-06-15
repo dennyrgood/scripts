@@ -2,7 +2,7 @@
 # Fleet FLEET_OPS - Heartbeat + Machine Info Writer
 # Writes heartbeat_{host}.txt and machine_info_{host}.json to OneDrive _sync_monitor
 # Runs on all Windows fleet machines via Task Scheduler
-# Last updated: 2026-06-15 18:15 UTC
+# Last updated: 2026-06-15 18:54 UTC
 
 # ── Hostname resolution ────────────────────────────────────────
 
@@ -142,7 +142,7 @@ while ($true) {
         # 2. Collect and write machine info sidecar
         $info    = Get-MachineInfo
         $infoJson = $info | ConvertTo-Json -Depth 5 -Compress:$false
-        Set-Content -Path $infoFile -Value $infoJson -Encoding UTF8
+        [System.IO.File]::WriteAllText($infoFile, $infoJson, [System.Text.UTF8Encoding]::new($false))
     } catch { <# silently continue #> }
 
     Start-Sleep -Seconds $writeInterval

@@ -3,7 +3,7 @@ checkers/onedrive_heartbeat_checker.py — OneDrive sync health check via heartb
 Layer 2: Read timestamp from ONE Drive _sync_monitor folder, compute age.
 Detects whether writer machine crashed or stopped sending heartbeats.
 Stale threshold: 5 minutes (configurable via STALE_THRESHOLD_MINUTES)
-Last updated: 2026-06-15 18:25 UTC
+Last updated: 2026-06-15 18:54 UTC
 """
 
 import json
@@ -35,7 +35,7 @@ def _read_machine_info(heartbeat_dir: Path, target_host: str) -> dict | None:
     if not info_file.exists():
         return None
     try:
-        return json.loads(info_file.read_text(encoding="utf-8"))
+        return json.loads(info_file.read_text(encoding="utf-8-sig"))
     except Exception:
         return None
 
