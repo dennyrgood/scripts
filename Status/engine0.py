@@ -6,7 +6,6 @@ passes to all reporters. Three-layer architecture:
   Layer 1 — TCP host reachability (skip L2/L3 if down)
   Layer 2 — Tailscale service health (per check_type)
   Layer 3 — Public endpoint check (if public_url defined)
-Last updated: 2026-06-15 18:31 UTC
 """
 
 import logging
@@ -106,17 +105,9 @@ def _check_machine(machine_cfg: dict, cycle_timestamp: str) -> dict:
 
         service_results.append(svc_result)
 
-    # Hoist machine_info from heartbeat checker result up to machine level,
-    # then strip the temporary _machine_info key from the service result.
-    machine_info = None
-    for svc_result in service_results:
-        mi = svc_result.pop("_machine_info", None)
-        if mi is not None and machine_info is None:
-            machine_info = mi
-
     poll_duration_ms = round((time.monotonic() - check_start) * 1000)
 
-    result = {
+    return {
         "machine": {
             "display_name": machine_cfg["display_name"],
             "tailscale_name": machine_cfg["tailscale_name"],
@@ -135,12 +126,6 @@ def _check_machine(machine_cfg: dict, cycle_timestamp: str) -> dict:
         },
         "services": service_results,
     }
-
-    # Only include machine_info key if we actually got data
-    if machine_info is not None:
-        result["machine_info"] = machine_info
-
-    return result
 
 
 def _check_service(tailscale_name: str, svc_cfg: dict) -> dict:
@@ -175,17 +160,12 @@ def _check_service(tailscale_name: str, svc_cfg: dict) -> dict:
                 raw = checker_module.check(tailscale_name, port, TIMEOUT_HTTP_MS, **check_params)
             else:
                 raw = checker_module.check(tailscale_name, port, TIMEOUT_HTTP_MS)
-
+            
             tailscale_check = {
                 "status": raw["status"],
                 "response_time_ms": raw["response_time_ms"],
                 "detail": raw.get("detail"),
             }
-
-            # If this is a heartbeat checker, carry machine_info through temporarily
-            # using a private key — hoisted to machine level in _check_machine()
-            if check_type == "onedrive_heartbeat" and "machine_info" in raw:
-                tailscale_check["_machine_info"] = raw["machine_info"]
 
     # --- Layer 3: Public endpoint check (if configured) ---
     public_url = svc_cfg.get("public_url")
