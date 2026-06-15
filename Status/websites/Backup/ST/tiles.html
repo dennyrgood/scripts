@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 19:07 UTC -->
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 19:22 UTC -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -670,7 +670,7 @@
 
   <div id="footer">
     FLEET_OPS // LCARS INTERFACE
-    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 19:07 UTC</span>
+    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 19:22 UTC</span>
     <a id="altFeedLink" href="#">BACKUP FEED</a>
   </div>
 
@@ -820,65 +820,75 @@
 
     // ── RENDER SYSINFO STRIP ─────────────────────────
     function renderSysInfo(machine) {
-      const mi = machine.machine_info;
-      if (!mi) return '';
+      try {
+        const mi = machine.machine_info;
+        if (!mi) return '';
 
-      const ramPct  = mi.ram_total_gb ? Math.round(mi.ram_used_gb / mi.ram_total_gb * 100) : null;
-      const ramCls  = ramPct > 85 ? 'crit' : ramPct > 65 ? 'warn' : '';
-      const cpuCls  = mi.cpu_percent > 85 ? 'crit' : mi.cpu_percent > 65 ? 'warn' : '';
+        const ramUsed  = mi.ram_used_gb  ?? 0;
+        const ramTotal = mi.ram_total_gb ?? 0;
+        const ramPct   = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
+        const ramCls   = ramPct > 85 ? 'crit' : ramPct > 65 ? 'warn' : '';
+        const cpu      = mi.cpu_percent ?? 0;
+        const cpuCls   = cpu > 85 ? 'crit' : cpu > 65 ? 'warn' : '';
 
-      let html = '<div class="tile-sysinfo">';
+        let html = '<div class="tile-sysinfo">';
 
-      // RAM row
-      if (mi.ram_total_gb != null) {
-        html += `<div class="si-row">
-          <span class="si-lbl">RAM</span>
-          <span class="si-val ${ramCls}">${mi.ram_used_gb}/${mi.ram_total_gb}GB</span>
-          <div class="si-bar-wrap"><div class="si-bar-fill ${ramCls}" style="width:${ramPct}%"></div></div>
-          <span class="si-extra">${ramPct}%</span>
-        </div>`;
-      }
-
-      // CPU row
-      if (mi.cpu_percent != null) {
-        html += `<div class="si-row">
-          <span class="si-lbl">CPU</span>
-          <span class="si-val ${cpuCls}">${mi.cpu_percent}%</span>
-          <div class="si-bar-wrap"><div class="si-bar-fill ${cpuCls}" style="width:${mi.cpu_percent}%"></div></div>
-        </div>`;
-      }
-
-      // Disk rows
-      if (mi.disks && mi.disks.length) {
-        for (const d of mi.disks) {
-          const pct = d.total_gb ? Math.round(d.used_gb / d.total_gb * 100) : 0;
-          const cls = pct > 90 ? 'crit' : pct > 75 ? 'warn' : '';
+        // RAM row
+        if (ramTotal > 0) {
           html += `<div class="si-row">
-            <span class="si-lbl">${d.drive}</span>
-            <span class="si-val ${cls}">${d.used_gb}/${d.total_gb}GB</span>
-            <div class="si-bar-wrap"><div class="si-bar-fill ${cls}" style="width:${pct}%"></div></div>
-            <span class="si-extra">${pct}%</span>
+            <span class="si-lbl">RAM</span>
+            <span class="si-val ${ramCls}">${ramUsed}/${ramTotal}GB</span>
+            <div class="si-bar-wrap"><div class="si-bar-fill ${ramCls}" style="width:${ramPct}%"></div></div>
+            <span class="si-extra">${ramPct}%</span>
           </div>`;
         }
+
+        // CPU row
+        if (mi.cpu_percent != null) {
+          html += `<div class="si-row">
+            <span class="si-lbl">CPU</span>
+            <span class="si-val ${cpuCls}">${cpu}%</span>
+            <div class="si-bar-wrap"><div class="si-bar-fill ${cpuCls}" style="width:${cpu}%"></div></div>
+          </div>`;
+        }
+
+        // Disk rows
+        if (Array.isArray(mi.disks) && mi.disks.length) {
+          for (const d of mi.disks) {
+            const used  = d.used_gb  ?? 0;
+            const total = d.total_gb ?? 0;
+            const pct   = total > 0 ? Math.round(used / total * 100) : 0;
+            const cls   = pct > 90 ? 'crit' : pct > 75 ? 'warn' : '';
+            html += `<div class="si-row">
+              <span class="si-lbl">${d.drive || '?'}</span>
+              <span class="si-val ${cls}">${used}/${total}GB</span>
+              <div class="si-bar-wrap"><div class="si-bar-fill ${cls}" style="width:${pct}%"></div></div>
+              <span class="si-extra">${pct}%</span>
+            </div>`;
+          }
+        }
+
+        // Separator
+        html += '<div class="si-sep"></div>';
+
+        // Reboot / WU meta row
+        html += '<div class="si-meta-row">';
+        if (mi.last_reboot)    html += `<div class="si-meta-item"><span class="si-meta-lbl">REBOOT</span><span class="si-meta-val">${mi.last_reboot}</span></div>`;
+        if (mi.last_wu_reboot) html += `<div class="si-meta-item"><span class="si-meta-lbl">WU</span><span class="si-meta-val">${mi.last_wu_reboot}</span></div>`;
+        if (mi.os_build)       html += `<div class="si-meta-item"><span class="si-meta-lbl">OS</span><span class="si-meta-val">${mi.os_build}</span></div>`;
+        html += '</div>';
+
+        // Pending reboot badge
+        if (mi.pending_reboot) {
+          html += `<div class="si-pending">⚠ PENDING REBOOT</div>`;
+        }
+
+        html += '</div>';
+        return html;
+      } catch(e) {
+        console.error('renderSysInfo error:', e, machine.machine?.tailscale_name);
+        return '';
       }
-
-      // Separator
-      html += '<div class="si-sep"></div>';
-
-      // Reboot / WU meta row
-      html += '<div class="si-meta-row">';
-      if (mi.last_reboot)    html += `<div class="si-meta-item"><span class="si-meta-lbl">REBOOT</span><span class="si-meta-val">${mi.last_reboot}</span></div>`;
-      if (mi.last_wu_reboot) html += `<div class="si-meta-item"><span class="si-meta-lbl">WU</span><span class="si-meta-val">${mi.last_wu_reboot}</span></div>`;
-      if (mi.os_build)       html += `<div class="si-meta-item"><span class="si-meta-lbl">OS</span><span class="si-meta-val">${mi.os_build}</span></div>`;
-      html += '</div>';
-
-      // Pending reboot badge
-      if (mi.pending_reboot) {
-        html += `<div class="si-pending">⚠ PENDING REBOOT</div>`;
-      }
-
-      html += '</div>';
-      return html;
     }
 
     // ── RENDER TILE ──────────────────────────────────
@@ -1149,10 +1159,10 @@
         document.getElementById('error-msg').style.display = 'none';
         render(data);
       } catch (err) {
-        document.getElementById('loading').style.display = 'none';
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
         const em = document.getElementById('error-msg');
-        em.style.display = 'block';
-        em.textContent = `FETCH ERROR: ${err.message}`;
+        if (em) { em.style.display = 'block'; em.textContent = `FETCH ERROR: ${err.message}`; }
       }
     }
 
