@@ -2,7 +2,7 @@
 # Fleet FLEET_OPS - Heartbeat + Machine Info Writer
 # Writes heartbeat_{host}.txt and machine_info_{host}.json to OneDrive _sync_monitor
 # Runs on all Windows fleet machines via Task Scheduler
-# Last updated: 2026-06-15 21:00 UTC
+# Last updated: 2026-06-15 16:58 UTC
 
 # ── Hostname resolution ────────────────────────────────────────
 
@@ -50,10 +50,7 @@ function Get-MachineInfo {
     # OS / build
     $os      = Safe-Get { Get-CimInstance Win32_OperatingSystem }
     $osBuild = if ($os) { $os.BuildNumber } else { $null }
-    $osVer   = if ($os) {
-        # e.g. "10.0.26100" -> grab last segment for display
-        ($os.Version -split "\.")[-1] + "." + $osBuild
-    } else { $null }
+    $osVer   = if ($os) { "$($os.Version).$osBuild" } else { $null }
 
     # Last reboot
     $lastReboot = if ($os) { Format-LocalDT $os.LastBootUpTime } else { $null }
@@ -138,7 +135,7 @@ while ($true) {
 
     try {
         # 1. Write heartbeat timestamp (existing behaviour, unchanged)
-        (Get-Date).ToUniversalTime().ToString("o") | Set-Content -Path $heartbeatFile -Encoding UTF8 -NoNewline
+        (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.ffffffK") | Set-Content -Path $heartbeatFile -Encoding UTF8 -NoNewline
     } catch { <# silently continue #> }
 
     try {
