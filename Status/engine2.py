@@ -6,7 +6,7 @@ passes to all reporters. Three-layer architecture:
   Layer 1 — TCP host reachability (skip L2/L3 if down)
   Layer 2 — Tailscale service health (per check_type)
   Layer 3 — Public endpoint check (if public_url defined)
-Last updated: 2026-06-16 00:00 UTC — _read_machine_info subdirectory lookup for Mac writers
+Last updated: 2026-06-15 20:14 UTC
 """
 
 import json
@@ -50,12 +50,9 @@ _SYNC_MONITOR = ONEDRIVE_PATH / "_sync_monitor"
 def _read_machine_info(tailscale_name: str) -> dict | None:
     """
     Read machine_info_{tailscale_name}.json from OneDrive _sync_monitor.
-    Checks host-specific subdirectory first (Mac writers), falls back to root (Windows writers).
     Returns parsed dict or None if missing or unreadable — never raises.
     """
-    subdir = _SYNC_MONITOR / tailscale_name
-    base = subdir if subdir.is_dir() else _SYNC_MONITOR
-    info_file = base / f"machine_info_{tailscale_name}.json"
+    info_file = _SYNC_MONITOR / f"machine_info_{tailscale_name}.json"
     if not info_file.exists():
         return None
     try:
