@@ -2,7 +2,7 @@
 # Fleet FLEET_OPS - Heartbeat + Machine Info Writer
 # Writes heartbeat_{host}.txt and machine_info_{host}.json to OneDrive _sync_monitor
 # Runs on all Windows fleet machines via Task Scheduler
-# Last updated: 2026-06-15 18:09 UTC
+# Last updated: 2026-06-15 18:15 UTC
 
 # ── Hostname resolution ────────────────────────────────────────
 
@@ -135,7 +135,7 @@ while ($true) {
 
     try {
         # 1. Write heartbeat timestamp (existing behaviour, unchanged)
-        (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.ffffff+00:00") | Set-Content -Path $heartbeatFile -Encoding UTF8NoBOM -NoNewline
+        [System.IO.File]::WriteAllText($heartbeatFile, (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.ffffff+00:00"), [System.Text.UTF8Encoding]::new($false))
     } catch { <# silently continue #> }
 
     try {
