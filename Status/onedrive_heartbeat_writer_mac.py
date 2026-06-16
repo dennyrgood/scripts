@@ -4,7 +4,7 @@ onedrive_heartbeat_writer_mac.py — macOS heartbeat + machine info writer
 Writes heartbeat_{host}.txt and machine_info_{host}.json to OneDrive _sync_monitor/{host}/
 Interval: 150 seconds (same as PowerShell writer on Windows machines)
 Created: 2026-06-15 23:00 UTC
-Updated: 2026-06-15 23:30 UTC — fix heartbeat format, disk filtering, last_wu macOS-only parsing
+Updated: 2026-06-16 09:30 UTC — fix RAM calculation to match Activity Monitor (correct page size, active+wired+compressor)
 """
 
 import json
@@ -26,23 +26,29 @@ OUTPUT_DIR = ONEDRIVE_PATH / "_sync_monitor" / HOST
 # ── Data collection ────────────────────────────────────────────
 
 def get_ram() -> tuple[float, float]:
-    """Returns (ram_total_gb, ram_used_gb)."""
+    """Returns (ram_total_gb, ram_used_gb) matching Activity Monitor methodology."""
     # Total RAM
     out = subprocess.check_output(["sysctl", "-n", "hw.memsize"]).decode().strip()
     total_bytes = int(out)
     total_gb = round(total_bytes / (1024 ** 3), 1)
 
-    # Used RAM via vm_stat
+    # Used RAM via vm_stat — page size varies by hardware (16KB on Apple Silicon)
     vm = subprocess.check_output(["vm_stat"]).decode()
-    page_size = 4096
+
+    # Extract actual page size from vm_stat header
+    m = re.search(r"page size of (\d+) bytes", vm)
+    page_size = int(m.group(1)) if m else 16384
+
     def pages(label):
         m = re.search(rf"{label}:\s+(\d+)", vm)
         return int(m.group(1)) if m else 0
 
-    free = pages("Pages free")
-    inactive = pages("Pages inactive")
-    available_gb = round((free + inactive) * page_size / (1024 ** 3), 1)
-    used_gb = round(total_gb - available_gb, 1)
+    # Match Activity Monitor: used = active + wired + compressor
+    active     = pages("Pages active")
+    wired      = pages("Pages wired down")
+    compressor = pages("Pages occupied by compressor")
+    used_bytes = (active + wired + compressor) * page_size
+    used_gb = round(used_bytes / (1024 ** 3), 1)
     return total_gb, used_gb
 
 
