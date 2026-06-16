@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-15 20:29 UTC -->
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-16 00:15 UTC — mac no-stats note -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -389,6 +389,12 @@
     .si-meta-lbl { letter-spacing: 1px; text-transform: uppercase; }
     .si-meta-val { color: var(--text); }
     .si-meta-val.warn { color: var(--warn); }
+    .si-no-stats {
+      font-size: 9px; color: var(--fg-dim);
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 4px 0;
+    }
+
     .si-pending {
       font-size: 9px; color: var(--warn);
       letter-spacing: 1px; text-transform: uppercase;
@@ -822,7 +828,12 @@
     function renderSysInfo(machine) {
       try {
         const mi = machine.machine_info;
-        if (!mi) return '';
+        if (!mi) {
+          if (machine.machine?.tailscale_name?.includes('-mac')) {
+            return '<div class="tile-sysinfo"><div class="si-no-stats">⚠ OPEN A TERMINAL TO ACTIVATE STATS</div></div>';
+          }
+          return '';
+        }
 
         const ramUsed  = mi.ram_used_gb  ?? 0;
         const ramTotal = mi.ram_total_gb ?? 0;
