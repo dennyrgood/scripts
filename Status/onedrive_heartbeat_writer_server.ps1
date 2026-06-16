@@ -1,8 +1,10 @@
 # onedrive_heartbeat_writer_server.ps1
-# Fleet FLEET_OPS - Heartbeat + Machine Info Writer
-# Writes heartbeat_{host}.txt and machine_info_{host}.json to OneDrive _sync_monitor
-# Runs on all Windows fleet machines via Task Scheduler
-# Last updated: 2026-06-15 18:54 UTC
+# Fleet FLEET_OPS - Heartbeat + Machine Info + Metrics History Writer
+# Writes heartbeat_{host}.txt, machine_info_{host}.json, and metrics_history_{host}.json
+# to OneDrive _sync_monitor (flat root, Windows machines)
+# Main loop: 150s — heartbeat + machine_info
+# History: every 30s tick (every 5th tick = 150s triggers machine_info write)
+# Last updated: 2026-06-16 14:12 UTC
 
 # ── Hostname resolution ────────────────────────────────────────
 
@@ -10,18 +12,21 @@ $hostnameMap = @{
     "amsterdamdeskto" = "amsterdamdesktop"
 }
 
-$rawHost = $env:COMPUTERNAME.ToLower()
+$rawHost     = $env:COMPUTERNAME.ToLower()
 $checkerHost = if ($hostnameMap.ContainsKey($rawHost)) { $hostnameMap[$rawHost] } else { $rawHost }
 
 # ── OneDrive path resolution ───────────────────────────────────
 
 $onedrivePath = if ($env:OneDriveConsumer) { $env:OneDriveConsumer }
-                elseif ($env:OneDrive)         { $env:OneDrive }
-                else                           { Join-Path $env:USERPROFILE "OneDrive" }
+                elseif ($env:OneDrive)     { $env:OneDrive }
+                else                       { Join-Path $env:USERPROFILE "OneDrive" }
 
 $heartbeatDir  = Join-Path $onedrivePath "_sync_monitor"
 $heartbeatFile = Join-Path $heartbeatDir "heartbeat_$checkerHost.txt"
 $infoFile      = Join-Path $heartbeatDir "machine_info_$checkerHost.json"
+$historyFile   = Join-Path $heartbeatDir "metrics_history_$checkerHost.json"
+
+$HISTORY_MAX_LINES = 120
 
 # ── Ensure directory exists ────────────────────────────────────
 
@@ -64,8 +69,8 @@ function Get-MachineInfo {
     }
 
     # Last installed update (date + KB)
-    $lastWU     = $null
-    $lastWUKB   = $null
+    $lastWU   = $null
+    $lastWUKB = $null
     $wu = Safe-Get {
         Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 1
     }
@@ -112,38 +117,121 @@ function Get-MachineInfo {
     }
 
     return @{
-        host            = $checkerHost
-        timestamp_utc   = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-        os_build        = $osVer
-        last_reboot     = $lastReboot
-        last_wu_reboot  = $lastWUReboot
-        last_wu_date    = $lastWU
-        last_wu_kb      = $lastWUKB
-        pending_reboot  = $pendingReboot
-        ram_total_gb    = $ramTotalGB
-        ram_used_gb     = $ramUsedGB
-        cpu_percent     = $cpuPercent
-        disks           = $disks
+        host           = $checkerHost
+        timestamp_utc  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        os_build       = $osVer
+        last_reboot    = $lastReboot
+        last_wu_reboot = $lastWUReboot
+        last_wu_date   = $lastWU
+        last_wu_kb     = $lastWUKB
+        pending_reboot = $pendingReboot
+        ram_total_gb   = $ramTotalGB
+        ram_used_gb    = $ramUsedGB
+        cpu_percent    = $cpuPercent
+        disks          = $disks
     }
 }
 
-# ── Main loop ─────────────────────────────────────────────────
+# ── Collect metrics history entry ─────────────────────────────
 
-$writeInterval = 150  # seconds — matches heartbeat cadence
+function Get-MetricsEntry {
+    $ts = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+    # RAM %
+    $ramPct = $null
+    $os = Safe-Get { Get-CimInstance Win32_OperatingSystem }
+    if ($os -and $os.TotalVisibleMemorySize -gt 0) {
+        $ramPct = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize * 100, 0)
+    }
+
+    # CPU %
+    $cpuPct = $null
+    $cpuPct = Safe-Get {
+        $c = Get-CimInstance Win32_Processor
+        if ($c) { [math]::Round(($c | Measure-Object -Property LoadPercentage -Average).Average, 0) } else { $null }
+    }
+
+    # VRAM % — device-level fields from ComfyUI /system_stats (localhost:8188)
+    $vramPct = $null
+    try {
+        $r = Invoke-RestMethod -Uri "http://localhost:8188/system_stats" -TimeoutSec 2 -ErrorAction Stop
+        # Use device-level vram_total/vram_free, NOT torch_vram_total/torch_vram_free
+        $vramTotal = $r.devices[0].vram_total
+        $vramFree  = $r.devices[0].vram_free
+        if ($vramTotal -and $vramTotal -gt 0) {
+            $vramPct = [math]::Round(($vramTotal - $vramFree) / $vramTotal * 100, 0)
+        }
+    } catch { <# ComfyUI down or not present — leave null #> }
+
+    # GPU % — nvidia-smi
+    $gpuPct = $null
+    try {
+        $smiOut = & nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>$null
+        if ($LASTEXITCODE -eq 0 -and $smiOut -match '^\s*\d+\s*$') {
+            $gpuPct = [int]$smiOut.Trim()
+        }
+    } catch { <# nvidia-smi unavailable — leave null #> }
+
+    return [PSCustomObject]@{
+        ts       = $ts
+        ram_pct  = $ramPct
+        cpu_pct  = $cpuPct
+        vram_pct = $vramPct
+        gpu_pct  = $gpuPct
+    }
+}
+
+# ── Append history entry and trim to last N lines ──────────────
+
+function Write-HistoryEntry {
+    try {
+        $entry    = Get-MetricsEntry
+        $jsonLine = $entry | ConvertTo-Json -Compress
+
+        # Read existing lines (may not exist yet)
+        $existing = @()
+        if (Test-Path $historyFile) {
+            $existing = [System.IO.File]::ReadAllLines($historyFile)
+        }
+
+        # Append new line and trim to last 120
+        $all      = @($existing) + @($jsonLine)
+        $trimmed  = if ($all.Count -gt $HISTORY_MAX_LINES) { $all[($all.Count - $HISTORY_MAX_LINES)..($all.Count - 1)] } else { $all }
+
+        [System.IO.File]::WriteAllLines($historyFile, $trimmed, [System.Text.UTF8Encoding]::new($false))
+    } catch { <# silently continue #> }
+}
+
+# ── Main loop ─────────────────────────────────────────────────
+# Tick every 30s. Every 5th tick (150s) also writes heartbeat + machine_info.
+
+$tickInterval   = 30   # seconds
+$machineInfoEvery = 5  # ticks
+$tickCount      = 0
 
 while ($true) {
 
-    try {
-        # 1. Write heartbeat timestamp (existing behaviour, unchanged)
-        [System.IO.File]::WriteAllText($heartbeatFile, (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.ffffff+00:00"), [System.Text.UTF8Encoding]::new($false))
-    } catch { <# silently continue #> }
+    # Always write history entry
+    Write-HistoryEntry
 
-    try {
-        # 2. Collect and write machine info sidecar
-        $info    = Get-MachineInfo
-        $infoJson = $info | ConvertTo-Json -Depth 5 -Compress:$false
-        [System.IO.File]::WriteAllText($infoFile, $infoJson, [System.Text.UTF8Encoding]::new($false))
-    } catch { <# silently continue #> }
+    # Every 5th tick: write heartbeat + machine_info
+    if ($tickCount % $machineInfoEvery -eq 0) {
 
-    Start-Sleep -Seconds $writeInterval
+        try {
+            [System.IO.File]::WriteAllText(
+                $heartbeatFile,
+                (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.ffffff+00:00"),
+                [System.Text.UTF8Encoding]::new($false)
+            )
+        } catch { <# silently continue #> }
+
+        try {
+            $info     = Get-MachineInfo
+            $infoJson = $info | ConvertTo-Json -Depth 5 -Compress:$false
+            [System.IO.File]::WriteAllText($infoFile, $infoJson, [System.Text.UTF8Encoding]::new($false))
+        } catch { <# silently continue #> }
+    }
+
+    $tickCount++
+    Start-Sleep -Seconds $tickInterval
 }
