@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 onedrive_heartbeat_writer_mac.py — macOS heartbeat + machine info writer
 Writes heartbeat_{host}.txt and machine_info_{host}.json to OneDrive _sync_monitor/{host}/
