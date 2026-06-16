@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-16 00:15 UTC — mac no-stats note -->
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-16 09:00 UTC — RAM crit threshold raised to 95%, warn to 80% -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -393,6 +393,12 @@
       font-size: 9px; color: var(--fg-dim);
       letter-spacing: 1px; text-transform: uppercase;
       padding: 4px 0;
+    }
+
+    .si-stale {
+      font-size: 9px; color: var(--warn);
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 2px 0;
     }
 
     .si-pending {
@@ -838,9 +844,20 @@
         const ramUsed  = mi.ram_used_gb  ?? 0;
         const ramTotal = mi.ram_total_gb ?? 0;
         const ramPct   = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
-        const ramCls   = ramPct > 85 ? 'crit' : ramPct > 65 ? 'warn' : '';
+        const ramCls   = ramPct > 95 ? 'crit' : ramPct > 80 ? 'warn' : '';
         const cpu      = mi.cpu_percent ?? 0;
         const cpuCls   = cpu > 85 ? 'crit' : cpu > 65 ? 'warn' : '';
+
+        // Staleness check — warn if machine_info is older than 10 minutes
+        const STALE_MS = 10 * 60 * 1000;
+        let staleHtml = '';
+        if (mi.timestamp_utc) {
+          const age = Date.now() - new Date(mi.timestamp_utc).getTime();
+          if (age > STALE_MS) {
+            const ageMin = Math.round(age / 60000);
+            staleHtml = `<div class="si-stale">⚠ SYSINFO STALE — ${ageMin} MIN AGO</div>`;
+          }
+        }
 
         let html = '<div class="tile-sysinfo">';
 
@@ -894,6 +911,9 @@
         if (mi.pending_reboot) {
           html += `<div class="si-pending">⚠ PENDING REBOOT</div>`;
         }
+
+        // Stale sysinfo warning
+        html += staleHtml;
 
         html += '</div>';
         return html;
