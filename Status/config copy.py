@@ -3,7 +3,6 @@ config.py — Fleet Checker Configuration
 All machines, services, ports, check types, and public endpoints defined here.
 No code changes needed to add/remove machines or services — edit this file only.
 """
-# Last updated: 2026-06-16 19:59 UTC
 
 import os
 from pathlib import Path
@@ -50,10 +49,6 @@ PLEX_CONFIG = {
         "plex_url": "http://denniss-2nd-macbook-air:32400",
         "plex_token": "xqetuxscJvEVVUdNE6-v",
     },
-    "remotews": {
-        "plex_url": "http://remotews:32400",
-        "plex_token": "xqetuxscJvEVVUdNE6-v",
-    },
     "chatworkhorse": None,
     "travelbeast": None,
     "amsterdamdesktop": None,
@@ -73,10 +68,6 @@ SYNCTHING_CONFIG = {
         "denniss-2nd-macbook-air": {
         "syncthing_url": "http://denniss-2nd-macbook-air:8384",
         "api_key": "YXrcyDGXJe9hhgUacuPZuwcWJUREc49S",
-    },
-    "remotews": {
-        "syncthing_url": "http://remotews:8384",
-        "api_key": "HuYQZgkKm6ZtnWaHvfKepncUkNwgogsE"
     },
 }
 
@@ -339,27 +330,4 @@ FLEET = [
             },
         ],
 },
-    {
-        "display_name": "Plex Server Bekah",
-        "tailscale_name": "remotews",
-        "tailscale_ip": "100.69.183.71",
-        "primary_role": "Plex Server",
-        "probe_port": 22,
-        "services": [
-            {
-                "name": "Plex",
-                "port": 32400,
-                "priority": "P",
-                "check_type": "plex",
-                "public_url": None,
-            },
-            {
-                "name": "Syncthing",
-                "port": 8384,
-                "priority": "P",
-                "check_type": "syncthing",
-                "public_url": None,
-            },
-        ],
-    },
 ]

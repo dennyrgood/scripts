@@ -110,7 +110,8 @@
     /* ── MAIN GRID ──────────────────────────────────── */
     #grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));gap: 12px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
       padding: 16px;
       max-width: 1600px;
       margin: 0 auto;
@@ -628,10 +629,15 @@
       const streams = detail.match(/(\d+)\s+active\s+streams?/i);
       const remote  = detail.match(/Remote:\s*(\w+)/i);
       const libs    = detail.match(/(\d+)\s+libraries?/i);
+      // extract playing titles — appear after the last bullet/dash separator
+      // format: "... • 2 active streams — Title1, Title2"  or similar
+      const playingMatch = detail.match(/streams?\s*[-–—]\s*(.+)$/i);
+      const playing = playingMatch ? playingMatch[1].trim() : null;
       return {
         streams: streams ? parseInt(streams[1]) : 0,
         remote:  remote  ? remote[1] : null,
         libs:    libs    ? parseInt(libs[1]) : null,
+        playing: playing,
       };
     }
 
@@ -687,25 +693,36 @@
           <div class="vram-bar-wrap"><div class="vram-bar-fill ${barClass}" style="width:${pct}%"></div></div>`;
         }
         if (queue) {
-          const qClass = queue === 'idle' ? 'ok' : 'warn';
-          html += `<div class="p-service-metric"><span class="${qClass}">${queue.toUpperCase()}</span></div>`;
+          const isIdle = queue.toLowerCase() === 'idle';
+          const qClass = isIdle ? 'ok' : 'warn';
+          // try to extract queue depth number
+          const qDepth = detail.match(/Queue:\s*(\d+)/i);
+          html += `<div class="p-service-metric">
+            <span class="${qClass}">${queue.toUpperCase()}</span>
+            ${!isIdle && qDepth ? `<span style="color:var(--text-dim)"> · ${qDepth[1]} pending</span>` : ''}
+          </div>`;
         }
 
       } else if (svc.name === 'Ollama' || ct === 'ollama') {
         const ol = parseOllama(detail);
         if (ol) {
-          const activeClass = ol.active === 'none active' ? 'ok' : 'warn';
+          const isActive = ol.active !== 'none active';
+          const activeClass = isActive ? 'warn' : 'ok';
           html += `<div class="p-service-metric">
             <span class="val">${ol.count}</span>
             <span style="color:var(--text-dim)"> models</span>
           </div>
-          <div class="p-service-metric"><span class="${activeClass}">${ol.active}</span></div>`;
+          <div class="p-service-metric"><span class="${activeClass}">${isActive ? '▶ ' + ol.active : ol.active}</span></div>`;
         }
 
       } else if (svc.name === 'Plex' || ct === 'plex') {
         const pl = parsePlex(detail);
         if (pl) {
+          const serverName = detail.match(/^([^\s]+)/);
           const streamClass = pl.streams > 0 ? 'warn' : 'ok';
+          if (serverName) {
+            html += `<div class="p-service-metric"><span style="color:var(--text-dim)">${serverName[1]}</span></div>`;
+          }
           html += `<div class="p-service-metric">
             <span class="${streamClass} val">${pl.streams}</span>
             <span style="color:var(--text-dim)"> streams</span>
@@ -714,6 +731,31 @@
           if (pl.libs !== null) {
             html += `<div class="p-service-metric"><span style="color:var(--text-dim)">${pl.libs} libraries</span></div>`;
           }
+          if (pl.streams > 0 && pl.playing && svc.priority === 'P') {
+            html += `<div class="p-service-metric" style="font-size:10px">
+              <span class="warn">▶ </span><span style="color:var(--text-bright)">${pl.playing}</span>
+            </div>`;
+          }
+        }
+
+      } else if (ct === 'syncthing' || svc.name === 'Syncthing') {
+        const st = parseSyncthing(detail);
+        // parse transfer rates from detail e.g. "↑ 0 B/s ↓ 0 B/s"
+        const rates = detail.match(/↑\s*(.+?)\s*↓\s*(.+?)(?:\s*$)/);
+        const up   = rates ? rates[1].trim() : null;
+        const down = rates ? rates[2].trim() : null;
+        const hasActivity = up && !(up === '0 B/s');
+        if (st) {
+          html += `<div class="p-service-metric">
+            <span class="${status === 'up' ? 'ok' : 'err'}">${st.state || status.toUpperCase()}</span>
+            ${st.folders != null ? `<span style="color:var(--text-dim)"> · ${st.folders} folders</span>` : ''}
+          </div>`;
+        }
+        if (up && down) {
+          html += `<div class="p-service-metric">
+            <span class="${hasActivity ? 'warn' : ''}" style="color:var(--text-dim)">↑ </span><span class="${hasActivity ? 'warn val' : ''}">${up}</span>
+            <span style="color:var(--text-dim)"> ↓ ${down}</span>
+          </div>`;
         }
 
       } else if (ct === 'openwebui') {
@@ -759,16 +801,35 @@
         primaryHtml = `<div class="p-service-metric" style="color:var(--text-dim)">NO PRIMARY SERVICES</div>`;
       }
 
-      // build S dots html
+      // build S dots html — include heartbeat age indicator
       let secondaryHtml = '';
       for (const svc of sSvcs) {
         const ss = svcStatus(svc);
-        secondaryHtml += `
-          <div class="s-dot-wrap" title="${svc.name}: ${ss}">
-            <div class="s-dot ${ss}"></div>
-            <span class="s-label">${svc.name}</span>
-          </div>`;
+        const ct = svc.check_type || '';
+        if (svc.name.toLowerCase().includes('heartbeat')) {
+          const age = parseHeartbeat(svc.tailscale_check?.detail || '');
+          const ageClass = age != null && age > 120 ? 'warn' : (age != null && age > 300 ? 'down' : '');
+          const ageText  = age != null ? ` ${age}s` : '';
+          secondaryHtml += `
+            <div class="s-dot-wrap" title="${svc.name}: ${ss} ${ageText}">
+              <div class="s-dot ${ageClass || ss}"></div>
+              <span class="s-label" style="${ageClass === 'warn' ? 'color:var(--yellow)' : ''}">${svc.name}${ageText}</span>
+            </div>`;
+        } else {
+          secondaryHtml += `
+            <div class="s-dot-wrap" title="${svc.name}: ${ss}">
+              <div class="s-dot ${ss}"></div>
+              <span class="s-label">${svc.name}</span>
+            </div>`;
+        }
       }
+
+      // find heartbeat age for header indicator (any priority)
+      const heartbeatSvcs = (machine.services || []).filter(s => s.name.toLowerCase().includes('heartbeat'));
+      const staleHeartbeat = heartbeatSvcs.some(s => {
+        const age = parseHeartbeat(s.tailscale_check?.detail || '');
+        return age != null && age > 120;
+      });
 
       const tile = document.createElement('div');
       tile.className = `tile status-${status}`;
@@ -778,6 +839,7 @@
         <div class="tile-head">
           <span class="tile-name">${machine.machine.display_name}</span>
           <span style="display:flex;align-items:center;gap:6px">
+            ${staleHeartbeat ? `<span style="font-family:var(--mono);font-size:9px;color:var(--yellow);letter-spacing:1px" title="Heartbeat stale">HB</span>` : ''}
             <span class="tile-ping" style="${ping != null && ping > WARN_MS ? 'color:var(--yellow)' : ''}">${ping != null ? ping + 'ms' : '–'}</span>
             <span class="tile-status-dot ${status === 'up' ? '' : status}"></span>
           </span>
@@ -907,7 +969,7 @@
         }
         rows += `<div class="d-svc-row" style="flex-direction:column;gap:2px"><span class="lbl">DETAIL</span><span class="val" style="font-size:9px;text-align:left">${detail}</span></div>`;
 
-      } else if (ct === 'onedrive_heartbeat') {
+      } else if (ct === 'onedrive_heartbeat' || svc.name.toLowerCase().includes('heartbeat')) {
         const age = parseHeartbeat(detail);
         if (age != null) {
           const ageClass = age > 120 ? 'down' : age > 60 ? 'warn' : 'up';
@@ -997,14 +1059,16 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         lastData = data;
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('error-msg').style.display = 'none';
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
+        const errorMsg = document.getElementById('error-msg');
+        if (errorMsg) errorMsg.style.display = 'none';
         render(data);
       } catch (err) {
-        document.getElementById('loading').style.display = 'none';
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
         const em = document.getElementById('error-msg');
-        em.style.display = 'block';
-        em.textContent = `FETCH ERROR: ${err.message}`;
+        if (em) { em.style.display = 'block'; em.textContent = `FETCH ERROR: ${err.message}`; }
         console.error(err);
       }
     }

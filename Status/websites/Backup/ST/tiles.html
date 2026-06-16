@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-16 09:00 UTC — RAM crit threshold raised to 95%, warn to 80% -->
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-16 17:20 UTC — reorder sysinfo: RAM/CPU/VRAM/GPU/disks -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -219,6 +219,7 @@
     #grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      grid-auto-rows: 1fr;
       gap: 12px;
       padding: 16px;
       max-width: 1600px;
@@ -350,6 +351,9 @@
     .s-dot.unknown { background: var(--unknown); }
     .s-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; }
 
+    /* spacer pushes sysinfo to bottom of tile */
+    .tile-spacer { flex: 1; }
+
     /* ── TILE SYSINFO STRIP ─────────────────────────── */
     .tile-sysinfo {
       padding: 6px 12px 8px;
@@ -380,6 +384,26 @@
     .si-bar-fill.warn { background: var(--warn); }
     .si-bar-fill.crit { background: var(--down); }
     .si-extra { color: var(--text-dim); font-size: 9px; flex-shrink: 0; }
+
+    /* ── SPARKLINES ─────────────────────────────────── */
+    .si-spark-wrap {
+      flex: 1;
+      height: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .si-spark-wrap svg {
+      display: block;
+      width: 100%;
+      height: 12px;
+    }
+    /* Fallback bar shown while history loading or unavailable — sits inside spark-wrap */
+    .si-spark-wrap .si-bar-wrap {
+      position: absolute;
+      top: 3px; left: 0; right: 0;
+      height: 5px;
+    }
+
     .si-sep { height: 1px; background: rgba(255,255,255,0.04); margin: 2px 0; }
     .si-meta-row {
       display: flex; flex-wrap: wrap; gap: 6px 12px;
@@ -682,7 +706,7 @@
 
   <div id="footer">
     FLEET_OPS // LCARS INTERFACE
-    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 20:29 UTC</span>
+    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-16 14:12 UTC</span>
     <a id="altFeedLink" href="#">BACKUP FEED</a>
   </div>
 
@@ -830,6 +854,124 @@
       return html;
     }
 
+    // ── HISTORY CACHE ────────────────────────────────
+    // Keyed by tailscale_name. Each entry: array of {ts,ram_pct,cpu_pct,vram_pct,gpu_pct}
+    const historyCache = {};
+
+    // ── SPARKLINE BUILDER ────────────────────────────
+    // Returns an inline SVG polyline string (width=100%, height=12px, viewBox auto-fit).
+    // values: array of numbers (nulls skipped). color: CSS color string.
+    function buildSparklineSVG(values, color) {
+      const pts = values.filter(v => v !== null && v !== undefined);
+      if (pts.length < 2) return null;
+
+      const W = 200, H = 12;   // internal viewBox units; scales to container width
+      const min = 0, max = 100; // metrics are always percentages
+      const xStep = W / (pts.length - 1);
+
+      const points = pts.map((v, i) => {
+        const x = Math.round(i * xStep);
+        const y = Math.round(H - ((v - min) / (max - min)) * H);
+        return `${x},${Math.max(0, Math.min(H, y))}`;
+      }).join(' ');
+
+      return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">` +
+        `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>` +
+        `</svg>`;
+    }
+
+    // Resolve the CSS color for a metric class (up/warn/crit)
+    function metricColor(cls) {
+      if (cls === 'crit') return 'var(--down)';
+      if (cls === 'warn') return 'var(--warn)';
+      return 'var(--up)';
+    }
+
+    // ── APPLY SPARKLINES TO A RENDERED TILE ──────────
+    // Called after history fetch completes. Updates .si-spark-wrap elements in-place.
+    function applySparklines(host, entries) {
+      const tile = document.querySelector(`.tile[data-host="${host}"]`);
+      if (!tile) return;
+
+      const ramVals  = entries.map(e => e.ram_pct);
+      const cpuVals  = entries.map(e => e.cpu_pct);
+      const vramVals = entries.map(e => e.vram_pct);
+      const gpuVals  = entries.map(e => e.gpu_pct);
+
+      function injectSpark(metric, values) {
+        const wrap = tile.querySelector(`.si-spark-wrap[data-metric="${metric}"]`);
+        if (!wrap) return false;
+        const cls = wrap.dataset.cls || '';
+        const svg = buildSparklineSVG(values, metricColor(cls));
+        if (svg) {
+          wrap.innerHTML = svg;
+          return true;
+        }
+        return false;
+      }
+
+      injectSpark('ram',  ramVals);
+      injectSpark('cpu',  cpuVals);
+
+      // VRAM — only show row if at least one non-null value exists
+      const vramNonNull = vramVals.filter(v => v !== null && v !== undefined);
+      if (vramNonNull.length >= 2) {
+        const lastVram = vramNonNull[vramNonNull.length - 1];
+        const vramCls  = lastVram > 85 ? 'crit' : lastVram > 60 ? 'warn' : '';
+        const vramRow  = tile.querySelector('[data-sparkrow="vram"]');
+        const vramWrap = tile.querySelector('.si-spark-wrap[data-metric="vram"]');
+        if (vramWrap) vramWrap.dataset.cls = vramCls;
+        if (vramRow)  vramRow.style.display = '';
+        // Update current-value label
+        const vramValEl = tile.querySelector('[data-metric="vram-val"]');
+        const vramPctEl = tile.querySelector('[data-metric="vram-pct"]');
+        if (vramValEl) { vramValEl.textContent = lastVram + '%'; vramValEl.className = `si-val ${vramCls}`; }
+        if (vramPctEl)  vramPctEl.textContent  = lastVram + '%';
+        injectSpark('vram', vramVals);
+      }
+
+      // GPU — same pattern
+      const gpuNonNull = gpuVals.filter(v => v !== null && v !== undefined);
+      if (gpuNonNull.length >= 2) {
+        const lastGpu = gpuNonNull[gpuNonNull.length - 1];
+        const gpuCls  = lastGpu > 85 ? 'crit' : lastGpu > 60 ? 'warn' : '';
+        const gpuRow  = tile.querySelector('[data-sparkrow="gpu"]');
+        const gpuWrap = tile.querySelector('.si-spark-wrap[data-metric="gpu"]');
+        if (gpuWrap) gpuWrap.dataset.cls = gpuCls;
+        if (gpuRow)  gpuRow.style.display = '';
+        const gpuValEl = tile.querySelector('[data-metric="gpu-val"]');
+        const gpuPctEl = tile.querySelector('[data-metric="gpu-pct"]');
+        if (gpuValEl) { gpuValEl.textContent = lastGpu + '%'; gpuValEl.className = `si-val ${gpuCls}`; }
+        if (gpuPctEl)  gpuPctEl.textContent  = lastGpu + '%';
+        injectSpark('gpu', gpuVals);
+      }
+    }
+
+    // ── FETCH HISTORY FOR ALL MACHINES ───────────────
+    function fetchAllHistory(machines) {
+      for (const machine of machines) {
+        const host = machine.machine?.tailscale_name;
+        if (!host) continue;
+        fetchHistory(host);
+      }
+    }
+
+    async function fetchHistory(host) {
+      const API_BASE = isBkp
+        ? 'https://fleet-bkp.ldmathes.cc'
+        : 'https://fleet.ldmathes.cc';
+      try {
+        const res = await fetch(`${API_BASE}/api/history/${host}`);
+        if (!res.ok) return;
+        const entries = await res.json();
+        if (!Array.isArray(entries) || entries.length < 2) return;
+        historyCache[host] = entries;
+        applySparklines(host, entries);
+      } catch (e) {
+        // History unavailable — bars remain, no crash
+      }
+    }
+
     // ── RENDER SYSINFO STRIP ─────────────────────────
     function renderSysInfo(machine) {
       try {
@@ -844,16 +986,16 @@
         const ramUsed  = mi.ram_used_gb  ?? 0;
         const ramTotal = mi.ram_total_gb ?? 0;
         const ramPct   = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
-        const ramCls   = ramPct > 95 ? 'crit' : ramPct > 80 ? 'warn' : '';
+        const ramCls   = ramPct > 85 ? 'crit' : ramPct > 65 ? 'warn' : '';
         const cpu      = mi.cpu_percent ?? 0;
         const cpuCls   = cpu > 85 ? 'crit' : cpu > 65 ? 'warn' : '';
 
         // Staleness check — warn if machine_info is older than 10 minutes
-        const STALE_MS = 10 * 60 * 1000;
+        const STALE_SYSINFO_MS = 10 * 60 * 1000;
         let staleHtml = '';
         if (mi.timestamp_utc) {
           const age = Date.now() - new Date(mi.timestamp_utc).getTime();
-          if (age > STALE_MS) {
+          if (age > STALE_SYSINFO_MS) {
             const ageMin = Math.round(age / 60000);
             staleHtml = `<div class="si-stale">⚠ SYSINFO STALE — ${ageMin} MIN AGO</div>`;
           }
@@ -861,12 +1003,14 @@
 
         let html = '<div class="tile-sysinfo">';
 
-        // RAM row
+        // RAM row — spark-wrap holds fallback bar; applySparklines replaces it with SVG
         if (ramTotal > 0) {
           html += `<div class="si-row">
             <span class="si-lbl">RAM</span>
             <span class="si-val ${ramCls}">${ramUsed}/${ramTotal}GB</span>
-            <div class="si-bar-wrap"><div class="si-bar-fill ${ramCls}" style="width:${ramPct}%"></div></div>
+            <div class="si-spark-wrap" data-metric="ram" data-cls="${ramCls}">
+              <div class="si-bar-wrap"><div class="si-bar-fill ${ramCls}" style="width:${ramPct}%"></div></div>
+            </div>
             <span class="si-extra">${ramPct}%</span>
           </div>`;
         }
@@ -876,11 +1020,35 @@
           html += `<div class="si-row">
             <span class="si-lbl">CPU</span>
             <span class="si-val ${cpuCls}">${cpu}%</span>
-            <div class="si-bar-wrap"><div class="si-bar-fill ${cpuCls}" style="width:${cpu}%"></div></div>
+            <div class="si-spark-wrap" data-metric="cpu" data-cls="${cpuCls}">
+              <div class="si-bar-wrap"><div class="si-bar-fill ${cpuCls}" style="width:${cpu}%"></div></div>
+            </div>
+            <span class="si-extra">${cpu}%</span>
           </div>`;
         }
 
-        // Disk rows
+        // VRAM sparkline row — placeholder rendered now; applySparklines fills it if data arrives
+        // Always render the row; applySparklines will only inject if vram_pct values are non-null
+        html += `<div class="si-row" data-sparkrow="vram" style="display:none">
+          <span class="si-lbl">VRAM</span>
+          <span class="si-val" data-metric="vram-val">–</span>
+          <div class="si-spark-wrap" data-metric="vram" data-cls="">
+            <div class="si-bar-wrap"><div class="si-bar-fill" style="width:0%"></div></div>
+          </div>
+          <span class="si-extra" data-metric="vram-pct">–</span>
+        </div>`;
+
+        // GPU sparkline row — same pattern
+        html += `<div class="si-row" data-sparkrow="gpu" style="display:none">
+          <span class="si-lbl">GPU</span>
+          <span class="si-val" data-metric="gpu-val">–</span>
+          <div class="si-spark-wrap" data-metric="gpu" data-cls="">
+            <div class="si-bar-wrap"><div class="si-bar-fill" style="width:0%"></div></div>
+          </div>
+          <span class="si-extra" data-metric="gpu-pct">–</span>
+        </div>`;
+
+        // Disk rows — bars only (changes too slowly for sparklines)
         if (Array.isArray(mi.disks) && mi.disks.length) {
           for (const d of mi.disks) {
             const used  = d.used_gb  ?? 0;
@@ -912,9 +1080,7 @@
           html += `<div class="si-pending">⚠ PENDING REBOOT</div>`;
         }
 
-        // Stale sysinfo warning
         html += staleHtml;
-
         html += '</div>';
         return html;
       } catch(e) {
@@ -949,6 +1115,7 @@
 
       const tile = document.createElement('div');
       tile.className = `tile status-${status}`;
+      tile.dataset.host = machine.machine.tailscale_name || '';
       tile.innerHTML = `
         <div class="tile-head">
           <span class="tile-name">${machine.machine.display_name}</span>
@@ -959,6 +1126,7 @@
         <div class="tile-role">${machine.machine.primary_role || ''}</div>
         <div class="tile-primary">${primaryHtml}</div>
         ${secondaryHtml ? `<div class="tile-secondary">${secondaryHtml}</div>` : ''}
+        <div class="tile-spacer"></div>
         ${renderSysInfo(machine)}
       `;
       tile.addEventListener('click', () => openModal(machine));
@@ -1191,6 +1359,7 @@
         if (loading) loading.style.display = 'none';
         document.getElementById('error-msg').style.display = 'none';
         render(data);
+        fetchAllHistory(data.machines || []);
       } catch (err) {
         const loading = document.getElementById('loading');
         if (loading) loading.style.display = 'none';

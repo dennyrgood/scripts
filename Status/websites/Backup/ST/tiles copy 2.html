@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-16 09:45 UTC — uniform tile height, sysinfo pinned to bottom -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -218,6 +219,7 @@
     #grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      grid-auto-rows: 1fr;
       gap: 12px;
       padding: 16px;
       max-width: 1600px;
@@ -348,6 +350,65 @@
     .s-dot.warn    { background: var(--warn); }
     .s-dot.unknown { background: var(--unknown); }
     .s-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px; }
+
+    /* spacer pushes sysinfo to bottom of tile */
+    .tile-spacer { flex: 1; }
+
+    /* ── TILE SYSINFO STRIP ─────────────────────────── */
+    .tile-sysinfo {
+      padding: 6px 12px 8px;
+      display: flex; flex-direction: column; gap: 4px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      flex-shrink: 0;
+    }
+    .si-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 9px; color: var(--text-dim);
+    }
+    .si-lbl {
+      letter-spacing: 1.5px; text-transform: uppercase;
+      flex-shrink: 0; width: 36px;
+    }
+    .si-val { color: var(--text); flex-shrink: 0; }
+    .si-val.warn { color: var(--warn); }
+    .si-val.crit { color: var(--down); }
+    .si-bar-wrap {
+      flex: 1; height: 5px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 2px; overflow: hidden;
+    }
+    .si-bar-fill {
+      height: 100%; border-radius: 2px;
+      background: var(--up); transition: width 0.4s;
+    }
+    .si-bar-fill.warn { background: var(--warn); }
+    .si-bar-fill.crit { background: var(--down); }
+    .si-extra { color: var(--text-dim); font-size: 9px; flex-shrink: 0; }
+    .si-sep { height: 1px; background: rgba(255,255,255,0.04); margin: 2px 0; }
+    .si-meta-row {
+      display: flex; flex-wrap: wrap; gap: 6px 12px;
+      font-size: 9px; color: var(--text-dim);
+    }
+    .si-meta-item { display: flex; gap: 4px; }
+    .si-meta-lbl { letter-spacing: 1px; text-transform: uppercase; }
+    .si-meta-val { color: var(--text); }
+    .si-meta-val.warn { color: var(--warn); }
+    .si-no-stats {
+      font-size: 9px; color: var(--fg-dim);
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 4px 0;
+    }
+
+    .si-stale {
+      font-size: 9px; color: var(--warn);
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 2px 0;
+    }
+
+    .si-pending {
+      font-size: 9px; color: var(--warn);
+      letter-spacing: 1px; text-transform: uppercase;
+    }
 
     /* ── OVERLAY ────────────────────────────────────── */
     #overlay {
@@ -625,6 +686,7 @@
 
   <div id="footer">
     FLEET_OPS // LCARS INTERFACE
+    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-15 20:29 UTC</span>
     <a id="altFeedLink" href="#">BACKUP FEED</a>
   </div>
 
@@ -772,6 +834,99 @@
       return html;
     }
 
+    // ── RENDER SYSINFO STRIP ─────────────────────────
+    function renderSysInfo(machine) {
+      try {
+        const mi = machine.machine_info;
+        if (!mi) {
+          if (machine.machine?.tailscale_name?.includes('-mac')) {
+            return '<div class="tile-sysinfo"><div class="si-no-stats">⚠ OPEN A TERMINAL TO ACTIVATE STATS</div></div>';
+          }
+          return '';
+        }
+
+        const ramUsed  = mi.ram_used_gb  ?? 0;
+        const ramTotal = mi.ram_total_gb ?? 0;
+        const ramPct   = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
+        const ramCls   = ramPct > 85 ? 'crit' : ramPct > 65 ? 'warn' : '';
+        const cpu      = mi.cpu_percent ?? 0;
+        const cpuCls   = cpu > 85 ? 'crit' : cpu > 65 ? 'warn' : '';
+
+        // Staleness check — warn if machine_info is older than 10 minutes
+        const STALE_MS = 10 * 60 * 1000;
+        let staleHtml = '';
+        if (mi.timestamp_utc) {
+          const age = Date.now() - new Date(mi.timestamp_utc).getTime();
+          if (age > STALE_MS) {
+            const ageMin = Math.round(age / 60000);
+            staleHtml = `<div class="si-stale">⚠ SYSINFO STALE — ${ageMin} MIN AGO</div>`;
+          }
+        }
+
+        let html = '<div class="tile-sysinfo">';
+
+        // RAM row
+        if (ramTotal > 0) {
+          html += `<div class="si-row">
+            <span class="si-lbl">RAM</span>
+            <span class="si-val ${ramCls}">${ramUsed}/${ramTotal}GB</span>
+            <div class="si-bar-wrap"><div class="si-bar-fill ${ramCls}" style="width:${ramPct}%"></div></div>
+            <span class="si-extra">${ramPct}%</span>
+          </div>`;
+        }
+
+        // CPU row
+        if (mi.cpu_percent != null) {
+          html += `<div class="si-row">
+            <span class="si-lbl">CPU</span>
+            <span class="si-val ${cpuCls}">${cpu}%</span>
+            <div class="si-bar-wrap"><div class="si-bar-fill ${cpuCls}" style="width:${cpu}%"></div></div>
+          </div>`;
+        }
+
+        // Disk rows
+        if (Array.isArray(mi.disks) && mi.disks.length) {
+          for (const d of mi.disks) {
+            const used  = d.used_gb  ?? 0;
+            const total = d.total_gb ?? 0;
+            const pct   = total > 0 ? Math.round(used / total * 100) : 0;
+            const cls   = pct > 90 ? 'crit' : pct > 75 ? 'warn' : '';
+            html += `<div class="si-row">
+              <span class="si-lbl">${d.drive || '?'}</span>
+              <span class="si-val ${cls}">${used}/${total}GB</span>
+              <div class="si-bar-wrap"><div class="si-bar-fill ${cls}" style="width:${pct}%"></div></div>
+              <span class="si-extra">${pct}%</span>
+            </div>`;
+          }
+        }
+
+        // Separator
+        html += '<div class="si-sep"></div>';
+
+        // Reboot / WU meta row
+        html += '<div class="si-meta-row">';
+        if (mi.last_reboot)    html += `<div class="si-meta-item"><span class="si-meta-lbl">REBOOT</span><span class="si-meta-val">${mi.last_reboot}</span></div>`;
+        if (mi.last_wu_date)   html += `<div class="si-meta-item"><span class="si-meta-lbl">WU INST</span><span class="si-meta-val">${mi.last_wu_date}</span></div>`;
+        if (mi.last_wu_reboot) html += `<div class="si-meta-item"><span class="si-meta-lbl">WU REBOOT</span><span class="si-meta-val">${mi.last_wu_reboot}</span></div>`;
+        if (mi.os_build)       html += `<div class="si-meta-item"><span class="si-meta-lbl">OS</span><span class="si-meta-val">${mi.os_build}</span></div>`;
+        html += '</div>';
+
+        // Pending reboot badge
+        if (mi.pending_reboot) {
+          html += `<div class="si-pending">⚠ PENDING REBOOT</div>`;
+        }
+
+        // Stale sysinfo warning
+        html += staleHtml;
+
+        html += '</div>';
+        return html;
+      } catch(e) {
+        console.error('renderSysInfo error:', e, machine.machine?.tailscale_name);
+        return '';
+      }
+    }
+
     // ── RENDER TILE ──────────────────────────────────
     function renderTile(machine) {
       const status = hostStatus(machine);
@@ -808,6 +963,8 @@
         <div class="tile-role">${machine.machine.primary_role || ''}</div>
         <div class="tile-primary">${primaryHtml}</div>
         ${secondaryHtml ? `<div class="tile-secondary">${secondaryHtml}</div>` : ''}
+        <div class="tile-spacer"></div>
+        ${renderSysInfo(machine)}
       `;
       tile.addEventListener('click', () => openModal(machine));
       return tile;
@@ -1035,14 +1192,15 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         lastData = data;
-        document.getElementById('loading').style.display = 'none';
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
         document.getElementById('error-msg').style.display = 'none';
         render(data);
       } catch (err) {
-        document.getElementById('loading').style.display = 'none';
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
         const em = document.getElementById('error-msg');
-        em.style.display = 'block';
-        em.textContent = `FETCH ERROR: ${err.message}`;
+        if (em) { em.style.display = 'block'; em.textContent = `FETCH ERROR: ${err.message}`; }
       }
     }
 
