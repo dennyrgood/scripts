@@ -154,7 +154,7 @@ function Get-MetricsEntry {
     # VRAM % — device-level fields from ComfyUI /system_stats (localhost:8188)
     $vramPct = $null
     try {
-        $r = Invoke-RestMethod -Uri "http://localhost:8188/system_stats" -TimeoutSec 2 -ErrorAction Stop
+        $r = Invoke-RestMethod -Uri "http://localhost:8188/system_stats" -TimeoutSec 5 -ErrorAction Stop
         # Use device-level vram_total/vram_free, NOT torch_vram_total/torch_vram_free
         $vramTotal = $r.devices[0].vram_total
         $vramFree  = $r.devices[0].vram_free
