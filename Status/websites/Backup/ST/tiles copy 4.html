@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-17 10:45 UTC — sparkline staleness: dim opacity + si-stale label when history > 10min old -->
+<!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-17 07:21 UTC — byline moved into title bar; disk separator line added -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -716,7 +716,7 @@
 
   <div id="footer">
     FLEET_OPS // LCARS INTERFACE
-    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-17 10:45 UTC</span>
+    <span style="color:var(--text-dim);margin-left:16px;font-size:9px">v2026-06-17 07:21 UTC</span>
     <a id="altFeedLink" href="#">BACKUP FEED</a>
   </div>
 
@@ -751,9 +751,8 @@
   </div>
 
   <script>
-    const WARN_MS         = 3500;
-    const STALE_MS        = 3 * 60 * 1000;
-    const STALE_HISTORY_MS = 10 * 60 * 1000; // matches STALE_SYSINFO_MS threshold
+    const WARN_MS  = 3500;
+    const STALE_MS = 3 * 60 * 1000;
     const params   = new URLSearchParams(window.location.search);
     const isBkp    = params.has('bkp');
     const API_URL  = isBkp
@@ -955,35 +954,6 @@
         if (gpuValEl) { gpuValEl.textContent = lastGpu + '%'; gpuValEl.className = `si-val ${gpuCls}`; }
         if (gpuPctEl)  gpuPctEl.textContent  = lastGpu + '%';
         injectSpark('gpu', gpuVals);
-      }
-
-      // ── HISTORY STALENESS ────────────────────────────
-      // Check the timestamp of the last entry. If older than STALE_HISTORY_MS:
-      //   1. Dim all injected sparkline SVGs (opacity 0.35)
-      //   2. Append a ⚠ HIST STALE label into .tile-sysinfo (remove any prior one first)
-      const lastEntry = entries[entries.length - 1];
-      if (lastEntry?.ts) {
-        const histAge = Date.now() - new Date(lastEntry.ts).getTime();
-        const sysinfo = tile.querySelector('.tile-sysinfo');
-        // Remove any previously injected stale label so we don't double-up on re-render
-        sysinfo?.querySelectorAll('.si-hist-stale').forEach(el => el.remove());
-        if (histAge > STALE_HISTORY_MS) {
-          const ageMin = Math.round(histAge / 60000);
-          // Dim all spark wraps that contain a rendered SVG
-          tile.querySelectorAll('.si-spark-wrap svg').forEach(svg => {
-            svg.parentElement.style.opacity = '0.35';
-          });
-          // Append stale label into sysinfo strip
-          if (sysinfo) {
-            const staleEl = document.createElement('div');
-            staleEl.className = 'si-stale si-hist-stale';
-            staleEl.textContent = `⚠ HIST STALE — ${ageMin} MIN AGO`;
-            sysinfo.appendChild(staleEl);
-          }
-        } else {
-          // History is fresh — ensure opacity is normal (in case it was previously stale)
-          tile.querySelectorAll('.si-spark-wrap').forEach(w => w.style.opacity = '');
-        }
       }
     }
 
