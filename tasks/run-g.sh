@@ -1,3 +1,3 @@
 #!/bin/bash
 source venv/bin/activate
-python3 export_tasks.py
+python3 gemini-code-export-tasks.py
