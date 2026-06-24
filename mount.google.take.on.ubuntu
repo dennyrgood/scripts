@@ -1,0 +1,5 @@
+sudo mkdir -p /mnt/google_take_out
+sudo mount -t cifs //100.125.37.114/"Media.Google.Take/2026 06 21 Takeout" /mnt/google_take_out -o username=DrDen
+#dhm@workbenchunix:~$ ls /mnt/google_take_out/
+#takeout-20260621T075636Z-3-001.zip  takeout-20260621T075636Z-3-012.zip
+#takeout-20260621T075636Z-3-002.zip  takeout-20260621T075636Z-3-013.zip

@@ -1,0 +1,2 @@
+sudo mount -t cifs //192.168.178.158/BlenderVideos /mnt/win_share/ -o username=DrDen
+sudo mount -t cifs //192.168.178.158/Comfyui /mnt/win_share/ -o username=DrDen
