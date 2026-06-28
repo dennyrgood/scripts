@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <!-- tiles.html — FLEET_OPS LCARS tiles view — Last updated: 2026-06-17 10:45 UTC — sparkline staleness: dim opacity + si-stale label when history > 10min old -->
+<!-- Updated: 2026-06-28 UTC — add Immich check_type handler to renderPrimaryMetric and renderModalService; thread machine param for machine_info access -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -817,7 +818,7 @@
     function svcStatus(svc) { return svc.tailscale_check?.status || 'unknown'; }
 
     // ── TILE PRIMARY METRIC ──────────────────────────
-    function renderPrimaryMetric(svc) {
+    function renderPrimaryMetric(svc, machine) {
       const status = svcStatus(svc);
       const ct     = svc.check_type || '';
       const detail = svc.tailscale_check?.detail || '';
@@ -852,6 +853,15 @@
       } else if (ct === 'flask') {
         const ms = svc.tailscale_check?.response_time_ms;
         html += `<div class="p-svc-metric"><span class="${status==='up'?'ok':'err'}">${detail||status.toUpperCase()}</span>${ms?`<span style="color:var(--text-dim)"> · ${ms}ms</span>`:''}</div>`;
+
+      } else if (svc.name === 'Immich' || ct === 'immich') {
+        html += `<div class="p-svc-metric"><span class="${status==='up'?'ok':'err'}">${status.toUpperCase()}</span></div>`;
+        const mi = machine?.machine_info;
+        const photos = mi?.immich_photos;
+        const videos = mi?.immich_videos;
+        if (photos != null || videos != null) {
+          html += `<div class="p-svc-metric"><span class="val">${photos != null ? photos.toLocaleString() : '–'}</span><span style="color:var(--text-dim)"> photos · </span><span class="val">${videos != null ? videos.toLocaleString() : '–'}</span><span style="color:var(--text-dim)"> videos</span></div>`;
+        }
 
       } else {
         const age = parseHeartbeat(detail);
@@ -1141,7 +1151,7 @@
       for (const svc of pSvcs) {
         primaryHtml += `<div class="p-service">
           <div class="p-svc-name">${svc.name}</div>
-          ${renderPrimaryMetric(svc)}
+          ${renderPrimaryMetric(svc, machine)}
         </div>`;
       }
       if (!primaryHtml) primaryHtml = `<div class="p-svc-metric" style="color:var(--text-dim)">NO PRIMARY SERVICES</div>`;
@@ -1261,10 +1271,10 @@
         </div>`;
 
       if (pSvcs.length) {
-        html += `<div><div class="m-section-title">PRIMARY SERVICES</div><div class="m-svc-grid">${pSvcs.map(renderModalService).join('')}</div></div>`;
+        html += `<div><div class="m-section-title">PRIMARY SERVICES</div><div class="m-svc-grid">${pSvcs.map(s => renderModalService(s, machine)).join('')}</div></div>`;
       }
       if (sSvcs.length) {
-        html += `<div><div class="m-section-title">SECONDARY SERVICES</div><div class="m-svc-grid">${sSvcs.map(renderModalService).join('')}</div></div>`;
+        html += `<div><div class="m-section-title">SECONDARY SERVICES</div><div class="m-svc-grid">${sSvcs.map(s => renderModalService(s, machine)).join('')}</div></div>`;
       }
 
       html += `<div><div class="m-section-title">RAW DATA</div>
@@ -1277,7 +1287,7 @@
       document.getElementById('overlay').classList.add('open');
     }
 
-    function renderModalService(svc) {
+    function renderModalService(svc, machine) {
       const ss     = svcStatus(svc);
       const detail = svc.tailscale_check?.detail || '';
       const ms     = svc.tailscale_check?.response_time_ms;
@@ -1319,6 +1329,14 @@
           if (st.folders) rows += `<div class="m-svc-row"><span class="lbl">FOLDERS</span><span class="val">${st.folders}</span></div>`;
         }
         if (detail) rows += `<div class="m-svc-row" style="flex-direction:column;gap:2px"><span class="lbl">DETAIL</span><span class="val" style="font-size:9px">${detail}</span></div>`;
+
+      } else if (svc.name === 'Immich' || ct === 'immich') {
+        if (detail) rows += `<div class="m-svc-row"><span class="lbl">VERSION</span><span class="val">${detail}</span></div>`;
+        const mi = machine?.machine_info;
+        const photos = mi?.immich_photos;
+        const videos = mi?.immich_videos;
+        if (photos != null) rows += `<div class="m-svc-row"><span class="lbl">PHOTOS</span><span class="val">${photos.toLocaleString()}</span></div>`;
+        if (videos != null) rows += `<div class="m-svc-row"><span class="lbl">VIDEOS</span><span class="val">${videos.toLocaleString()}</span></div>`;
 
       } else if (ct === 'onedrive_heartbeat') {
         const age = parseHeartbeat(detail);
