@@ -140,7 +140,7 @@ FLEET = [
     {
         "display_name": "ChatWorkhorse",
         "tailscale_name": "chatworkhorse",
-        "tailscale_ip": "100.124.162.73",
+        "tailscale_ip": "100.110.253.46",
         "primary_role": "Ollama Primary",
         "probe_port": 22,
         "services": [
