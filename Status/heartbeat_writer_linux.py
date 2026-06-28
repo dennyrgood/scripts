@@ -5,6 +5,7 @@
 # machine_info_{host}.json, and appends one entry to metrics_history_{host}.json,
 # then exits. Driven by cron via run_heartbeat.sh.
 # Updated: 2026-06-28 UTC — add get_immich_stats(); writes immich_photos/immich_videos to machine_info
+# Updated: 2026-06-28 UTC — get_immich_stats() accepts api_key; passes x-api-key header (stats endpoint requires auth)
 
 import argparse
 import json
@@ -85,10 +86,13 @@ def get_os_info() -> tuple[str, str, str, bool]:
     return last_wu_date, last_wu_kb, last_wu_reboot, pending_reboot
 
 
-def get_immich_stats(port: int = 2283) -> tuple[int | None, int | None]:
+def get_immich_stats(port: int = 2283, api_key: str = "") -> tuple[int | None, int | None]:
     try:
         url = f"http://localhost:{port}/api/server/statistics"
-        with urllib.request.urlopen(url, timeout=5) as resp:
+        req = urllib.request.Request(url)
+        if api_key:
+            req.add_header("x-api-key", api_key)
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
             return data.get("photos"), data.get("videos")
     except Exception:
@@ -104,7 +108,7 @@ def get_os_build() -> str:
         return "unknown"
 
 
-def run(host: str, output_dir: Path) -> None:
+def run(host: str, output_dir: Path, immich_api_key: str = "") -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -114,7 +118,7 @@ def run(host: str, output_dir: Path) -> None:
     last_reboot = get_last_reboot()
     last_wu_date, last_wu_kb, last_wu_reboot, pending_reboot = get_os_info()
     os_build = get_os_build()
-    immich_photos, immich_videos = get_immich_stats()
+    immich_photos, immich_videos = get_immich_stats(api_key=immich_api_key)
 
     (output_dir / f"heartbeat_{host}.txt").write_text(
         datetime.now(timezone.utc).isoformat(), encoding="utf-8"
@@ -154,7 +158,8 @@ def run(host: str, output_dir: Path) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--host",       required=True)
-    ap.add_argument("--output-dir", required=True)
+    ap.add_argument("--host",           required=True)
+    ap.add_argument("--output-dir",     required=True)
+    ap.add_argument("--immich-api-key", default="")
     args = ap.parse_args()
-    run(args.host, Path(args.output_dir))
+    run(args.host, Path(args.output_dir), immich_api_key=args.immich_api_key)
