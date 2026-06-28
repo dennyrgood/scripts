@@ -86,7 +86,7 @@ IMMICH_CONFIG = {
         "api_key": "iuCCTHgYgbSaGQ2USs1xW4rk9bfZwHvQWhsi1agIU",  # fill in from Immich UI -> Account Settings -> API Keys
     },
     "chatworkhorseunix": {
-        "api_key": "iuCCTHgYgbSaGQ2USs1xW4rk9bfZwHvQWhsi1agIU",  # fill in from Immich UI -> Account Settings -> API Keys
+        "api_key": "Ic62pJMOBmPTMgBjcKV3LlYahTnobkq8zT29WLODJY",
     },
 }
 
