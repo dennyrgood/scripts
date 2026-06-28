@@ -4,12 +4,14 @@
 # Collects CPU/RAM/disk/OS metrics once, writes heartbeat_{host}.txt,
 # machine_info_{host}.json, and appends one entry to metrics_history_{host}.json,
 # then exits. Driven by cron via run_heartbeat.sh.
+# Updated: 2026-06-28 UTC — add get_immich_stats(); writes immich_photos/immich_videos to machine_info
 
 import argparse
 import json
 import re
 import subprocess
 import time
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -83,6 +85,16 @@ def get_os_info() -> tuple[str, str, str, bool]:
     return last_wu_date, last_wu_kb, last_wu_reboot, pending_reboot
 
 
+def get_immich_stats(port: int = 2283) -> tuple[int | None, int | None]:
+    try:
+        url = f"http://localhost:{port}/api/server/statistics"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("photos"), data.get("videos")
+    except Exception:
+        return None, None
+
+
 def get_os_build() -> str:
     try:
         data = Path("/etc/os-release").read_text()
@@ -102,6 +114,7 @@ def run(host: str, output_dir: Path) -> None:
     last_reboot = get_last_reboot()
     last_wu_date, last_wu_kb, last_wu_reboot, pending_reboot = get_os_info()
     os_build = get_os_build()
+    immich_photos, immich_videos = get_immich_stats()
 
     (output_dir / f"heartbeat_{host}.txt").write_text(
         datetime.now(timezone.utc).isoformat(), encoding="utf-8"
@@ -120,6 +133,8 @@ def run(host: str, output_dir: Path) -> None:
         "last_wu_reboot": last_wu_reboot,
         "os_build":       os_build,
         "pending_reboot": pending_reboot,
+        "immich_photos":  immich_photos,
+        "immich_videos":  immich_videos,
     }
     (output_dir / f"machine_info_{host}.json").write_text(
         json.dumps(info, indent=4), encoding="utf-8"
