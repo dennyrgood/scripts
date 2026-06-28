@@ -27,7 +27,7 @@ from config import (
     ONEDRIVE_PATH,
 )
 from checkers import tcp_checker, http_checker
-from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker, onedrive_heartbeat_checker, syncthing_checker
+from checkers import ollama_checker, comfyui_checker, openwebui_checker, flask_checker, plex_checker, onedrive_heartbeat_checker, syncthing_checker, immich_checker
 from reporters import json_reporter
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ CHECKER_MAP = {
     "plex": plex_checker,
     "onedrive_heartbeat": onedrive_heartbeat_checker,
     "syncthing": syncthing_checker,
+    "immich": immich_checker,
 }
 
 # OneDrive _sync_monitor path — imported from config for consistency

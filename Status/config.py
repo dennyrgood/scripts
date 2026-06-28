@@ -4,6 +4,7 @@ All machines, services, ports, check types, and public endpoints defined here.
 No code changes needed to add/remove machines or services — edit this file only.
 """
 # Last updated: 2026-06-16 19:59 UTC
+# Updated: 2026-06-28 UTC — add IMMICH_CONFIG; add WorkBenchUnix and ChatWorkhorseUnix to FLEET
 
 import os
 from pathlib import Path
@@ -77,6 +78,15 @@ SYNCTHING_CONFIG = {
     "remotews": {
         "syncthing_url": "http://remotews:8384",
         "api_key": "HuYQZgkKm6ZtnWaHvfKepncUkNwgogsE"
+    },
+}
+
+IMMICH_CONFIG = {
+    "workbenchunix": {
+        "api_key": "iuCCTHgYgbSaGQ2USs1xW4rk9bfZwHvQWhsi1agIU",  # fill in from Immich UI -> Account Settings -> API Keys
+    },
+    "chatworkhorseunix": {
+        "api_key": "iuCCTHgYgbSaGQ2USs1xW4rk9bfZwHvQWhsi1agIU",  # fill in from Immich UI -> Account Settings -> API Keys
     },
 }
 
@@ -358,6 +368,38 @@ FLEET = [
                 "port": 8384,
                 "priority": "P",
                 "check_type": "syncthing",
+                "public_url": None,
+            },
+        ],
+    },
+    {
+        "display_name": "WorkBenchUnix",
+        "tailscale_name": "workbenchunix",
+        "tailscale_ip": "100.105.10.123",
+        "primary_role": "Immich",
+        "probe_port": 22,
+        "services": [
+            {
+                "name": "Immich",
+                "port": 2283,
+                "priority": "P",
+                "check_type": "immich",
+                "public_url": None,
+            },
+        ],
+    },
+    {
+        "display_name": "ChatWorkhorseUnix",
+        "tailscale_name": "chatworkhorseunix",
+        "tailscale_ip": "100.118.51.113",
+        "primary_role": "Immich",
+        "probe_port": 22,
+        "services": [
+            {
+                "name": "Immich",
+                "port": 2283,
+                "priority": "P",
+                "check_type": "immich",
                 "public_url": None,
             },
         ],
