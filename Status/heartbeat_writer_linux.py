@@ -6,6 +6,7 @@
 # then exits. Driven by cron via run_heartbeat.sh.
 # Updated: 2026-06-28 UTC — add get_immich_stats(); writes immich_photos/immich_videos to machine_info
 # Updated: 2026-06-28 UTC — get_immich_stats() accepts api_key; passes x-api-key header (stats endpoint requires auth)
+# Updated: 2026-06-29 UTC — get_immich_stats() uses host param instead of localhost (Docker not bound to localhost on some machines)
 
 import argparse
 import json
@@ -86,9 +87,9 @@ def get_os_info() -> tuple[str, str, str, bool]:
     return last_wu_date, last_wu_kb, last_wu_reboot, pending_reboot
 
 
-def get_immich_stats(port: int = 2283, api_key: str = "") -> tuple[int | None, int | None]:
+def get_immich_stats(host: str = "localhost", port: int = 2283, api_key: str = "") -> tuple[int | None, int | None]:
     try:
-        url = f"http://localhost:{port}/api/server/statistics"
+        url = f"http://{host}:{port}/api/server/statistics"
         req = urllib.request.Request(url)
         if api_key:
             req.add_header("x-api-key", api_key)
@@ -118,7 +119,7 @@ def run(host: str, output_dir: Path, immich_api_key: str = "") -> None:
     last_reboot = get_last_reboot()
     last_wu_date, last_wu_kb, last_wu_reboot, pending_reboot = get_os_info()
     os_build = get_os_build()
-    immich_photos, immich_videos = get_immich_stats(api_key=immich_api_key)
+    immich_photos, immich_videos = get_immich_stats(host=host, api_key=immich_api_key)
 
     (output_dir / f"heartbeat_{host}.txt").write_text(
         datetime.now(timezone.utc).isoformat(), encoding="utf-8"

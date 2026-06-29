@@ -11,11 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_DIR="/home/dhm/fleet_monitor/${HOST}"
 SSH_KEY="/home/dhm/.ssh/id_ed25519_amsterdamdesktop"
 RSYNC_DEST="drden@amsterdamdesktop:/cygdrive/d/OneDrive/_sync_monitor/${HOST}/"
-case "${HOST}" in
-    workbenchunix)     IMMICH_API_KEY="iuCCTHgYgbSaGQ2USs1xW4rk9bfZwHvQWhsi1agIU" ;;
-    chatworkhorseunix) IMMICH_API_KEY="Ic62pJMOBmPTMgBjcKV3LlYahTnobkq8zT29WLODJY" ;;
-    *)                 IMMICH_API_KEY="" ;;
-esac
+IMMICH_API_KEY="iuCCTHgYgbSaGQ2USs1xW4rk9bfZwHvQWhsi1agIU"
 
 python3 "${SCRIPT_DIR}/heartbeat_writer_linux.py" \
     --host "${HOST}" \
