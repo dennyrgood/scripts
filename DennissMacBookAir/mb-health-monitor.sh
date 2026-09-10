@@ -185,7 +185,22 @@ fi
 # MAX_RUN_SECS, so an in-progress scan (they take ~5-20 min) is never flagged.
 DOWN_DETAIL_COMFY_SCAN=""
 COMFY_SCAN_MAX_RUN_SECS=$((2 * 3600))
-parse_scan_ts() { date -j -f "%a %b %e %T %Z %Y" "$1" +%s 2>/dev/null || echo 0; }
+# Prefer the "[epoch:N]" tag embedded in the banner (added 2026-09-09) -- it's
+# immune to TZ changes. Fall back to the old %Z-based parse for log lines
+# written before that tag existed. That old parse only works while the box's
+# current TZ matches the abbreviation in the line (e.g. it fails on a CEST
+# line once the box is set to EDT while traveling), which is exactly the bug
+# that made this check misfire as "no scan activity at all" on 2026-09-09.
+parse_scan_ts() {
+    local raw="$1" epoch
+    epoch=$(echo "$raw" | grep -oE '\[epoch:[0-9]+\]' | grep -oE '[0-9]+')
+    if [ -n "$epoch" ]; then
+        echo "$epoch"
+    else
+        date -j -f "%a %b %e %T %Z %Y" "$raw" +%s 2>/dev/null || echo 0
+    fi
+}
+strip_epoch_tag() { echo "$1" | sed -E 's/ \[epoch:[0-9]+\]//'; }
 
 if [ ! -f "$COMFY_SCAN_LOG" ]; then
     DOWN_TRIGGERED[COMFY_SCAN]=1
@@ -197,6 +212,8 @@ else
         | sed -E 's/^=== (.*) -- scheduled fleet scan complete ===$/\1/')
     LAST_START_TS=$([ -n "$LAST_START_RAW" ] && parse_scan_ts "$LAST_START_RAW" || echo 0)
     LAST_OK_TS=$([ -n "$LAST_OK_RAW" ] && parse_scan_ts "$LAST_OK_RAW" || echo 0)
+    LAST_START_RAW=$(strip_epoch_tag "$LAST_START_RAW")
+    LAST_OK_RAW=$(strip_epoch_tag "$LAST_OK_RAW")
     FAILED_RUNS=$(( $(grep -c "scheduled fleet scan starting" "$COMFY_SCAN_LOG") \
                   - $(grep -c "scheduled fleet scan complete" "$COMFY_SCAN_LOG") ))
 

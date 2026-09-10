@@ -31,7 +31,7 @@ LOCAL_OUTPUT_DIR="$SCRIPT_DIR/fleet-output-local"
 # Never again -- announce the line number and exit code on any unexpected death.
 trap 'rc=$?; echo "*** FAILED: ${BASH_SOURCE[0]} line $LINENO exited $rc ***" >&2' ERR
 
-echo "=== $(date) -- scheduled fleet scan starting ==="
+echo "=== $(date) [epoch:$(date +%s)] -- scheduled fleet scan starting ==="
 
 "$SCRIPT_DIR/comfy_fleet.sh"
 
@@ -139,4 +139,4 @@ for kind in newest:
 print("verified: served copies match the current run")
 HOUSEKEEP_PY
 
-echo "=== $(date) -- scheduled fleet scan complete ==="
+echo "=== $(date) [epoch:$(date +%s)] -- scheduled fleet scan complete ==="

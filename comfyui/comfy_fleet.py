@@ -159,17 +159,25 @@ def load_csv(path: Path) -> list[dict]:
     read-too-soon. Confirmed by hand: the same file read cleanly moments
     later with no other change. A short retry is cheaper and more honest than
     a fixed sleep before the whole analysis phase.
+
+    Widened 2026-09-10: the original 5-attempt/~10s-total linear backoff
+    (1+2+3+4s) lost the race twice in one night while traveling (see
+    comfy_fleet_scan.log around 2026-09-10 03:xx EDT) -- OneDrive apparently
+    needed longer than usual to settle. Backoff is now exponential
+    (1,2,4,8,16,32s -> ~63s total across 7 attempts) to give it more room
+    without looping indefinitely.
     """
     import time
     last_err = None
-    for attempt in range(5):
+    attempts = 7
+    for attempt in range(attempts):
         try:
             with open(path, encoding="utf-8-sig") as f:
                 return list(csv.DictReader(f))
         except OSError as e:
             last_err = e
-            if attempt < 4:
-                time.sleep(1 + attempt)
+            if attempt < attempts - 1:
+                time.sleep(2 ** attempt)
     raise last_err
 
 
