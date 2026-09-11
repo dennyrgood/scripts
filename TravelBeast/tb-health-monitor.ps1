@@ -145,8 +145,15 @@ try {
         $PowerHbTriggered = 1
         $PowerHbDetail = "Task state is '$($phTask.State)', expected 'Running' (this is a continuous loop task)."
     } else {
+        # 2026-09-11 UTC -- was hardcoded to "power_heartbeat_v3_travelbeast_*.csv";
+        # power-heartbeat.ps1 bumped to v4 the same day (added a Tailscale-peer ping
+        # column) and this filter, still pinned to v3, correctly found the v3 file
+        # had gone stale (it stopped getting written the moment v4 took over) and
+        # fired a false HEALTH ALERT even though the logger was fine. Matching
+        # "power_heartbeat_v*_travelbeast_*.csv" instead so the next schema bump
+        # doesn't require remembering to also update this checker.
         $phDir = "C:\fleet_monitor\power_heartbeat_travelbeast"
-        $latestCsv = Get-ChildItem $phDir -Filter "power_heartbeat_v3_travelbeast_*.csv" -ErrorAction SilentlyContinue |
+        $latestCsv = Get-ChildItem $phDir -Filter "power_heartbeat_v*_travelbeast_*.csv" -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($latestCsv) {
             $csvAgeMin = (New-TimeSpan -Start $latestCsv.LastWriteTime -End (Get-Date)).TotalMinutes
@@ -156,7 +163,7 @@ try {
             }
         } else {
             $PowerHbTriggered = 1
-            $PowerHbDetail = "No power_heartbeat_v3_travelbeast_*.csv found in $phDir"
+            $PowerHbDetail = "No power_heartbeat_v*_travelbeast_*.csv found in $phDir"
         }
     }
 } catch {
