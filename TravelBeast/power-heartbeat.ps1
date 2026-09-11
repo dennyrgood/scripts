@@ -55,6 +55,18 @@
   events) to correlate against the fleet checker's own outage log,
   instead of requiring another manual multi-hour diagnostic session.
 
+  2026-09-11 UTC (v4): added a ping to a fleet peer's Tailscale IP
+  (amsterdamdesktop, 100.125.37.114), distinct from the existing WAN
+  ping. Prompted by a night of tb-health-monitor.ps1 "Fleet Metrics
+  Watchdog" alert/all-clear flapping - this log's own gateway/WAN
+  columns showed WAN was solid the entire night, which cleared TB's raw
+  internet connectivity but said nothing about whether the *tunnel*
+  (the actual path the fleet checker/health-monitor system reaches this
+  box over) was ever dropping, since 1.1.1.1 is reached over the plain
+  WiFi default route, not through Tailscale. This column closes that
+  gap: it's the same kind of blind spot as gateway-vs-WAN before it,
+  one layer further in.
+
   2026-08-19 blind spot found and closed (v2, then v3 schema): oLiFaNt_5G
   died sometime that afternoon while this log showed nothing wrong at all
   - uninterrupted "connected" state, stable BSSID/signal/RSSI, zero
@@ -89,14 +101,17 @@
   Schema note: 2026-08-19 added gw_ping_ms/gw_ping_status (v2), then the
   same day switched to gateway_ip/gateway_ping_ok/gateway_ping_ms/
   wan_ping_ok/wan_ping_ms (v3) to match RemoteWS's column names and add
-  the WAN-side check. Older day-files only have the earlier column sets -
-  don't concatenate across versions without accounting for the header
-  change, hence the versioned "power_heartbeat_v{2,3}_*" filename
-  prefixes (same convention as RemoteWS's copy of this script). Editing
-  this file does NOT affect an already-running instance - PowerShell
-  loads the whole script into memory at start, so the running "Power
-  Heartbeat Logger" task must be stopped and restarted (Task Scheduler ->
-  right-click -> End, then Run) to pick up changes.
+  the WAN-side check. 2026-09-11 added tailscale_peer_ip/
+  tailscale_peer_ping_ok/tailscale_peer_ping_ms (v4) - this one has no
+  RemoteWS equivalent (yet), it's TB-specific for now. Older day-files
+  only have the earlier column sets - don't concatenate across versions
+  without accounting for the header change, hence the versioned
+  "power_heartbeat_v{2,3,4}_*" filename prefixes (same convention as
+  RemoteWS's copy of this script). Editing this file does NOT affect an
+  already-running instance - PowerShell loads the whole script into
+  memory at start, so the running "Power Heartbeat Logger" task must be
+  stopped and restarted (Task Scheduler -> right-click -> End, then Run)
+  to pick up changes.
 #>
 
 $ErrorActionPreference = 'Continue'
@@ -105,6 +120,7 @@ $LogDir = 'C:\fleet_monitor\power_heartbeat_travelbeast'
 $RetentionDays = 30
 $IntervalSeconds = 15
 $WanPingTarget = '1.1.1.1'   # fixed public IP, not DNS-dependent - WAN-side reachability check
+$TailscalePeerIp = '100.125.37.114'   # amsterdamdesktop - tests the actual tunnel path the fleet checker/health-monitor uses to reach this box, distinct from raw WAN reachability
 
 if (-not (Test-Path $LogDir)) {
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
@@ -201,7 +217,7 @@ function Get-NewReconnectCount {
 # Write header once per new day-file
 function Ensure-Header($path) {
     if (-not (Test-Path $path)) {
-        [System.IO.File]::AppendAllText($path, "timestamp_utc,uptime_sec,cpu_pct,free_mem_mb,thermal_c,wifi_signal_pct,wifi_rssi_dbm,wifi_state,wifi_bssid,wifi_channel,wifi_reconnects_new,wifi_reconnects_total,gateway_ip,gateway_ping_ok,gateway_ping_ms,wan_ping_ok,wan_ping_ms`r`n")
+        [System.IO.File]::AppendAllText($path, "timestamp_utc,uptime_sec,cpu_pct,free_mem_mb,thermal_c,wifi_signal_pct,wifi_rssi_dbm,wifi_state,wifi_bssid,wifi_channel,wifi_reconnects_new,wifi_reconnects_total,gateway_ip,gateway_ping_ok,gateway_ping_ms,wan_ping_ok,wan_ping_ms,tailscale_peer_ip,tailscale_peer_ping_ok,tailscale_peer_ping_ms`r`n")
     }
 }
 
@@ -215,7 +231,7 @@ while ($true) {
     try {
         $now = (Get-Date).ToUniversalTime()
         $nowLocal = Get-Date
-        $dayFile = Join-Path $LogDir ("power_heartbeat_v3_travelbeast_{0:yyyy-MM-dd}.csv" -f $now)
+        $dayFile = Join-Path $LogDir ("power_heartbeat_v4_travelbeast_{0:yyyy-MM-dd}.csv" -f $now)
         Ensure-Header $dayFile
 
         $uptimeSec = [math]::Round(((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds)
@@ -231,11 +247,13 @@ while ($true) {
         $gateway = Get-DefaultGateway
         $gwPing = Test-PingTarget -TargetIp $gateway
         $wanPing = Test-PingTarget -TargetIp $WanPingTarget
+        $tsPing = Test-PingTarget -TargetIp $TailscalePeerIp
 
-        $line = "{0:yyyy-MM-ddTHH:mm:ss.fffZ},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16}" -f `
+        $line = "{0:yyyy-MM-ddTHH:mm:ss.fffZ},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19}" -f `
             $now, $uptimeSec, $cpuPct, $freeMemMb, $thermal, `
             $wifi.SignalPct, $wifi.RssiDbm, $wifi.State, $wifi.Bssid, $wifi.Channel, $newReconnects, $script:ReconnectTotal, `
-            $(if ($gateway) { $gateway } else { 'NA' }), $gwPing.Ok, $gwPing.Ms, $wanPing.Ok, $wanPing.Ms
+            $(if ($gateway) { $gateway } else { 'NA' }), $gwPing.Ok, $gwPing.Ms, $wanPing.Ok, $wanPing.Ms, `
+            $TailscalePeerIp, $tsPing.Ok, $tsPing.Ms
 
         # AppendAllText opens, writes, flushes, and closes the handle on
         # every call - deliberately not keeping a stream open, so a crash
