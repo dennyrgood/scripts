@@ -61,6 +61,7 @@ foreach ($svc in $Services) {
 foreach ($k in @("WATCHDOG", "POWERHB")) {
     $State["${k}_LAST_ALERT"] = 0
     $State["${k}_ACTIVE"] = 0
+    $State["${k}_STREAK"] = 0
 }
 
 if (Test-Path $StateFile) {
@@ -214,17 +215,27 @@ foreach ($svc in $Services) {
     }
 }
 
+# 2026-09-11 UTC -- replaced the old Test-StickyAlert (no anti-flap streak at all,
+# alerted on the very first bad check) with the same Get-Verdict streak gate the
+# per-service checks already use below. Root cause of a night of dozens of
+# alert/all-clear pairs ~5 min apart: WATCHDOG/POWERHB had no equivalent of
+# $FailThreshold, so any single transient bad read (Task Scheduler's LastRunTime/
+# LastTaskResult momentarily looking stale, a slow watchdog run, etc.) immediately
+# fired an email and the very next clean check immediately fired the all-clear.
+# Confirmed via TravelBeast's own power-heartbeat.ps1 v3 log that WAN reachability
+# was solid the whole night this last happened -- the flapping was this script being
+# oversensitive, not a real repeated outage.
 function Test-StickyAlert($triggered, $key, $detail, $header, [ref]$alertBody, [ref]$clearBody) {
-    if ($triggered -eq 1) {
-        if ($State["${key}_ACTIVE"] -eq 0 -or ($Now - $State["${key}_LAST_ALERT"]) -ge $AlertIntervalSec) {
+    $r = Get-Verdict $triggered $State["${key}_LAST_ALERT"] $State["${key}_ACTIVE"] $State["${key}_STREAK"] $FailThreshold
+    $State["${key}_STREAK"] = $r[1]
+    switch ($r[0]) {
+        "alert" {
             $State["${key}_LAST_ALERT"] = $Now; $State["${key}_ACTIVE"] = 1
             $alertBody.Value += "=== $header ===`r`n$detail`r`n`r`n"
-        } else {
-            $State["${key}_ACTIVE"] = 1
         }
-    } elseif ($State["${key}_ACTIVE"] -eq 1) {
-        $State["${key}_ACTIVE"] = 0
-        $clearBody.Value += "  - $header resolved`r`n"
+        "clear"    { $State["${key}_ACTIVE"] = 0; $clearBody.Value += "  - $header resolved`r`n" }
+        "suppress" { $State["${key}_ACTIVE"] = 1 }
+        default    { $State["${key}_ACTIVE"] = 0 }
     }
 }
 Test-StickyAlert $WatchdogTriggered "WATCHDOG" $WatchdogDetail "FLEET METRICS WATCHDOG TROUBLE" ([ref]$AlertBody) ([ref]$ClearBody)
