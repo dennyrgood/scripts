@@ -38,7 +38,41 @@ HOSTNAME_MAP = {
     "denniss-2nd-macbook-air.local": "denniss-2nd-macbook-air",
     "Mathes-Mac-mini.local":     "mathes-mac-mini",
 }
-HOST = HOSTNAME_MAP.get(socket.gethostname(), socket.gethostname())
+def _tailscale_self_host():
+    """Fallback identity source for when socket.gethostname() misses HOSTNAME_MAP.
+
+    Seen 2026-09-11: this agent's RunAtLoad+KeepAlive launches very early in
+    boot, sometimes before configd/IPMonitor finishes deriving the real
+    .local hostname from ComputerName — gethostname() returns the generic
+    placeholder "Mac" in that window, and since HOST is computed once at
+    startup, a boot hitting the race stays wrong (writing to decoy
+    heartbeat_Mac.* files) until the process is restarted.
+
+    Tailscale's own DNSName for this device already matches the canonical
+    fleet host format used as HOSTNAME_MAP's values (e.g.
+    "denniss-macbook-air.<tailnet>.ts.net." -> "denniss-macbook-air"), so it's
+    a reliable second opinion — and Tailscale's own hostname isn't subject to
+    the same boot-time configd race.
+    """
+    try:
+        out = subprocess.check_output(
+            ["/Applications/Tailscale.app/Contents/MacOS/tailscale", "status", "--self", "--json"],
+            timeout=5,
+        ).decode()
+        dns_name = json.loads(out).get("Self", {}).get("DNSName", "")
+        return dns_name.split(".")[0] or None
+    except Exception:
+        return None
+
+
+def resolve_host() -> str:
+    raw = socket.gethostname()
+    if raw in HOSTNAME_MAP:
+        return HOSTNAME_MAP[raw]
+    return _tailscale_self_host() or raw
+
+
+HOST = resolve_host()
 
 TICK_SECONDS       = 30
 MACHINE_INFO_EVERY = 5   # ticks — 5 × 30s = 150s
