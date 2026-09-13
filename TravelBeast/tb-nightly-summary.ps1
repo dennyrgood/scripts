@@ -7,8 +7,12 @@
 # is no server_status_all.json section here, same as ib's nightly-summary.
 #
 # tb's own diagnostic (unique to this box): power-heartbeat.ps1's WiFi-flap CSV log,
-# at C:\fleet_monitor\power_heartbeat_travelbeast\power_heartbeat_v3_travelbeast_<date>.csv
-# (confirmed via reading the script's own $LogDir, not guessed).
+# at C:\fleet_monitor\power_heartbeat_travelbeast\power_heartbeat_v{N}_travelbeast_<date>.csv
+# (confirmed via reading the script's own $LogDir, not guessed). Schema version N bumps
+# whenever power-heartbeat.ps1 gains a column (v3->v4 happened 2026-09-11) -- match by
+# most-recently-written file, not an exact-version filename, so the next bump doesn't
+# silently break this report the way it broke tb-health-monitor.ps1's equivalent check
+# that same day (fixed there the same way).
 #
 # ASCII only -- PowerShell 5.1 has no BOM handling and mis-decodes non-ASCII (CLAUDE.md).
 # Check/warning marks built from character codes so the SOURCE stays ASCII while still
@@ -50,18 +54,21 @@ if (Test-Path $WatchdogLog) {
     if ($Reason -eq "all healthy") { $Reason = "watchdog log missing" }
 }
 
-# --- power-heartbeat WiFi-flap CSV: today's file, row count + latest sample ---
-$todayCsv = Join-Path $PowerHbDir ("power_heartbeat_v3_travelbeast_{0:yyyy-MM-dd}.csv" -f (Get-Date))
-if (Test-Path $todayCsv) {
-    $rows = Import-Csv $todayCsv
+# --- power-heartbeat WiFi-flap CSV: most recent file by write time, not an exact
+# "today's date + hardcoded schema version" filename -- see comment above for why.
+$latestCsv = Get-ChildItem $PowerHbDir -Filter "power_heartbeat_v*_travelbeast_*.csv" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($latestCsv -and ((Get-Date) - $latestCsv.LastWriteTime).TotalMinutes -lt 20) {
+    $rows = Import-Csv $latestCsv.FullName
     $rowCount = ($rows | Measure-Object).Count
     $Tldr += "  power-heartbeat: today's log has $rowCount sample(s) $Check`r`n"
     $Body += "=== power-heartbeat (today, last 5 samples) ===`r`n"
     $Body += ($rows | Select-Object -Last 5 | Format-Table -AutoSize | Out-String)
     $Body += "`r`n"
 } else {
-    $Tldr += "$Warn  power-heartbeat: no log for today ($todayCsv)`r`n"
-    if ($Reason -eq "all healthy") { $Reason = "power-heartbeat log missing for today" }
+    $detail = if ($latestCsv) { "most recent is $($latestCsv.Name), last written $([int]((Get-Date) - $latestCsv.LastWriteTime).TotalMinutes) min ago" } else { "no power_heartbeat_v*_travelbeast_*.csv found in $PowerHbDir" }
+    $Tldr += "$Warn  power-heartbeat: no fresh log ($detail)`r`n"
+    if ($Reason -eq "all healthy") { $Reason = "power-heartbeat log missing/stale" }
 }
 if (Test-Path $PowerHbErrLog) {
     $errAge = Format-Age (Get-Item $PowerHbErrLog).LastWriteTime
