@@ -99,7 +99,7 @@ MISSING=$(grep -c 'No such file or directory' "$FAILED" 2>/dev/null || true)
 
 log "--- results ---"
 log "checked                  : $MAPPED"
-log "CONTENT MISMATCHES       : $MISMATCH   <- corruption of the original"
+log "content mismatches (raw) : $MISMATCH"
 log "missing from disk        : $MISSING"
 
 if [ "$MISSING" -gt 0 ]; then
@@ -123,10 +123,12 @@ if [ -r "$EXCEPTIONS" ] && [ "$MISMATCH" -gt 0 ]; then
     done < "$EXCEPTIONS"
     if [ "$EXCLUDED" -gt 0 ]; then
         MISMATCH=$(grep -c ': FAILED$' "$FAILED" 2>/dev/null || true)
-        log "known exceptions skipped        : $EXCLUDED (see $EXCEPTIONS)"
-        log "CONTENT MISMATCHES after skips  : $MISMATCH"
+        log "known exceptions skipped : $EXCLUDED (see $EXCEPTIONS)"
     fi
 fi
+# Verdict after the exceptions, so the tail the nightly email shows carries the number
+# that decides pass/fail. Before, a raw "6 <- corruption of the original" sat above OK.
+log "CONTENT MISMATCHES       : $MISMATCH   <- corruption of the original"
 
 if [ "$MISMATCH" -gt 0 ]; then
     log ""

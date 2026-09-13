@@ -26,6 +26,14 @@
 # 2026-07-22 comment). This script's per-file verification loop makes many individual ssh
 # calls to the destination, so it's the most exposed of the two — one hung connection
 # during a multi-hour verification pass would otherwise stall indefinitely.
+#
+# Edited: 2026-09-13 UTC — added the delete guard backup_immich_images_to_fleetnas.sh
+# has always had. This mirror had none, so any mass deletion on WBU -- a damaged source
+# tree, or an intentional cleanup expiring out of Immich's trash -- was replayed onto
+# the Mac Mini the next Friday with nothing to stop it. Same limit, same ack file, same
+# dry-run count first. The Mac Mini's rsync is openrsync (macOS 26), not rsync 3.x, so
+# the --max-delete backstop was tested against it before relying on it: as the
+# receiving server it honours the limit and the sender exits 25.
 set -e
 
 SRC="/mnt/immich-data/immich/images/"
@@ -35,6 +43,22 @@ SSH_TIMEOUT_OPTS="-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCo
 SSH_OPTS="ssh -i $SSH_KEY $SSH_TIMEOUT_OPTS"
 DEST_PATH="/Volumes/Expansion/Immich/backup/images"
 DEST="$DEST_HOST:$DEST_PATH/"
+
+# Mass-deletion guard -- see backup_immich_images_to_fleetnas.sh for the reasoning.
+# Weekly, so this counts a week of deletions; still a trickle in normal use (Immich
+# recorded 2 permanent deletions in the 2.5 months before the Aug 2026 cleanup).
+ACK_FILE="/home/dhm/.config/immich-cleanup-ack"
+MAX_DELETE_NOTE=""
+if [ -z "$MAX_DELETE" ]; then
+    MAX_DELETE=500
+    # `|| true`: grep exits 1 on no match, which set -e would treat as fatal.
+    ACK_UNTIL=$(grep -oP '^ACK_UNTIL=\K[0-9]{8}' "$ACK_FILE" 2>/dev/null || true)
+    if [ -n "$ACK_UNTIL" ] && [ "$(date +%Y%m%d)" -le "$ACK_UNTIL" ]; then
+        MAX_DELETE=$(grep -oP '^ACK_MAX_DELETE=\K[0-9]+' "$ACK_FILE" 2>/dev/null || true)
+        MAX_DELETE=${MAX_DELETE:-500}
+        MAX_DELETE_NOTE=", cleanup acknowledged until $ACK_UNTIL"
+    fi
+fi
 
 LOG_DIR="/home/dhm/.cache/export-sync"
 TS=$(date -u +\%Y\%m\%d_\%H\%M\%SZ)
@@ -50,11 +74,27 @@ log "=== Starting live image sync: WBU win-d -> Mac Mini ==="
 
 ssh -n -i "$SSH_KEY" $SSH_TIMEOUT_OPTS "$DEST_HOST" "mkdir -p '$DEST_PATH'"
 
-log "Syncing images..."
+# Dry-run count first so a tripped guard deletes nothing; --max-delete stays on the
+# real run as a backstop.
+PENDING_DELETES=$(rsync -ain --delete -e "$SSH_OPTS" "$SRC" "$DEST" 2>>"$LOG_FILE" | grep -c '^\*deleting' || true)
+log "Pending deletions: $PENDING_DELETES (limit $MAX_DELETE$MAX_DELETE_NOTE)"
+if [ "$PENDING_DELETES" -gt "$MAX_DELETE" ]; then
+    log "ABORTED: $PENDING_DELETES deletions pending, over the limit of $MAX_DELETE. Nothing was deleted on the Mac Mini."
+    log "Confirm the deletions are intentional, then rerun by hand with MAX_DELETE=<n> $0 (or acknowledge the cleanup in $ACK_FILE)."
+    exit 1
+fi
+
+log "Syncing images (--delete, --max-delete=$MAX_DELETE)..."
 set +e
-rsync -aq --delete -e "$SSH_OPTS" "$SRC" "$DEST" >/dev/null 2>>"$LOG_FILE"
+rsync -aq --delete --max-delete="$MAX_DELETE" -e "$SSH_OPTS" "$SRC" "$DEST" >/dev/null 2>>"$LOG_FILE"
 RSYNC_EXIT=$?
 set -e
+# Exit 25 is specifically --max-delete tripping: refused on purpose, needs a human.
+if [ "$RSYNC_EXIT" -eq 25 ]; then
+    log "ABORTED: rsync hit --max-delete=$MAX_DELETE mid-run -- more deletions appeared than the dry run counted."
+    log "Up to $MAX_DELETE were applied before it stopped. Confirm the deletions are intentional, then rerun by hand with MAX_DELETE=<n> $0 (or acknowledge the cleanup in $ACK_FILE)."
+    exit 1
+fi
 if [ "$RSYNC_EXIT" -ne 0 ]; then
     log "WARNING: rsync exited with code $RSYNC_EXIT (non-zero, partial transfer or error). See $LOG_FILE for rsync's stderr. Continuing to verification to determine actual scope."
 fi

@@ -67,8 +67,23 @@ DEST_PATH="/volume1/immich/images"
 DEST="$DEST_RSYNC"
 
 # Immich deletes are a trickle in normal use; hundreds at once means either a big
-# manual purge (rerun by hand once you've confirmed it was you) or a damaged source.
-MAX_DELETE=500
+# manual purge or a damaged source. Once you've confirmed it was you, either rerun by
+# hand with a raised limit (MAX_DELETE=20000 ./backup_immich_images_to_fleetnas.sh) or
+# acknowledge the cleanup in ACK_FILE. The ack exists because one cleanup keeps
+# arriving for days: Immich purges each day's trash 30 days after that day, so the
+# Aug 13-15 2026 cleanup landed here as three separate nights of mass deletions.
+ACK_FILE="/home/dhm/.config/immich-cleanup-ack"
+MAX_DELETE_NOTE=""
+if [ -z "$MAX_DELETE" ]; then
+    MAX_DELETE=500
+    # `|| true`: grep exits 1 on no match, which set -e would treat as fatal.
+    ACK_UNTIL=$(grep -oP '^ACK_UNTIL=\K[0-9]{8}' "$ACK_FILE" 2>/dev/null || true)
+    if [ -n "$ACK_UNTIL" ] && [ "$(date +%Y%m%d)" -le "$ACK_UNTIL" ]; then
+        MAX_DELETE=$(grep -oP '^ACK_MAX_DELETE=\K[0-9]+' "$ACK_FILE" 2>/dev/null || true)
+        MAX_DELETE=${MAX_DELETE:-500}
+        MAX_DELETE_NOTE=", cleanup acknowledged until $ACK_UNTIL"
+    fi
+fi
 IOWAIT_THRESHOLD=20
 
 LOG_DIR="/home/dhm/.cache/fleetnas-sync"
@@ -103,6 +118,19 @@ fi
 
 ssh -n -i "$SSH_KEY" $SSH_TIMEOUT_OPTS "$DEST_HOST" "mkdir -p '$DEST_PATH'"
 
+# Count pending deletions with a dry run BEFORE touching the destination, and refuse
+# above the limit. rsync's own --max-delete (kept below as a backstop) is not a clean
+# stop: it applies deletions up to the limit and only then refuses the rest. When it
+# tripped on 2026-09-13 it had already removed 500 files -- thumbnails, because thumbs/
+# sorts before upload/, but on a damaged source they could as easily be originals.
+PENDING_DELETES=$(rsync -ain --no-perms --delete -e "$SSH_OPTS" "$SRC" "$DEST" 2>>"$LOG_FILE" | grep -c '^\*deleting' || true)
+log "Pending deletions: $PENDING_DELETES (limit $MAX_DELETE$MAX_DELETE_NOTE)"
+if [ "$PENDING_DELETES" -gt "$MAX_DELETE" ]; then
+    log "ABORTED: $PENDING_DELETES deletions pending, over the limit of $MAX_DELETE. Nothing was deleted on FleetNAS."
+    log "Confirm the deletions are intentional, then rerun by hand with MAX_DELETE=<n> $0 (or acknowledge the cleanup in $ACK_FILE)."
+    exit 1
+fi
+
 log "Syncing images (--delete, --max-delete=$MAX_DELETE)..."
 set +e
 # --no-perms: the UGREEN share forces mode 777 on everything it stores, so the 644 of
@@ -117,8 +145,8 @@ set -e
 # Exit 25 is specifically --max-delete tripping. Call that out, because unlike a
 # transport error it means the sync was refused on purpose and needs a human decision.
 if [ "$RSYNC_EXIT" -eq 25 ]; then
-    log "ABORTED: rsync hit --max-delete=$MAX_DELETE — the source has more deletions pending than expected."
-    log "Nothing was deleted on FleetNAS. Confirm the deletions are intentional, then rerun by hand with a raised --max-delete."
+    log "ABORTED: rsync hit --max-delete=$MAX_DELETE mid-run -- more deletions appeared than the dry run counted."
+    log "Up to $MAX_DELETE were applied before it stopped. Confirm the deletions are intentional, then rerun by hand with MAX_DELETE=<n> $0 (or acknowledge the cleanup in $ACK_FILE)."
     exit 1
 fi
 if [ "$RSYNC_EXIT" -ne 0 ]; then

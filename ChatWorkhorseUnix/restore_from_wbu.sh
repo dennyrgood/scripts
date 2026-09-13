@@ -164,9 +164,13 @@ until docker exec immich_postgres pg_isready -h 127.0.0.1 -U postgres; do sleep 
 echo "Restoring dump..."
 RESTORE_LOG="$HOME/.cache/cwhu-warm-sync/restore_log_$(date -u +%Y%m%d_%H%M%S).txt"
 cat "$DUMP_STAGING_FILE" | docker exec -i immich_postgres psql -U postgres > "$RESTORE_LOG" 2>&1 || true
-if grep -qi error "$RESTORE_LOG"; then
-    echo "WARNING: possible errors during restore — check $RESTORE_LOG on CWHU."
-    echo "(Note: 'role already exists' / 'database already exists' lines are expected and harmless.)"
+# pg_dumpall recreates the postgres role and the immich database, which already exist
+# here, so those two ERROR lines appear on every healthy restore. Warn on anything
+# else -- a warning printed every night is one nobody reads.
+RESTORE_ERRORS=$(grep -i error "$RESTORE_LOG" | grep -vE 'role "postgres" already exists|database "immich" already exists' || true)
+if [ -n "$RESTORE_ERRORS" ]; then
+    echo "WARNING: $(printf '%s\n' "$RESTORE_ERRORS" | wc -l) unexpected error line(s) during restore -- check $RESTORE_LOG on CWHU:"
+    printf '%s\n' "$RESTORE_ERRORS" | head -5
 fi
 # 6. Bring the full stack back up.
 echo "Bringing up full stack..."

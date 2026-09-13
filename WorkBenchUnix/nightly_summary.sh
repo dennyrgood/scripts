@@ -30,6 +30,13 @@
 #                  gate — which is exactly what happened on the first FleetNAS
 #                  email: a 3-day-old db log displayed its cheerful "complete"
 #                  last line while the images check owned the subject.
+# 2026-09-13 UTC — added the Immich assets & trash block (TLDR line, daily counts TSV,
+#                  two subject alerts) after an intentional cleanup expired out of
+#                  Immich's trash with no warning. Tidied the body: manual-only export
+#                  logs listed only when present, CWHU sync_errors only when it holds
+#                  more than docker compose progress, monitor state only non-zero
+#                  entries, UPS cut to the fields that change. NO_MAIL=1 prints the
+#                  message instead of sending it, for testing.
 
 TO="dennyrgood@yahoo.com"
 LINES=5
@@ -56,7 +63,12 @@ AUDIT_NAS=${AUDIT_NAS:-/home/dhm/.cache/mirror-audit/fleetnas_audit_NONE.log}
 AUDIT_MM=$(ls -1t /home/dhm/.cache/mirror-audit/macmini_audit_*.log 2>/dev/null | head -1)
 AUDIT_MM=${AUDIT_MM:-/home/dhm/.cache/mirror-audit/macmini_audit_NONE.log}
 
-EXPORT_ARCHIVE=$(cat /home/dhm/.cache/immich-export/export_archive.log 2>/dev/null | wc -l > /dev/null; echo /home/dhm/.cache/immich-export/export_archive.log)
+# docker compose writes its progress ("Container immich_redis Started") to stderr, so a
+# healthy warm-sync always leaves a non-empty sync_errors file, and its last line sat in
+# the TLDR looking like an error. List the file only when it holds something else.
+if [ -n "$CWHU_ERRORS" ] && ! grep -qvE '^[[:space:]]*$|^[[:space:]]*(\[\+\]|Container|Network|Volume|Image)[[:space:]]' "$CWHU_ERRORS"; then
+    CWHU_ERRORS=""
+fi
 
 LOGS=(
     # "/var/log/immich-backup-c.log"  # 2026-07-22: backup-c drive retired (repeat failures), cron disabled — see WorkBenchUnix/backup_immich.sh comment
@@ -69,15 +81,16 @@ LOGS=(
     "$MACMINI_DB"
     "$MACMINI_IMG"
     "$CWHU_SYNC"
-    "$CWHU_ERRORS"
     "$FLEETNAS_DB"
     "$FLEETNAS_IMG"
-    "/home/dhm/.cache/immich-export/export_archive.log"
-    "/home/dhm/.cache/immich-export/export_flat_to_amsterdamdesktop.log"
-    "/home/dhm/.cache/immich-export/export_multi_to_amsterdamdesktop.log"
-    "/home/dhm/.cache/immich-export/export_flat_to_macmini.log"
-    "/home/dhm/.cache/immich-export/export_multi_to_macmini.log"
 )
+[ -n "$CWHU_ERRORS" ] && LOGS+=("$CWHU_ERRORS")
+# The export pipeline is manual-only (see the WBU crontab comments), so its logs exist
+# only after a hand run. Listed unconditionally they put five "(file not found)" lines
+# in every email.
+for LOG in /home/dhm/.cache/immich-export/export_{archive,flat_to_amsterdamdesktop,multi_to_amsterdamdesktop,flat_to_macmini,multi_to_macmini}.log; do
+    [ -f "$LOG" ] && LOGS+=("$LOG")
+done
 
 BODY=""
 for LOG in "${LOGS[@]}"; do
@@ -91,9 +104,12 @@ for LOG in "${LOGS[@]}"; do
 done
 
 # --- Append health monitor state file to bottom of body ---
-BODY+="=== $MONITOR_STATE ===\n"
+# Only non-zero entries: the file is ~40 counters sitting at 0 on a healthy night, and
+# a firing or recently-fired alert is exactly the line that got lost among them.
+BODY+="=== $MONITOR_STATE (non-zero entries) ===\n"
 if [ -f "$MONITOR_STATE" ]; then
-    BODY+="$(cat "$MONITOR_STATE")\n"
+    MONITOR_NONZERO=$(grep -vE '=0$' "$MONITOR_STATE")
+    BODY+="${MONITOR_NONZERO:-(all zero: nothing firing, streaking, or recently alerted)}\n"
 else
     BODY+="(file not found)\n"
 fi
@@ -257,13 +273,124 @@ if [ -n "$UPS_OUT" ]; then
                       UPS_TLDR="${UPS_TLDR} ✓"
                   fi ;;
     esac
-    UPS_BLOCK="$UPS_OUT"
+    # The full upsc dump is ~45 driver/config lines; keep the ones that change.
+    UPS_BLOCK=$(printf '%s\n' "$UPS_OUT" | grep -E '^(ups\.status|battery\.charge|battery\.runtime|battery\.voltage|ups\.load|input\.voltage|output\.voltage|ups\.beeper\.status):')
 else
     UPS_BAD=1
     UPS_REASON="UPS unreadable"
     UPS_TLDR="⚠️  ups: unreadable (upsc ups2@localhost returned nothing)"
 fi
 BODY+="=== UPS (ups2@localhost) ===\n${UPS_BLOCK}\n\n"
+
+# --- Immich assets & trash expiry (added 2026-09-13) ---
+# Immich empties its trash with a nightly job at 00:00 in the container's timezone,
+# permanently deleting anything trashed more than trash.days (default 30) ago, and says
+# nothing when it does. On 2026-09-13 a deliberate Aug 13-15 duplicate cleanup started
+# expiring -- 1,276 assets gone overnight, 2,275 more due the next two nights -- and the
+# only thing that noticed was FleetNAS's --max-delete guard.
+#
+# Subject-line alerts, both at more than IMMICH_ALERT_N assets:
+#   1. permanent deletions in the last 24h the trash purge does NOT explain: a
+#      force-delete that skipped the trash, or anything outside Immich's normal flow.
+#      "Explained" = what yesterday's row saw due at the midnight in between, so the
+#      first night after install has no baseline and skips it. Never acknowledged away.
+#   2. a purge due within 3 days -- the heads-up while one-click restore still works.
+#      Suppressed while ACK_UNTIL in CLEANUP_ACK_FILE covers today; TLDR still shows it.
+IMMICH_TZ="Europe/Amsterdam"   # immich_server's TZ; the purge runs at its midnight
+IMMICH_ALERT_N=50
+IMMICH_COUNTS="/home/dhm/.cache/immich-counts/counts.tsv"
+CLEANUP_ACK_FILE="/home/dhm/.config/immich-cleanup-ack"
+IMMICH_BAD=0;      IMMICH_REASON=""
+PURGE_WARN_BAD=0;  PURGE_WARN_REASON=""
+IMMICH_TLDR="⚠️  immich assets: unavailable (query to immich_postgres failed)"
+IMMICH_BLOCK="(query to immich_postgres failed)"
+IMMICH_ROW=$(docker exec -i immich_postgres psql -U postgres -d immich -tA -F' ' 2>/dev/null <<SQL
+WITH cfg AS (
+  SELECT coalesce((SELECT (value::jsonb->'trash'->>'days')::int FROM system_metadata WHERE key='system-config'), 30) AS days),
+t AS (
+  SELECT (date_trunc('day', (a."deletedAt" + make_interval(days => cfg.days)) AT TIME ZONE '$IMMICH_TZ') + interval '1 day')::date AS purge_on
+  FROM asset a CROSS JOIN cfg WHERE a.status = 'trashed'),
+today AS (SELECT (now() AT TIME ZONE '$IMMICH_TZ')::date AS d)
+SELECT (SELECT count(*) FROM asset WHERE status = 'active'),
+       (SELECT count(*) FROM asset WHERE status = 'trashed'),
+       (SELECT days FROM cfg),
+       coalesce((SELECT min(purge_on)::text FROM t), '-'),
+       (SELECT count(*) FROM t WHERE purge_on = (SELECT min(purge_on) FROM t)),
+       (SELECT count(*) FROM t, today WHERE purge_on <= today.d + 1),
+       (SELECT count(*) FROM t, today WHERE purge_on <= today.d + 3),
+       (SELECT count(*) FROM asset_audit WHERE "deletedAt" > now() - interval '24 hours');
+SQL
+)
+if [ -n "$IMMICH_ROW" ]; then
+    read -r I_ACTIVE I_TRASHED I_DAYS I_NEXT_ON I_NEXT_N I_DUE1 I_DUE3 I_HARD24 <<< "$IMMICH_ROW"
+    I_TODAY=$(TZ="$IMMICH_TZ" date +%F)
+    I_YESTERDAY=$(TZ="$IMMICH_TZ" date -d yesterday +%F)
+    I_PREV=$(awk -v d="$I_YESTERDAY" '$1==d' "$IMMICH_COUNTS" 2>/dev/null | tail -1)
+
+    D_ACTIVE=""; D_TRASHED=""; I_UNEXPLAINED=""
+    if [ -n "$I_PREV" ]; then
+        read -r _ P_ACTIVE P_TRASHED P_DUE1 _ <<< "$I_PREV"
+        D_ACTIVE=$(( I_ACTIVE - P_ACTIVE ));    [ "$D_ACTIVE" -ge 0 ] && D_ACTIVE="+$D_ACTIVE"
+        D_TRASHED=$(( I_TRASHED - P_TRASHED )); [ "$D_TRASHED" -ge 0 ] && D_TRASHED="+$D_TRASHED"
+        I_UNEXPLAINED=$(( I_HARD24 - P_DUE1 )); [ "$I_UNEXPLAINED" -lt 0 ] && I_UNEXPLAINED=0
+    fi
+
+    IMMICH_TLDR="  immich assets: active ${I_ACTIVE}${D_ACTIVE:+ (${D_ACTIVE})}, trash ${I_TRASHED}${D_TRASHED:+ (${D_TRASHED})}"
+    if [ "$I_TRASHED" -gt 0 ]; then
+        # Day arithmetic in UTC: a 23h spring-forward day would otherwise round to 0.
+        I_DAYS_TO=$(( ( $(TZ=UTC date -d "$I_NEXT_ON" +%s) - $(TZ=UTC date -d "$I_TODAY" +%s) ) / 86400 ))
+        case "$I_DAYS_TO" in
+            0|1) I_WHEN="tonight" ;;
+            *)   I_WHEN="in ${I_DAYS_TO}d" ;;
+        esac
+        IMMICH_TLDR+=", next purge ${I_WHEN}: ${I_NEXT_N}"
+    fi
+    if [ -z "$I_UNEXPLAINED" ]; then
+        IMMICH_TLDR+=", deleted 24h: ${I_HARD24} (no baseline yet)"
+    elif [ "$I_UNEXPLAINED" -gt 0 ]; then
+        IMMICH_TLDR+=", deleted 24h: ${I_HARD24} (${I_UNEXPLAINED} NOT by trash purge)"
+    elif [ "$I_HARD24" -gt 0 ]; then
+        IMMICH_TLDR+=", deleted 24h: ${I_HARD24} (all by trash purge)"
+    else
+        IMMICH_TLDR+=", deleted 24h: 0"
+    fi
+
+    if [ -n "$I_UNEXPLAINED" ] && [ "$I_UNEXPLAINED" -gt "$IMMICH_ALERT_N" ]; then
+        IMMICH_BAD=1
+        IMMICH_REASON="${I_UNEXPLAINED} Immich assets permanently deleted outside the trash purge"
+    fi
+    I_ACK_UNTIL=$(grep -oP '^ACK_UNTIL=\K[0-9]{8}' "$CLEANUP_ACK_FILE" 2>/dev/null)
+    if [ "$I_DUE3" -gt "$IMMICH_ALERT_N" ]; then
+        if [ -n "$I_ACK_UNTIL" ] && [ "$(date +%Y%m%d)" -le "$I_ACK_UNTIL" ]; then
+            IMMICH_TLDR+=" [cleanup acknowledged until ${I_ACK_UNTIL}]"
+        else
+            PURGE_WARN_BAD=1
+            PURGE_WARN_REASON="${I_DUE3} trashed Immich assets purge within 3 days"
+        fi
+    fi
+    if [ "$IMMICH_BAD" -eq 1 ] || [ "$PURGE_WARN_BAD" -eq 1 ]; then
+        IMMICH_TLDR="⚠️${IMMICH_TLDR}"
+    else
+        IMMICH_TLDR+=" ✓"
+    fi
+
+    # One row per day; a rerun replaces that day's row instead of adding another.
+    mkdir -p "$(dirname "$IMMICH_COUNTS")"
+    {
+        if [ -f "$IMMICH_COUNTS" ]; then
+            awk -v d="$I_TODAY" '$1!=d' "$IMMICH_COUNTS"
+        else
+            printf '# date\tactive\ttrashed\tdue_next_midnight\thard_deleted_24h\n'
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\n' "$I_TODAY" "$I_ACTIVE" "$I_TRASHED" "$I_DUE1" "$I_HARD24"
+    } > "$IMMICH_COUNTS.tmp" && mv "$IMMICH_COUNTS.tmp" "$IMMICH_COUNTS"
+
+    IMMICH_BLOCK="active=${I_ACTIVE}  trashed=${I_TRASHED}  trash.days=${I_DAYS}\n"
+    IMMICH_BLOCK+="next purge: ${I_NEXT_ON} (${I_NEXT_N} assets)  due by tonight: ${I_DUE1}  due within 3d: ${I_DUE3}\n"
+    IMMICH_BLOCK+="permanently deleted in last 24h: ${I_HARD24}  not explained by the purge: ${I_UNEXPLAINED:-n/a (no row for ${I_YESTERDAY})}\n\n"
+    IMMICH_BLOCK+="$(tail -8 "$IMMICH_COUNTS")"
+fi
+BODY+="=== Immich assets & trash ===\n${IMMICH_BLOCK}\n\n"
 
 # --- Build TLDR (age + last line of each log, plus monitor watchdog lines) ---
 # Age is shown because the last line alone can't be read for staleness: a log that
@@ -354,6 +481,7 @@ TLDR+="${SMART_TLDR}\n"
 TLDR+="${UPS_TLDR}\n"
 TLDR+="${RESTIC_TLDR}\n"
 TLDR+="${OFFSITE_TLDR}\n"
+TLDR+="${IMMICH_TLDR}\n"
 NOW_TLDR=$(date +%s)
 for LOG in "${LOGS[@]}"; do
     # Already reported above with a purpose-built line.
@@ -394,6 +522,12 @@ elif [ "$UPS_BAD" -eq 1 ]; then
     # unreadable UPS means this box and three others have no shutdown signal at all,
     # which outranks a stale backup log.
     OK=0; REASON="$UPS_REASON"
+fi
+
+# Permanent deletions the trash purge doesn't explain. A data-loss signal, so it sits
+# right under the hardware headlines and is never acknowledged away.
+if [ "$OK" -eq 1 ] && [ "$IMMICH_BAD" -eq 1 ]; then
+    OK=0; REASON="$IMMICH_REASON"
 fi
 
 # Check each log for its expected success string rather than scanning for bad words.
@@ -510,6 +644,13 @@ if [ "$OK" -eq 1 ]; then
     done
 fi
 
+# --- Upcoming trash purge (heads-up) ---
+# Below every backup and staleness check: nothing is broken yet, but a purge is the
+# last point at which a restore from Immich's trash is one click.
+if [ "$OK" -eq 1 ] && [ "$PURGE_WARN_BAD" -eq 1 ]; then
+    OK=0; REASON="$PURGE_WARN_REASON"
+fi
+
 # --- Health monitor watchdog contributes to STATUS ---
 # Only override if still OK; don't clobber a more specific existing failure.
 if [ "$OK" -eq 1 ]; then
@@ -531,4 +672,4 @@ SUBJECT="${EMOJI} WorkBenchUnix nightly $(date '+%Y-%m-%d') — ${REASON}"
     echo "Cc: dennis.mathes@icloud.com"
     echo ""
     echo -e "$BODY"
-} | msmtp --account=icloud "$TO" dennis.mathes@icloud.com
+} | if [ -n "$NO_MAIL" ]; then cat; else msmtp --account=icloud "$TO" dennis.mathes@icloud.com; fi
