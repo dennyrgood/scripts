@@ -17,6 +17,12 @@
 #                           partitions (e.g. FleetNAS's /ugreen, /rootfs, /boot) show up
 #                           too, not just /, /media/*, /mnt/*, /data*, /volume1; also
 #                           dedupes same device mounted twice (FleetNAS's /volume1+/home)
+# Updated: 2026-09-16 UTC — get_disks() drops FleetNAS's fixed-size UGREEN OS system
+#                           partitions (/ugreen, /boot, /rootfs) from SKIP_MOUNTS: they're
+#                           squashfs-adjacent firmware/base-image partitions that don't grow,
+#                           and were crowding out /overlay (real root usage) and /volume1
+#                           (actual data) on the ST tile. /overlay, /volume1/home, and the
+#                           USB mounts are unaffected.
 
 import argparse
 import json
@@ -48,6 +54,9 @@ def get_cpu_percent() -> float:
     return round((1 - (i2 - i1) / dt) * 100, 1) if dt > 0 else 0.0
 
 
+SKIP_MOUNTS = {"/ugreen", "/boot", "/rootfs"}
+
+
 def get_disks() -> list[dict]:
     # Any real backing device (skips pseudo-filesystems like tmpfs/udev/overlay/
     # efivarfs, which report as their own fake "source" rather than /dev/*) except
@@ -71,6 +80,8 @@ def get_disks() -> list[dict]:
             # the same btrfs LVM volume) — keep only the first mountpoint seen.
             continue
         mount = parts[5]
+        if mount in SKIP_MOUNTS:
+            continue
         total_kb, used_kb, free_kb = int(parts[1]), int(parts[2]), int(parts[3])
         if total_kb < 100 * 1024:
             # Only meant to kill genuinely tiny firmware/utility partitions (e.g.
