@@ -79,14 +79,21 @@ help you get into flashing mode.
 ## Compile + flash
 
 ```
-arduino-cli compile --upload -p /dev/cu.usbmodemXXXXXXXXXXXX \
-  --fqbn "esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB" \
-  fleet_wall
+./flash.sh
+```
+
+Auto-detects the board's `/dev/cu.usbmodem*` port, checks that
+`fleet_wall_secrets.h` exists, prompts you to enter bootloader mode, then
+compiles and uploads. Pass a port explicitly if you have more than one
+`usbmodem` device connected: `./flash.sh /dev/cu.usbmodemXXXXXXXXXXXX`.
+
+To just compile without flashing (e.g. to check for errors after an edit):
+```
+arduino-cli compile --fqbn "esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB" .
 ```
 
 Flash/PSRAM options match what `esptool` read back from the actual board
-(16MB flash, 8MB Octal PSRAM). Drop `--upload -p ...` to just compile without
-flashing.
+(16MB flash, 8MB Octal PSRAM).
 
 ## Known issues
 
