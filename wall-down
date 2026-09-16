@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# wall-down — draw a centered "machine unavailable" placeholder in a fleet wall tile.
+# Used by fleet-configs/fleet.yaml when a pane's ssh attempt fails, so a down/flapping
+# host shows one clean message instead of scrolling raw ssh error lines.
+# Can also be run manually to preview/test a tile's offline state, e.g.:
+#   wall-down "SGC"
+#   wall-down "SGC" "ssh timeout"
+LABEL="${1:-HOST}"
+REASON="${2:-unreachable}"
+
+clear
+rows=$(tput lines)
+cols=$(tput cols)
+
+MSG1="\xe2\x9a\xa0  ${LABEL} UNAVAILABLE"
+MSG1_LEN=$(( ${#LABEL} + 16 ))
+MSG2="(${REASON} \xe2\x80\x94 $(date '+%H:%M:%S'))"
+MSG2_LEN=$(( ${#REASON} + 12 ))
+
+row=$(( rows / 2 ))
+col1=$(( (cols - MSG1_LEN) / 2 ))
+col2=$(( (cols - MSG2_LEN) / 2 ))
+(( col1 < 0 )) && col1=0
+(( col2 < 0 )) && col2=0
+
+tput cup "$row" "$col1"
+printf '\033[31;1m'; echo -en "$MSG1"; printf '\033[0m'
+tput cup "$((row + 1))" "$col2"
+printf '\033[90m'; echo -en "$MSG2"; printf '\033[0m'
+tput cup "$((rows - 1))" 0
