@@ -106,8 +106,8 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
         {{"new", ""}, 1, true},
         {{"new", ""}, 1, true},
         {{"ug", ""}, 1, false},
-        {{"list", ""}, 1, true},
-        {{"new", ""}, 1, true},
+        {{"list", ""}, 1, false},
+        {{"new", ""}, 1, false},
     },
     { // row 3 -- Plain
         {{"Area", ""}, 1, false},
