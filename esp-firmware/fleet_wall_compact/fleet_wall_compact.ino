@@ -285,13 +285,21 @@ void fleet_ui_build(void) {
     lv_obj_set_style_text_color(brand, COL_TEAL, 0);
     lv_obj_set_style_text_font(brand, &lv_font_montserrat_14, 0);
 
+    // Host/service totals used to live here too, duplicating the footer's
+    // "UP n DOWN n" -- dropped 2026-09-17 to free up header space for the
+    // reset button (their unbounded-width text had been pushing it off the
+    // right edge of the screen entirely). hosts_chip/services_chip remain as
+    // hidden objects so fleet_ui_refresh()'s existing update calls are cheap
+    // no-ops rather than needing every call site touched.
     hosts_chip = lv_label_create(top);
-    lv_label_set_text(hosts_chip, "TOTAL HOSTS --/--");
-    lv_obj_set_style_text_color(hosts_chip, COL_TEXT_DIM, 0);
+    lv_obj_add_flag(hosts_chip, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(hosts_chip, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_size(hosts_chip, 0, 0);
 
     services_chip = lv_label_create(top);
-    lv_label_set_text(services_chip, "TOTAL SERVICES --/--");
-    lv_obj_set_style_text_color(services_chip, COL_TEXT_DIM, 0);
+    lv_obj_add_flag(services_chip, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(services_chip, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_size(services_chip, 0, 0);
 
     // pushes the reset button to the far right of the header
     lv_obj_t *spacer = lv_obj_create(top);
@@ -440,26 +448,21 @@ void fleet_ui_refresh(JsonDocument &doc) {
     int s_up = summary["services_up"] | 0;
     int s_total = summary["services_total"] | 0;
 
-    char buf[32];
     int m_down = m_total - m_up;
-    if (m_down > 0) snprintf(buf, sizeof(buf), "TOTAL HOSTS: %d/%d (%d DOWN)", m_up, m_total, m_down);
-    else snprintf(buf, sizeof(buf), "TOTAL HOSTS: %d/%d", m_up, m_total);
-    lv_label_set_text(hosts_chip, buf);
-    lv_obj_set_style_text_color(hosts_chip, m_up == m_total ? COL_OK : COL_WARN, 0);
 
-    snprintf(buf, sizeof(buf), "TOTAL SERVICES: %d/%d", s_up, s_total);
-    lv_label_set_text(services_chip, buf);
-
-    char footer_buf[48];
-    snprintf(footer_buf, sizeof(footer_buf), "PAGE 1/1 (Consolidated)  UP %d  DOWN %d", m_up, m_down);
+    // Host/service totals live only in the footer now (used to be duplicated
+    // in the header too -- see fleet_ui_build()).
+    char footer_buf[80];
+    snprintf(footer_buf, sizeof(footer_buf), "PAGE 1/1 (Consolidated)  HOSTS %d/%d  SERVICES %d/%d  UP %d  DOWN %d",
+             m_up, m_total, s_up, s_total, m_up, m_down);
     lv_label_set_text(footer_label, footer_buf);
 
     bool has_alert = (m_up < m_total) || (s_up < s_total);
     if (has_alert) {
         lv_obj_clear_flag(alert_rail, LV_OBJ_FLAG_HIDDEN);
-        int down = (m_total - m_up);
-        snprintf(buf, sizeof(buf), "%d HOST(S) DOWN", down);
-        lv_label_set_text(alert_label, buf);
+        char alert_buf[24];
+        snprintf(alert_buf, sizeof(alert_buf), "%d HOST(S) DOWN", m_down);
+        lv_label_set_text(alert_label, alert_buf);
     } else {
         lv_obj_add_flag(alert_rail, LV_OBJ_FLAG_HIDDEN);
     }
