@@ -149,17 +149,29 @@ log "rsync exit=$RC, elapsed $((ELAPSED / 60))m"
 # character and the offset, and reported 0 while a real mismatch sat in the
 # output.
 #
+# The checksum flag alone is NOT the corruption signature: it must come with
+# size ('s', index 3) and mtime ('t', index 4) both unchanged. '<fc.t......'
+# means the source was legitimately rewritten after the last sync -- different
+# mtime -- and the next ordinary sync transfers it anyway. On 2026-09-15 all six
+# "mismatches" to the weekly-synced Mac Mini were exactly that: Immich's
+# per-folder .immich markers, whose content is the epoch-ms time Immich last
+# started, rewritten by a restart on 09-11 hours after that Friday's sync.
+# Real corruption from the RAM fault keeps rsync's copied mtime: '<fc........'.
+#
 # `|| true`, not `|| echo 0`: grep -c already PRINTS 0 when it matches nothing
 # and also exits 1, so the fallback appended a second line and every numeric
 # test afterwards failed with "integer expression expected".
+CORRUPT_RE='^[<>]fc\.\.'
 TOTAL=$(wc -l < "$DIFFS")
-CONTENT=$(grep -c '^[<>]fc' "$DIFFS" 2>/dev/null || true)
+CONTENT=$(grep -c "$CORRUPT_RE" "$DIFFS" 2>/dev/null || true)
+CHANGED=$(grep -E '^[<>]f[^+]' "$DIFFS" 2>/dev/null | grep -vc "$CORRUPT_RE" || true)
 MISSING=$(grep -c '^[<>]f+++++++++' "$DIFFS" 2>/dev/null || true)
 DELETES=$(grep -c '^\*deleting' "$DIFFS" 2>/dev/null || true)
 
 log "--- results ---"
 log "total itemised differences : $TOTAL"
 log "CONTENT MISMATCHES         : $CONTENT   <- the ones that matter"
+log "changed at source since sync: $CHANGED"
 log "missing at destination     : $MISSING"
 log "extra at destination       : $DELETES"
 
@@ -171,13 +183,13 @@ if [ "$CONTENT" -eq 0 ] && [ "$TOTAL" -eq 0 ]; then
     log "RESULT: $TARGET matches WBU byte-for-byte. No corruption propagated."
     log "$SUCCESS_MARKER ($TARGET, 0 mismatches, 0 differences)"
 elif [ "$CONTENT" -eq 0 ]; then
-    log "RESULT: no content mismatches. The $TOTAL difference(s) are additions or"
-    log "        deletions since the last sync — expected given a $CADENCE cadence."
+    log "RESULT: no content mismatches. The $TOTAL difference(s) are additions,"
+    log "        changes or deletions since the last sync — expected given a $CADENCE cadence."
     log "$SUCCESS_MARKER ($TARGET, 0 mismatches, $TOTAL benign differences)"
 else
     log "RESULT: $CONTENT FILE(S) DIFFER IN CONTENT between WBU and $TARGET."
     log "        Same size and mtime, different bytes."
-    grep '^[<>]fc' "$DIFFS" | head -20 | tee -a "$LOG"
+    grep "$CORRUPT_RE" "$DIFFS" | head -20 | tee -a "$LOG"
     log ""
     log "        Which copy is right? rsync cannot tell you, and a plain sync"
     log "        would overwrite one side arbitrarily. Immich records a SHA-1"
