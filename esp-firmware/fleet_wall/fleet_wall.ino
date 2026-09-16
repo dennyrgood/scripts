@@ -268,6 +268,23 @@ void fleet_ui_build(void) {
     lv_obj_set_flex_grow(spacer, 1);
     lv_obj_set_height(spacer, 1);
 
+    // Compile timestamp, so it's possible to tell at a glance whether a
+    // flash actually took (2026-09-16: several confusing minutes were spent
+    // unsure whether new firmware was really running after an upload that
+    // reported an ambiguous error). __DATE__/__TIME__ are filled in by the
+    // compiler automatically -- no manual version bump to forget.
+    lv_obj_t *build_label = lv_label_create(top);
+    lv_label_set_text(build_label, "Version: " __DATE__ " " __TIME__);
+    lv_obj_set_style_text_color(build_label, COL_TEXT_FAINT, 0);
+    lv_obj_set_style_text_font(build_label, &lv_font_montserrat_14, 0);
+    // Same bug class as the CPU/MEM/disk value labels earlier tonight: without
+    // a fixed width + long-mode, LVGL word-wraps this onto a second line,
+    // which overflows the header's fixed 40px height (the "top line wrapped
+    // to bottom" / flicker reported right after adding this label).
+    lv_obj_set_width(build_label, 230);
+    lv_obj_set_height(build_label, 18);
+    lv_label_set_long_mode(build_label, LV_LABEL_LONG_CLIP);
+
     lv_obj_t *reset_btn = lv_label_create(top);
     lv_label_set_text(reset_btn, LV_SYMBOL_REFRESH);
     lv_obj_set_style_text_color(reset_btn, COL_TEXT_FAINT, 0);
@@ -838,7 +855,18 @@ void setup()
     // (~17.5KB) and its parsing/formatting call chain (fleet_ui_refresh's
     // nested loops, JsonDocument, HTTPClient/WiFiClient internals) overflowed
     // the smaller stack, causing the periodic crash/auto-reboot seen 2026-09-15.
-    xTaskCreatePinnedToCore(net_task, "fleet_net", 20480, nullptr, 1, nullptr,
+    //
+    // Priority dropped 1 -> 0 (tskIDLE_PRIORITY) 2026-09-16: confirmed via
+    // serial log that this task was triggering the ESP-IDF task watchdog
+    // ("IDLE0 did not reset the watchdog... CPU 0: fleet_net") and rebooting
+    // the board. At priority 1 -- one above idle -- a long enough
+    // continuous CPU-bound stretch (deserializing the ~17.5KB JSON with no
+    // yield point) can never be preempted by IDLE0 on the same core, so the
+    // idle task never gets to "check in" with its own watchdog. Priority 0
+    // makes fleet_net round-robin with the idle task instead of blocking it
+    // outright. This is the ONE change from this round of investigation --
+    // being tested in isolation before anything else is touched.
+    xTaskCreatePinnedToCore(net_task, "fleet_net", 20480, nullptr, tskIDLE_PRIORITY, nullptr,
                              (ARDUINO_RUNNING_CORE == 0) ? 1 : 0);
 
     Serial.println("FLEET_WALL ready");
