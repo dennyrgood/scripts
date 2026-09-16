@@ -26,4 +26,11 @@ comfyui/fleet-output-local/
 
 # Real WiFi credentials for the ESP32 fleet_wall firmware -- see
 # esp-firmware/fleet_wall/fleet_wall_secrets.h.example for the template.
-esp-firmware/fleet_wall/fleet_wall_secrets.h
+# Wildcarded (not just the exact fleet_wall/ path) so ad-hoc local backup
+# copies of the project dir (e.g. fleet_wall.backup-*/) can't leak it via
+# the auto-sync process's `git add -A`.
+esp-firmware/fleet_wall*/fleet_wall_secrets.h
+
+# Local backup snapshots of the fleet_wall firmware dir -- not source, just
+# a pre-change safety copy; git history is the real backup.
+esp-firmware/fleet_wall.backup-*/
