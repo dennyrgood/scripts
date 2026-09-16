@@ -170,13 +170,13 @@ forcing the issue.
 ## Integrity checking
 
 ```
-restic check --read-data-subset=N/30    # N = day-of-year % 30 + 1
+restic check --read-data
 ```
 
-Structure check every night, plus a rotating thirtieth of the pack data re-hashed,
-so the entire repo is byte-verified over 30 days.
+Structure check plus a full decrypting read of every pack, every night -- about
+1m40s for the whole 85 GiB repo, so there is no reason to sample.
 
-**Until 2026-09-16 this was a fixed `1/30`**, and restic's `n/t` form reads the same
+**Until 2026-09-16 this was a fixed `--read-data-subset=1/30`**, and restic's `n/t` form reads the same
 group every run -- so wbu re-read the same 164 packs nightly and never looked at the
 rest. s3g's passphrase-free hash check found the result: two packs written during the
 RAM-fault diagnostic rerun (2026-08-25 17:48:36Z) whose contents do not match their
@@ -393,7 +393,7 @@ corrupted file sit on FleetNAS from June until it was found.
 | Check | Compares | Cadence | Automated |
 |---|---|---|---|
 | restic blob hash on write | data in RAM vs its hash | every backup | yes |
-| restic `check --read-data-subset=1/30` | repo packs vs their ids | nightly, full repo monthly | yes |
+| restic `check --read-data` | every pack decrypts and matches its id | nightly, full repo | yes |
 | off-site confirmation | s3g's report vs what was just written | after every backup | yes |
 | `syncthing_offsite_status.sh` | connection, errors, backlog age | 06:25 daily | yes |
 | `verify_immich_source_integrity.sh` | originals vs Immich's ingest SHA-1 | Sun 02:00 | yes |

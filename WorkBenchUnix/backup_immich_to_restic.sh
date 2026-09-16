@@ -54,10 +54,6 @@ KEEP_WEEKLY=8
 KEEP_MONTHLY=24
 
 PRUNE_DAY="01"               # day-of-month to run prune; empty disables prune
-# deep-verify one thirtieth nightly. restic's n/t reads the SAME group n every run,
-# so n must rotate or 29/30 of the repo is never read. Day-of-year mod 30 cycles
-# through every group once per 30 days with no month-end gaps.
-READ_DATA_SUBSET="$(( 10#$(date +%j) % 30 + 1 ))/30"
 
 # After the local backup is verified, wait for Syncthing to push the new packs
 # to s3g and for s3g to confirm it holds them.
@@ -192,12 +188,13 @@ UNREADABLE=$(find "$REPO" -type f ! -perm -o+r 2>/dev/null | wc -l)
 log "all repo files readable"
 
 # ------------------------------------------------------------------ check ---
-# Structure check every night, plus a rotating slice of actual pack data
-# re-hashed so the whole repo is byte-verified over a month. Reads only, so
-# it creates no Syncthing traffic.
-log "--- restic check (structure + read-data-subset=$READ_DATA_SUBSET) ---"
+# Structure check plus a full read of every pack, every night. The whole repo
+# decrypts in ~1m40s here, so a subset saved almost nothing -- and a fixed
+# `1/30` (restic reads the same group every run) hid five RAM-damaged packs
+# for three weeks. Reads only, so it creates no Syncthing traffic.
+log "--- restic check (structure + read-data, full) ---"
 nice -n 10 ionice -c2 -n7 \
-    restic -r "$REPO" check --read-data-subset="$READ_DATA_SUBSET" 2>&1 | tee -a "$LOG"
+    restic -r "$REPO" check --read-data 2>&1 | tee -a "$LOG"
 [ "${PIPESTATUS[0]}" -eq 0 ] || die "restic check FAILED — repo integrity problem, investigate before trusting this backup"
 
 # ------------------------------------------------- off-site confirmation -----
