@@ -54,7 +54,10 @@ KEEP_WEEKLY=8
 KEEP_MONTHLY=24
 
 PRUNE_DAY="01"               # day-of-month to run prune; empty disables prune
-READ_DATA_SUBSET="1/30"      # deep-verify this fraction nightly -> full repo/month
+# deep-verify one thirtieth nightly. restic's n/t reads the SAME group n every run,
+# so n must rotate or 29/30 of the repo is never read. Day-of-year mod 30 cycles
+# through every group once per 30 days with no month-end gaps.
+READ_DATA_SUBSET="$(( 10#$(date +%j) % 30 + 1 ))/30"
 
 # After the local backup is verified, wait for Syncthing to push the new packs
 # to s3g and for s3g to confirm it holds them.

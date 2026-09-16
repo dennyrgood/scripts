@@ -170,11 +170,30 @@ forcing the issue.
 ## Integrity checking
 
 ```
-restic check --read-data-subset=1/30
+restic check --read-data-subset=N/30    # N = day-of-year % 30 + 1
 ```
 
 Structure check every night, plus a rotating thirtieth of the pack data re-hashed,
-so the entire repo is byte-verified over a month. Reads only — no Syncthing traffic.
+so the entire repo is byte-verified over 30 days.
+
+**Until 2026-09-16 this was a fixed `1/30`**, and restic's `n/t` form reads the same
+group every run -- so wbu re-read the same 164 packs nightly and never looked at the
+rest. s3g's passphrase-free hash check found the result: two packs written during the
+RAM-fault diagnostic rerun (2026-08-25 17:48:36Z) whose contents do not match their
+names, identical on both ends. See the RAM fault section.
+
+A full `restic check --read-data` (1m38s for the whole repo) then found **three
+more** packs (`27bc301e…`, `4e2d7a97…`, `6ea64c49…`) whose file hash *matches* their
+name but each hold one blob that fails decryption -- the flip happened before
+restic hashed the pack. Name-vs-hash checks
+(s3g's, or `sha256sum`) cannot see that class of damage; only a decrypting read on
+wbu can. 2,844 packs were written during the faulty-RAM runs (17:38-18:09Z).
+
+Repair (2026-09-16): `restic repair packs` on all five, which salvaged every
+intact blob and lost one blob per pack; the next backup re-stored all five from the
+still-present source JPGs ("not found in the repository index; storing the file
+again", rc=3). A second full `--read-data` then found no errors, and no
+`repair snapshots --forget` was needed -- every snapshot is whole. Reads only — no Syncthing traffic.
 
 This is what turns "a backup I have never verified" into a checked fact, and it
 earned its place before it was ever scheduled (see the RAM fault below).
