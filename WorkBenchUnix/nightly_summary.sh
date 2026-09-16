@@ -470,6 +470,29 @@ build_offsite_tldr() {
     esac
 }
 
+# The two monthly content audits. Their success marker is "MIRROR AUDIT OK", but
+# on a mismatch the last line is the diffs path and there is no PROBLEM:/FAILED:
+# line for build_backup_tldr to pick up -- the finding is the "RESULT:" line,
+# ~25 lines up. Before this the generic loop printed that diffs path with no
+# glyph, so on 2026-09-16 the subject said "Mac Mini content audit did not
+# complete" while its TLDR line looked perfectly normal.
+build_audit_tldr() {
+    local log="$1" label="$2"
+    local age detail reason
+    if [ ! -f "$log" ]; then
+        echo "  ${label}: never run (no $(basename "$log"))"
+        return
+    fi
+    age=$(fmt_age $(( $(date +%s) - $(stat -c %Y "$log") )))
+    detail=$(tail -5 "$log" | grep -oP '(?<=MIRROR AUDIT OK \().*(?=\))' | tail -1)
+    if [ -n "$detail" ]; then
+        echo "  ${label}: [${age} ago] ${detail} ✓"
+    else
+        reason=$(grep -oP '(?<=FAILED: ).*|(?<=RESULT: ).*' "$log" | tail -1)
+        echo "  ${label}: ⚠️ [${age} ago] ${reason:-did not complete}"
+    fi
+}
+
 RESTIC_TLDR=$(build_backup_tldr "$RESTIC_LOG" "restic backup" \
     "RESTIC BACKUP VERIFIED OK" 'snapshots retained.*')
 OFFSITE_TLDR=$(build_offsite_tldr)
@@ -482,10 +505,12 @@ TLDR+="${UPS_TLDR}\n"
 TLDR+="${RESTIC_TLDR}\n"
 TLDR+="${OFFSITE_TLDR}\n"
 TLDR+="${IMMICH_TLDR}\n"
+TLDR+="$(build_audit_tldr "$AUDIT_NAS" "FleetNAS content audit")\n"
+TLDR+="$(build_audit_tldr "$AUDIT_MM" "Mac Mini content audit")\n"
 NOW_TLDR=$(date +%s)
 for LOG in "${LOGS[@]}"; do
     # Already reported above with a purpose-built line.
-    case "$LOG" in "$RESTIC_LOG"|"$OFFSITE_LOG") continue ;; esac
+    case "$LOG" in "$RESTIC_LOG"|"$OFFSITE_LOG"|"$AUDIT_NAS"|"$AUDIT_MM") continue ;; esac
     if [ -f "$LOG" ]; then
         AGE=$(fmt_age $(( NOW_TLDR - $(stat -c %Y "$LOG") )))
         TLDR+="  $(basename "$LOG"): [${AGE} ago] $(tail -1 "$LOG")\n"
