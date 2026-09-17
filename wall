@@ -1,8 +1,33 @@
 #!/usr/bin/env bash
-# wall — launch the fleet status wall in a Fleet-profile Terminal window on the second display
-# 2026-08-30 — burned captured 207x141 layout string into launch sequence
+# wall — launch the fleet status wall in a Terminal window on the second display
+# 2026-08-30 — burned captured 207x141 layout string into launch sequence (mb only)
+# 2026-09-17 — host-aware branch: mb's "Fleet" profile is offline (migrating to fleetdev),
+#              so mb2 gets its own geometry (right half of PM1562) and no profile/LAYOUT burn-in
 
-LAYOUT="3fac,207x141,0,0[207x42,0,0{51x42,0,0,1,51x42,52,0,2,51x42,104,0,3,51x42,156,0,4},207x43,0,43{51x43,0,43,5,51x43,52,43,6,51x43,104,43,7,51x43,156,43,8},207x34,0,87{51x34,0,87,9,51x34,52,87,10,51x34,104,87,11,51x34,156,87,12},207x19,0,122,13]"
+HOSTNAME=$(hostname -s)
+
+case "$HOSTNAME" in
+  denniss-macbook-air)
+    PROFILE_LINE='set current settings of fleetWin to settings set "Fleet"'
+    BOUNDS="{-640, 25, 0, 1080}"
+    LAYOUT="3fac,207x141,0,0[207x42,0,0{51x42,0,0,1,51x42,52,0,2,51x42,104,0,3,51x42,156,0,4},207x43,0,43{51x43,0,43,5,51x43,52,43,6,51x43,104,43,7,51x43,156,43,8},207x34,0,87{51x34,0,87,9,51x34,52,87,10,51x34,104,87,11,51x34,156,87,12},207x19,0,122,13]"
+    ;;
+  denniss-2nd-macbook-air)
+    # PM1562 sits right of the built-in display, top-aligned, at global x 1470-3390, y 0-1080
+    # (measured via NSScreen.screens on mb2, 2026-09-17). Right half: x 2430-3390.
+    # No "Fleet" profile here (offline/migrating to fleetdev), so set a small font directly
+    # on the window instead. Terminal only recomputes the pty column/row count on a bounds
+    # change made AFTER the font size change takes effect — an immediate "set bounds" right
+    # after "set font size" can race and get ignored, so the launch below nudges bounds twice.
+    PROFILE_LINE='set font size of current settings of fleetWin to 6'
+    BOUNDS="{2430, 25, 3390, 1080}"
+    LAYOUT=""
+    ;;
+  *)
+    echo "wall: no known layout for host '$HOSTNAME' — add one to wall" >&2
+    exit 1
+    ;;
+esac
 
 WINDOWS_HOSTS=(
   amsterdamdesktop
@@ -38,20 +63,32 @@ echo "Launching wall..."
 osascript <<EOF
 tell application "Terminal"
     set fleetWin to do script "tmuxp load -d -y ~/repos/fleet-configs/fleet.yaml; tmux set -t fleet pane-border-status top; tmux set -t fleet pane-border-format ' #{pane_title} '; tmux set -t fleet allow-rename off; tmux select-pane -t fleet:wall.0 -T AMSTDT; tmux select-pane -t fleet:wall.1 -T CWH; tmux select-pane -t fleet:wall.2 -T IB; tmux select-pane -t fleet:wall.3 -T TB; tmux select-pane -t fleet:wall.4 -T RWS; tmux select-pane -t fleet:wall.5 -T S3G; tmux select-pane -t fleet:wall.6 -T SGC; tmux select-pane -t fleet:wall.7 -T WBU; tmux select-pane -t fleet:wall.8 -T CWHU; tmux select-pane -t fleet:wall.9 -T NAS; tmux select-pane -t fleet:wall.10 -T MMM; tmux select-pane -t fleet:wall.11 -T MB2; tmux select-pane -t fleet:wall.12 -T MB; tmux attach -t fleet"
-    set current settings of fleetWin to settings set "Fleet"
+    $PROFILE_LINE
     activate
     delay 1.5
+    -- bounds is a window property, not a tab property, so use front window (fleetWin
+    -- from do script is a tab ref). Set twice: Terminal only recomputes the pty grid on
+    -- a bounds change made after the font size change has taken effect, and the first
+    -- set can race it.
+    set bounds of front window to $BOUNDS
+    delay 0.3
+    set bounds of front window to $BOUNDS
 end tell
-tell application "Terminal" to set bounds of front window to {-640, 25, 0, 1080}
 EOF
 
-# Apply captured 207x141 layout string post-resize
 sleep 3
-tmux set-window-option -t fleet:wall window-size manual 2>/dev/null || tmux set-option -g window-size manual
-tmux resize-window -t fleet:wall -x 207 -y 141
-tmux select-layout -t fleet:wall "$LAYOUT"
-sleep 0.3
-tmux select-layout -t fleet:wall "$LAYOUT"
+if [ -n "$LAYOUT" ]; then
+  # Apply captured 207x141 layout string post-resize (mb only)
+  tmux set-window-option -t fleet:wall window-size manual 2>/dev/null || tmux set-option -g window-size manual
+  tmux resize-window -t fleet:wall -x 207 -y 141
+  tmux select-layout -t fleet:wall "$LAYOUT"
+  sleep 0.3
+  tmux select-layout -t fleet:wall "$LAYOUT"
+else
+  # No captured layout for this host/profile — just re-tile to whatever grid the
+  # actual Terminal window size at $BOUNDS produces.
+  tmux select-layout -t fleet:wall tiled
+fi
 
 # Periodic label re-assert loop
 nohup bash -c '
