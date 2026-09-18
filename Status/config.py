@@ -438,21 +438,14 @@ FLEET = [
     #     "services": [],
     # },
     {
-        # New box added 2026-09-18 (per user: everything else same as mb/denniss-macbook-air).
+        # New box added 2026-09-18 (per user: same as mb/denniss-macbook-air, except
+        # this one does not run Ollama, so no "services" entries below).
         "display_name": "FleetDev",
         "tailscale_name": "fleetdev",
         "tailscale_ip": "100.76.238.48",
-        "primary_role": "Ollama",
-        "probe_port": 11434,  # Ollama port (ignored; Tailscale ping used instead)
-        "services": [
-            {
-                "name": "Ollama",
-                "port": 11434,
-                "priority": "P",
-                "check_type": "ollama",
-                "public_url": None,
-            },
-        ],
+        "primary_role": "Dev",
+        "probe_port": 22,
+        "services": [],
     },
     {
         "display_name": "WorkBenchUnix",
