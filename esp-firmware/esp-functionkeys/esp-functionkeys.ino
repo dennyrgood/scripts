@@ -103,8 +103,8 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
     { // row 2 -- Shift
         {{"Delay", ""}, 1, false},
         {{"Scroll", ""}, 1, false},
-        {{"new", ""}, 1, true},
-        {{"new", ""}, 1, true},
+        {{"new", ""}, 1, false},
+        {{"new", ""}, 1, false},
         {{"ug", ""}, 1, false},
         {{"list", ""}, 1, false},
         {{"new", ""}, 1, false},
