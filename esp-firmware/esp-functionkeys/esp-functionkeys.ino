@@ -122,9 +122,16 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
 
 // Per-cell context handed to the event callback so it knows which
 // keystroke to send, in addition to which label to recolor.
+// Per-column colors, matching the physical printed key strip above the keys:
+// amber, amber, dark green, dark green, yellow, purple, dark green.
+static const uint32_t COL_FILL_HEX[N_COLS] = {0xE8590C, 0xE8590C, 0x22C55E, 0x22C55E, 0xFBBF24, 0x7B3FA6, 0x22C55E};
+static const bool COL_DARK_TEXT[N_COLS]    = {true,     true,     false,    false,    true,     false,    false};
+
 struct CellCtx {
     lv_obj_t *content; // nullptr for blank cells
     int row, col;
+    lv_color_t fill;   // resting fill (dimmed for blank cells)
+    lv_color_t border; // resting border
 };
 static CellCtx CELL_CTX[N_ROWS][N_COLS];
 
@@ -148,19 +155,19 @@ static void cell_event_cb(lv_event_t *e) {
     lv_obj_t *content = ctx->content;
 
     if (code == LV_EVENT_PRESSED) {
-        lv_obj_set_style_bg_color(cell, COL_PRESSED_BG, 0);
-        lv_obj_set_style_border_color(cell, COL_PRESSED_BRD, 0);
-        lv_obj_set_style_shadow_color(cell, COL_BORDER, 0);
+        // Saturated fills can't "glow" by brightening like the old dark
+        // cells did -- lighten the fill and flash a white border instead.
+        lv_obj_set_style_bg_color(cell, lv_color_mix(lv_color_white(), ctx->fill, 90), 0);
+        lv_obj_set_style_border_color(cell, lv_color_white(), 0);
+        lv_obj_set_style_shadow_color(cell, lv_color_white(), 0);
         lv_obj_set_style_shadow_width(cell, 22, 0);
         lv_obj_set_style_shadow_spread(cell, 2, 0);
         lv_obj_set_style_shadow_opa(cell, LV_OPA_70, 0);
-        if (content) lv_obj_set_style_text_color(content, COL_PRESSED_TEXT, 0);
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-        lv_obj_set_style_bg_color(cell, COL_CELL, 0);
-        lv_obj_set_style_border_color(cell, COL_BORDER, 0);
+        lv_obj_set_style_bg_color(cell, ctx->fill, 0);
+        lv_obj_set_style_border_color(cell, ctx->border, 0);
         lv_obj_set_style_shadow_width(cell, 0, 0);
         lv_obj_set_style_shadow_opa(cell, LV_OPA_TRANSP, 0);
-        if (content) lv_obj_set_style_text_color(content, COL_TEXT, 0);
         // Fire on an actual release (finger lifted while still on the cell),
         // not on PRESS_LOST (finger dragged off) -- matches a real button's
         // behavior, where dragging off before releasing cancels the press.
@@ -198,9 +205,17 @@ static void build_ui(void) {
 
             lv_obj_t *cell = lv_obj_create(grid);
             lv_obj_set_grid_cell(cell, LV_GRID_ALIGN_STRETCH, col, 1, LV_GRID_ALIGN_STRETCH, row, 1);
-            lv_obj_set_style_bg_color(cell, COL_CELL, 0);
+            lv_color_t base = lv_color_hex(COL_FILL_HEX[col]);
+            lv_color_t txt  = COL_DARK_TEXT[col] ? lv_color_black() : lv_color_white();
+            // Blank cells (no binding) get a dark tint of the column color so
+            // populated cells stand out against them.
+            lv_color_t fill = (spec.line_count > 0) ? base : lv_color_mix(base, COL_BG, 60);
+            lv_color_t brd  = (spec.line_count > 0) ? lv_color_mix(lv_color_white(), base, 60) : lv_color_mix(base, COL_BG, 110);
+            CELL_CTX[row][col].fill = fill;
+            CELL_CTX[row][col].border = brd;
+            lv_obj_set_style_bg_color(cell, fill, 0);
             lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_color(cell, COL_BORDER, 0);
+            lv_obj_set_style_border_color(cell, brd, 0);
             lv_obj_set_style_border_width(cell, 2, 0);
             lv_obj_set_style_radius(cell, 8, 0);
             lv_obj_set_style_pad_all(cell, 6, 0);
@@ -225,7 +240,7 @@ static void build_ui(void) {
                 // safety net so any future long word truncates visibly
                 // ("Termin...") instead of silently cutting off mid-letter.
                 lv_obj_set_style_text_font(content, &lv_font_montserrat_20, 0);
-                lv_obj_set_style_text_color(content, COL_TEXT, 0);
+                lv_obj_set_style_text_color(content, txt, 0);
                 lv_obj_set_style_text_align(content, LV_TEXT_ALIGN_LEFT, 0);
                 lv_obj_set_style_text_line_space(content, 2, 0);
                 lv_obj_clear_flag(content, LV_OBJ_FLAG_CLICKABLE);
@@ -242,7 +257,8 @@ static void build_ui(void) {
                 lv_obj_t *cyc = lv_label_create(cell);
                 lv_label_set_text(cyc, "(cyc)");
                 lv_obj_set_style_text_font(cyc, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(cyc, COL_TEXT_DIM, 0);
+                lv_obj_set_style_text_color(cyc, txt, 0);
+                lv_obj_set_style_text_opa(cyc, LV_OPA_80, 0);
                 lv_obj_clear_flag(cyc, LV_OBJ_FLAG_CLICKABLE);
                 lv_obj_align(cyc, LV_ALIGN_TOP_LEFT, 2, 32);
             }
@@ -259,7 +275,8 @@ static void build_ui(void) {
             }
             lv_label_set_text(fkey, fkey_buf);
             lv_obj_set_style_text_font(fkey, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(fkey, COL_FKEY, 0);
+            lv_obj_set_style_text_color(fkey, txt, 0);
+            lv_obj_set_style_text_opa(fkey, LV_OPA_70, 0);
             lv_obj_clear_flag(fkey, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_align(fkey, LV_ALIGN_BOTTOM_RIGHT, -4, -3);
 
