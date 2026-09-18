@@ -447,7 +447,7 @@ void fleet_ui_build(void) {
     // screen is obviously distinguishable from a live one (no other visual
     // cue changes between polls otherwise).
     updated_label = lv_label_create(bottom);
-    lv_label_set_text(updated_label, "updated --");
+    lv_label_set_text(updated_label, "Upd: --:--");
     lv_obj_set_style_text_color(updated_label, COL_TEXT_FAINT, 0);
     lv_obj_set_style_text_font(updated_label, &lv_font_montserrat_14, 0);
     lv_obj_align(updated_label, LV_ALIGN_RIGHT_MID, -10, 0);
@@ -545,16 +545,19 @@ void fleet_ui_refresh(JsonDocument &doc) {
 
     last_update_ms = millis();
 
-    // No RTC/NTP on this board, so there's no real date/time to show -- this
-    // is device uptime at the moment of the last successful poll, plus a
-    // count so it's obvious the number actually changed even if the uptime
-    // happens to look similar. Set once per poll here (not on a per-second
-    // timer in loop() -- that was itself forcing a screen touch every
-    // second and got dropped 2026-09-17, see loop()'s comment).
-    static uint32_t poll_count = 0;
-    poll_count++;
+    // Wall-clock time via NTP (synced in fleet_wifi_connect()) -- set once
+    // per poll here (not on a per-second timer in loop() -- that was itself
+    // forcing a screen touch every second and got dropped 2026-09-17, see
+    // loop()'s comment). Falls back to raw uptime if NTP hasn't synced yet
+    // (year < 2020 is localtime()'s tell for "never set").
     char updated_buf[32];
-    snprintf(updated_buf, sizeof(updated_buf), "poll #%lu  up %lus", (unsigned long)poll_count, (unsigned long)(last_update_ms / 1000));
+    time_t now_t = time(nullptr);
+    struct tm tm_now;
+    if (localtime_r(&now_t, &tm_now) != nullptr && tm_now.tm_year >= (2020 - 1900)) {
+        strftime(updated_buf, sizeof(updated_buf), "Upd: %H:%M", &tm_now);
+    } else {
+        snprintf(updated_buf, sizeof(updated_buf), "Upd: up %lus", (unsigned long)(last_update_ms / 1000));
+    }
 
     ESP_ERROR_CHECK(esp_lv_adapter_lock(-1));
     render_grid();
@@ -848,6 +851,11 @@ static void fleet_wifi_connect(void) {
     }
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("\n[fleet_wall] connected, IP: %s\n", WiFi.localIP().toString().c_str());
+        // Sync wall-clock time over NTP so the footer can show "Upd: HH:MM"
+        // instead of raw device uptime -- only needs doing once, but harmless
+        // to call again on a reconnect. Offsets are Europe/Amsterdam
+        // (CET/CEST) -- this board and its API host are both on that network.
+        configTime(3600, 3600, "pool.ntp.org");
     } else {
         Serial.println("\n[fleet_wall] WiFi connect timed out, will retry");
     }
