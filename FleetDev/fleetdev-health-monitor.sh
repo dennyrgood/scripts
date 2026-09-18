@@ -1,0 +1,422 @@
+#!/opt/homebrew/bin/bash
+# Created: 2026-08-30 UTC (cloned to FleetDev 2026-09-18) — FleetDev service health
+# monitor, modeled on MathesMacMini/mathes-mac-mini-health-monitor.sh but scoped to
+# what actually runs on THIS box: the local web services in `launchmgr status`. Does
+# NOT port mmm's Plex/Syncthing/NUT-UPS checks — none of those run here. `comfy-fleet-
+# scan` is deliberately excluded too: it's a once-daily StartCalendarInterval job, not
+# a KeepAlive service, so "process missing" is its normal state 23:55 hours a day —
+# its freshness is checked in fleetdev-nightly-summary.sh instead, the same way mmm's
+# nightly script (not its health monitor) owns the Plex-sync-log freshness check.
+#
+# Services covered here (all launchd KeepAlive, per `launchmgr status` 2026-08-30):
+#   comfy-fleet-http    (5050, static file server for fleet_report_*.html)
+#   fleet-metrics-server (9100, serves this box's own heartbeat/metrics files)
+#   heartbeat-writer    (writes those files — no HTTP endpoint of its own)
+#   search-adv-web      (5025)
+#   search-shows-web    (5020)
+#   tmdb-explorer       (5035, this box's own instance — mmm runs an independent copy)
+#   travel-http         (5030, static file server for the travel site)
+#
+# Run via launchd every 5 min (see com.dennis.mb-health-monitor.plist). Alerts on
+# first detection and every 30 min while a condition persists; sends all-clear when
+# it resolves; silent when everything's healthy. Missing vs down distinction per
+# service (mirrors mmm/WBU): missing = process not found (crashed/quit), down =
+# process running but its own HTTP endpoint isn't answering (hung).
+
+HOST="Mac-mini.local"
+TO="dennyrgood@yahoo.com"
+MSMTP="/opt/homebrew/bin/msmtp"
+STATE_FILE="/tmp/fleetdev-monitor-state.tmp"
+NOW=$(date +%s)
+ALERT_INTERVAL=$((30 * 60))
+FAIL_THRESHOLD=2   # consecutive 5-min samples before alerting (anti-flap on restarts)
+
+# 2026-08-30: COMFY_HTTP gets its own longer threshold. It's a bare `python3 -m
+# http.server` serving a live OneDrive-synced folder (fleet-output/) -- a real
+# incident this same day showed a transient OneDrive sync lock on that folder can
+# wedge the process's directory listing (curl 404 "No permission to list
+# directory") for 10+ minutes without self-healing (needed a manual kickstart),
+# so the flakiness is real, not a false positive -- but it's also a low-stakes
+# personal convenience server, not fleet-critical infra like heartbeat-writer/
+# metrics-server. Widening ITS threshold alone buys fewer emails for this one
+# known-flaky service without dulling real alerts for the services that actually
+# blind the fleet dashboard if missed.
+FAIL_THRESHOLD_COMFY_HTTP=5   # ~25 min instead of the default ~10 min
+threshold_for() {
+    local svc=$1 override
+    override=$(eval echo \$FAIL_THRESHOLD_${svc})
+    echo "${override:-$FAIL_THRESHOLD}"
+}
+
+# HEARTBEAT_WRITER has no HTTP endpoint of its own — its "down" state comes from the
+# freshness check below instead of check_service's usual curl. FLEET_METRICS's own
+# liveness proof IS this box's own heartbeat file being served, so that doubles as
+# its check URL.
+COMFY_HTTP_PROC_PATTERN="http.server 5050"
+COMFY_HTTP_URL="http://127.0.0.1:5050/"
+METRICS_SERVER_PROC_PATTERN="fleet_metrics_server.py"
+METRICS_SERVER_URL="http://127.0.0.1:9100/heartbeat_${HOST}.txt"
+HEARTBEAT_WRITER_PROC_PATTERN="onedrive_heartbeat_writer_all_macs.py"
+HEARTBEAT_FILE="$HOME/fleet_monitor/heartbeat_${HOST}.txt"
+HEARTBEAT_STALE_SECS=600   # writer heartbeats every 150s — 4x margin before alerting
+SEARCH_ADV_PROC_PATTERN="search_adv_web.py"
+SEARCH_ADV_URL="http://127.0.0.1:5025/"
+SEARCH_SHOWS_PROC_PATTERN="search_shows_web.py"
+SEARCH_SHOWS_URL="http://127.0.0.1:5020/"
+TMDB_PROC_PATTERN="tmdb_explorer.py"
+TMDB_URL="http://127.0.0.1:5035/"
+# comfy-fleet-scan is a daily launchd job, not a service -- there is no process
+# to find and no port to probe, so like HEARTBEAT_WRITER its health is purely a
+# freshness question. It earns a check because it failed silently for a week
+# (2026-09-04: 7 scheduled runs, 0 completions -- `set -e` truncating the script
+# left a log that ended mid-run and looked exactly like success). The readme's
+# own rule, "absence of an error is not evidence of success", is what this
+# enforces. 36h threshold: daily job, so one missed run is a real failure while
+# still tolerating a late/slow run.
+COMFY_SCAN_LOG="$HOME/Library/Logs/comfy_fleet_scan.log"
+COMFY_SCAN_STALE_SECS=$((36 * 3600))
+COMFY_SCAN_PROC_PATTERN=""     # no long-lived process -- freshness check only
+
+TRAVEL_HTTP_PROC_PATTERN="http.server 5030"
+TRAVEL_HTTP_URL="http://127.0.0.1:5030/"
+
+# --- Load state (defaults to zero/inactive if file absent) ---
+for svc in COMFY_HTTP COMFY_SCAN METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
+    eval "MISSING_${svc}_LAST_ALERT=0; MISSING_${svc}_ACTIVE=0; MISSING_${svc}_STREAK=0"
+    eval "DOWN_${svc}_LAST_ALERT=0;    DOWN_${svc}_ACTIVE=0;    DOWN_${svc}_STREAK=0"
+done
+
+[ -f "$STATE_FILE" ] && source "$STATE_FILE"
+
+# --- Check: all services (process presence, then HTTP health if present) ---
+declare -A MISSING_TRIGGERED DOWN_TRIGGERED
+# COMFY_SCAN has no process/endpoint; its state comes from the freshness check
+# further down, so seed it as present-and-up here.
+MISSING_TRIGGERED[COMFY_SCAN]=0
+DOWN_TRIGGERED[COMFY_SCAN]=0
+check_service() {
+    local svc=$1 pattern=$2 url=$3
+    if ! pgrep -f "$pattern" >/dev/null 2>&1; then
+        MISSING_TRIGGERED[$svc]=1
+        DOWN_TRIGGERED[$svc]=0
+    else
+        MISSING_TRIGGERED[$svc]=0
+        if [ -z "$url" ]; then
+            # No HTTP endpoint for this one (HEARTBEAT_WRITER) — "down" is decided
+            # by the freshness check layered on below instead.
+            DOWN_TRIGGERED[$svc]=0
+        else
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null)
+            if [ "$CODE" = "200" ]; then
+                DOWN_TRIGGERED[$svc]=0
+            else
+                DOWN_TRIGGERED[$svc]=1
+            fi
+        fi
+    fi
+}
+check_service COMFY_HTTP "$COMFY_HTTP_PROC_PATTERN" "$COMFY_HTTP_URL"
+
+# 2026-08-31: auto-heal COMFY_HTTP instead of just alerting on it. Confirmed twice
+# in <24h (both times: process present, HTTP down for hours straight, `ls` on the
+# served directory works fine interactively the whole time) that this doesn't
+# self-heal, but a plain `launchctl kickstart -k` fixes it instantly every time --
+# a mechanical, known-safe fix (a bare http.server, not a stateful service), so it's
+# worth doing automatically rather than paging for something with a known one-line
+# cure. Only alert (the real HEALTH ALERT path) if the kickstart itself doesn't fix
+# it. Per Dennis: notify on every single occurrence, no rate-limiting/suppression --
+# not styled as urgent (no action needed), but every auto-heal gets its own email.
+COMFY_HTTP_AUTOHEALED=0
+if [ "${DOWN_TRIGGERED[COMFY_HTTP]}" -eq 1 ]; then
+    launchctl kickstart -k "gui/$(id -u)/com.dennis.comfy-fleet-http" >/dev/null 2>&1
+    sleep 3
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$COMFY_HTTP_URL" 2>/dev/null)
+    if [ "$CODE" = "200" ]; then
+        DOWN_TRIGGERED[COMFY_HTTP]=0
+        COMFY_HTTP_AUTOHEALED=1
+        {
+            echo "Subject: [${HOST}] auto-healed comfy-fleet-http -- $(date '+%Y-%m-%d %H:%M')"
+            echo ""
+            echo "comfy-fleet-http's HTTP endpoint wasn't responding (process was up, but"
+            echo "the OneDrive-cwd issue documented in this script's 2026-08-31 comment)."
+            echo "Ran 'launchctl kickstart -k com.dennis.comfy-fleet-http' automatically and"
+            echo "it's back to 200 now -- no action needed."
+            echo ""
+            echo "FYI only: if this shows up often, it's worth revisiting the underlying"
+            echo "OneDrive/WorkingDirectory issue rather than continuing to auto-heal around it."
+        } | "$MSMTP" -a icloud "$TO"
+    fi
+fi
+
+check_service METRICS_SERVER "$METRICS_SERVER_PROC_PATTERN" "$METRICS_SERVER_URL"
+check_service HEARTBEAT_WRITER "$HEARTBEAT_WRITER_PROC_PATTERN" ""
+check_service SEARCH_ADV "$SEARCH_ADV_PROC_PATTERN" "$SEARCH_ADV_URL"
+check_service SEARCH_SHOWS "$SEARCH_SHOWS_PROC_PATTERN" "$SEARCH_SHOWS_URL"
+check_service TMDB "$TMDB_PROC_PATTERN" "$TMDB_URL"
+check_service TRAVEL_HTTP "$TRAVEL_HTTP_PROC_PATTERN" "$TRAVEL_HTTP_URL"
+
+# --- Check: heartbeat-writer freshness (only meaningful if the basic check above
+# didn't already find it missing) — same shape as mmm's version: no HTTP endpoint
+# to probe, so a hang (process alive, stuck mid-loop) can only be caught by checking
+# whether HEARTBEAT_FILE is actually still being updated. ---
+DOWN_DETAIL_HEARTBEAT_WRITER=""
+if [ "${MISSING_TRIGGERED[HEARTBEAT_WRITER]}" -eq 0 ]; then
+    if [ ! -f "$HEARTBEAT_FILE" ]; then
+        DOWN_TRIGGERED[HEARTBEAT_WRITER]=1
+        DOWN_DETAIL_HEARTBEAT_WRITER="${HEARTBEAT_FILE} does not exist yet.\n"
+    else
+        HB_AGE=$(( NOW - $(stat -f %m "$HEARTBEAT_FILE") ))
+        if [ "$HB_AGE" -gt "$HEARTBEAT_STALE_SECS" ]; then
+            DOWN_TRIGGERED[HEARTBEAT_WRITER]=1
+            DOWN_DETAIL_HEARTBEAT_WRITER="${HEARTBEAT_FILE} last written $((HB_AGE / 60))m ago (threshold $((HEARTBEAT_STALE_SECS / 60))m).\n"
+        fi
+    fi
+fi
+
+# --- Check: comfy-fleet-scan actually COMPLETED recently ---
+# Keyed on the *completion* marker, not the log's mtime and not "scan starting":
+# the failure this exists to catch (2026-09-04) wrote a perfectly fresh log full
+# of successful-looking output and simply never reached the end.
+#
+# Distinguishes the two failure shapes, because they need different messages:
+#   a) a run STARTED and never completed  -> that run died. Real, actionable.
+#   b) no run has started in >36h         -> the launchd agent isn't firing.
+# A start with no completion is only treated as death once it is older than
+# MAX_RUN_SECS, so an in-progress scan (they take ~5-20 min) is never flagged.
+DOWN_DETAIL_COMFY_SCAN=""
+COMFY_SCAN_MAX_RUN_SECS=$((2 * 3600))
+# Prefer the "[epoch:N]" tag embedded in the banner (added 2026-09-09) -- it's
+# immune to TZ changes. Fall back to the old %Z-based parse for log lines
+# written before that tag existed. That old parse only works while the box's
+# current TZ matches the abbreviation in the line (e.g. it fails on a CEST
+# line once the box is set to EDT while traveling), which is exactly the bug
+# that made this check misfire as "no scan activity at all" on 2026-09-09.
+parse_scan_ts() {
+    local raw="$1" epoch
+    epoch=$(echo "$raw" | grep -oE '\[epoch:[0-9]+\]' | grep -oE '[0-9]+')
+    if [ -n "$epoch" ]; then
+        echo "$epoch"
+    else
+        date -j -f "%a %b %e %T %Z %Y" "$raw" +%s 2>/dev/null || echo 0
+    fi
+}
+strip_epoch_tag() { echo "$1" | sed -E 's/ \[epoch:[0-9]+\]//'; }
+
+if [ ! -f "$COMFY_SCAN_LOG" ]; then
+    DOWN_TRIGGERED[COMFY_SCAN]=1
+    DOWN_DETAIL_COMFY_SCAN="${COMFY_SCAN_LOG} does not exist -- the daily scan has never run.\n"
+else
+    LAST_START_RAW=$(grep "scheduled fleet scan starting" "$COMFY_SCAN_LOG" 2>/dev/null | tail -1 \
+        | sed -E 's/^=== (.*) -- scheduled fleet scan starting ===$/\1/')
+    LAST_OK_RAW=$(grep "scheduled fleet scan complete" "$COMFY_SCAN_LOG" 2>/dev/null | tail -1 \
+        | sed -E 's/^=== (.*) -- scheduled fleet scan complete ===$/\1/')
+    LAST_START_TS=$([ -n "$LAST_START_RAW" ] && parse_scan_ts "$LAST_START_RAW" || echo 0)
+    LAST_OK_TS=$([ -n "$LAST_OK_RAW" ] && parse_scan_ts "$LAST_OK_RAW" || echo 0)
+    LAST_START_RAW=$(strip_epoch_tag "$LAST_START_RAW")
+    LAST_OK_RAW=$(strip_epoch_tag "$LAST_OK_RAW")
+    FAILED_RUNS=$(( $(grep -c "scheduled fleet scan starting" "$COMFY_SCAN_LOG") \
+                  - $(grep -c "scheduled fleet scan complete" "$COMFY_SCAN_LOG") ))
+
+    if [ "$LAST_START_TS" -gt "$LAST_OK_TS" ] \
+       && [ $(( NOW - LAST_START_TS )) -gt "$COMFY_SCAN_MAX_RUN_SECS" ]; then
+        # (a) started, never finished
+        DOWN_TRIGGERED[COMFY_SCAN]=1
+        DOWN_DETAIL_COMFY_SCAN="Last run started ${LAST_START_RAW} and never logged completion ($(( (NOW - LAST_START_TS) / 3600 ))h ago).\n"
+        DOWN_DETAIL_COMFY_SCAN+="${FAILED_RUNS} run(s) have started without completing.\n"
+        if [ "$LAST_OK_TS" -eq 0 ]; then
+            DOWN_DETAIL_COMFY_SCAN+="No run has EVER completed. Reports are only as fresh as the last manual run.\n"
+        else
+            DOWN_DETAIL_COMFY_SCAN+="Last successful completion: ${LAST_OK_RAW}.\n"
+        fi
+    elif [ "$LAST_OK_TS" -eq 0 ] && [ "$LAST_START_TS" -eq 0 ]; then
+        DOWN_TRIGGERED[COMFY_SCAN]=1
+        DOWN_DETAIL_COMFY_SCAN="No scan activity at all in ${COMFY_SCAN_LOG}.\n"
+    elif [ "$LAST_OK_TS" -ne 0 ] && [ $(( NOW - LAST_OK_TS )) -gt "$COMFY_SCAN_STALE_SECS" ]; then
+        # (b) completing, but too long ago -- agent not firing
+        DOWN_TRIGGERED[COMFY_SCAN]=1
+        DOWN_DETAIL_COMFY_SCAN="Last successful scan completed $(( (NOW - LAST_OK_TS) / 3600 ))h ago (threshold $((COMFY_SCAN_STALE_SECS / 3600))h) -- the daily agent may not be firing.\n"
+    fi
+fi
+
+# --- Evaluate each condition: alert / suppress / clear / ok ---
+check_condition_streak() {
+    local triggered=$1 last_alert=$2 was_active=$3 streak=$4 threshold=$5
+    if [ "$triggered" -eq 1 ]; then
+        streak=$(( streak + 1 ))
+        if [ "$streak" -ge "$threshold" ]; then
+            if [ "$was_active" -eq 0 ] || [ $(( NOW - last_alert )) -ge $ALERT_INTERVAL ]; then
+                echo "alert $streak"
+            else
+                echo "suppress $streak"
+            fi
+        else
+            echo "wait $streak"
+        fi
+    elif [ "$was_active" -eq 1 ]; then
+        echo "clear 0"
+    else
+        echo "ok 0"
+    fi
+}
+
+ALERT_BODY=""
+CLEAR_BODY=""
+
+for svc in COMFY_HTTP COMFY_SCAN METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
+    # Missing (process not found)
+    trig=${MISSING_TRIGGERED[$svc]}
+    last=$(eval echo \$MISSING_${svc}_LAST_ALERT)
+    active=$(eval echo \$MISSING_${svc}_ACTIVE)
+    streak=$(eval echo \$MISSING_${svc}_STREAK)
+    read verdict new_streak <<< "$(check_condition_streak $trig $last $active $streak $(threshold_for $svc))"
+    eval "MISSING_${svc}_STREAK=$new_streak"
+    case "$verdict" in
+        alert)
+            eval "MISSING_${svc}_LAST_ALERT=$NOW; MISSING_${svc}_ACTIVE=1"
+            ALERT_BODY+="=== ${svc} MISSING ===\n"
+            ALERT_BODY+="No process matching '${svc}' found for ${new_streak} consecutive checks (~$((new_streak * 5)) min).\n\n"
+            ;;
+        clear)   eval "MISSING_${svc}_ACTIVE=0"
+                 CLEAR_BODY+="  - ${svc} process is back\n" ;;
+        suppress) eval "MISSING_${svc}_ACTIVE=1" ;;
+        wait|ok) eval "MISSING_${svc}_ACTIVE=0" ;;
+    esac
+
+    # Down (process present, HTTP health check failing). 2026-09-04 fix: only evaluate
+    # this at all when the service isn't ALSO missing this round. check_service() sets
+    # DOWN_TRIGGERED[$svc]=0 whenever the process is gone (there's nothing to curl), but
+    # treating that as a real "down" reading of 0 fed a false "<svc> is responding
+    # again" CLEAR_BODY line the moment a service went from down-but-running straight to
+    # missing/crashed — the exact same run that also reports it MISSING. Skipping the
+    # eval entirely when missing leaves DOWN_${svc}_ACTIVE/STREAK untouched (frozen, not
+    # cleared), so a real recovery still gets correctly reported once the service is
+    # actually back and healthy again.
+    #
+    # COMFY_SCAN is unaffected by that guard: it is a freshness-only pseudo-service with
+    # no process, seeded MISSING_TRIGGERED=0, so its DOWN state is always evaluated.
+    if [ "${MISSING_TRIGGERED[$svc]}" -eq 0 ]; then
+        trig=${DOWN_TRIGGERED[$svc]}
+        last=$(eval echo \$DOWN_${svc}_LAST_ALERT)
+        active=$(eval echo \$DOWN_${svc}_ACTIVE)
+        streak=$(eval echo \$DOWN_${svc}_STREAK)
+        read verdict new_streak <<< "$(check_condition_streak $trig $last $active $streak $(threshold_for $svc))"
+        eval "DOWN_${svc}_STREAK=$new_streak"
+        case "$verdict" in
+            alert)
+                eval "DOWN_${svc}_LAST_ALERT=$NOW; DOWN_${svc}_ACTIVE=1"
+                if [ "$svc" = "COMFY_SCAN" ]; then
+                    ALERT_BODY+="=== COMFY FLEET SCAN STALE ===\n"
+                else
+                    ALERT_BODY+="=== ${svc} NOT RESPONDING ===\n"
+                fi
+                if [ "$svc" = "COMFY_SCAN" ] && [ -n "$DOWN_DETAIL_COMFY_SCAN" ]; then
+                    ALERT_BODY+="$(echo -e "$DOWN_DETAIL_COMFY_SCAN")\nCheck: grep -E 'scan complete|FAILED' ${COMFY_SCAN_LOG} | tail\n\n"
+                elif [ "$svc" = "HEARTBEAT_WRITER" ] && [ -n "$DOWN_DETAIL_HEARTBEAT_WRITER" ]; then
+                    ALERT_BODY+="Present for ${new_streak} consecutive checks (~$((new_streak * 5)) min):\n$(echo -e "$DOWN_DETAIL_HEARTBEAT_WRITER")\n\n"
+                else
+                    ALERT_BODY+="Process is running but its HTTP endpoint did not return 200 for ${new_streak} consecutive checks.\n\n"
+                fi
+                ;;
+            clear)   eval "DOWN_${svc}_ACTIVE=0"
+                     CLEAR_BODY+="  - ${svc} is responding again\n" ;;
+            suppress) eval "DOWN_${svc}_ACTIVE=1" ;;
+            wait|ok) eval "DOWN_${svc}_ACTIVE=0" ;;
+        esac
+    fi
+done
+
+# --- Educational footer ---
+FOOTER="------------------------------------------------------------------------
+WHAT THESE ALERTS MEAN AND WHAT TO DO
+------------------------------------------------------------------------
+
+<SVC> MISSING:
+No process matching the service's launchd command was found — it quit or
+crashed. Requires ${FAIL_THRESHOLD} consecutive checks (~$((FAIL_THRESHOLD * 5)) min) before
+alerting for most services (COMFY_HTTP uses a longer ${FAIL_THRESHOLD_COMFY_HTTP}-check
+/ ~$((FAIL_THRESHOLD_COMFY_HTTP * 5))-min threshold — it's prone to transient
+OneDrive-sync hiccups on the folder it serves), to ride out a normal restart.
+All of these are launchd KeepAlive agents, so this firing at all usually means
+it's crash-looping faster than launchd can win.
+
+What to do:
+  1. launchctl list | grep com.dennis
+  2. launchctl kickstart -k gui/\$(id -u)/com.dennis.<label>
+  3. Check that service's own log under ~/Library/Logs/ for why it exited.
+
+<SVC> NOT RESPONDING:
+The process is running but its own HTTP endpoint isn't answering — likely hung.
+
+What to do:
+  1. curl the service's URL (see the *_URL constants at the top of this script)
+  2. If hung: launchctl kickstart -k gui/\$(id -u)/com.dennis.<label>
+
+HEARTBEAT_WRITER MISSING:
+No process matching '${HEARTBEAT_WRITER_PROC_PATTERN}' found — this box's own
+fleet-status heartbeat/machine_info/metrics_history files have stopped
+updating, which silently blinds the fleet dashboard to this box even though
+everything else here may be fine.
+
+What to do:
+  1. launchctl kickstart -k gui/\$(id -u)/com.dennis.heartbeat-writer
+  2. cat ~/Library/Logs/heartbeat_writer.log — look for why it exited
+
+HEARTBEAT_WRITER NOT RESPONDING:
+The process is running but ${HEARTBEAT_FILE} hasn't been updated within
+${HEARTBEAT_STALE_SECS}s (it should tick every 150s) — likely hung mid-loop.
+
+What to do:
+  1. ls -la ${HEARTBEAT_FILE}   -- confirm how stale
+  2. launchctl kickstart -k gui/\$(id -u)/com.dennis.heartbeat-writer
+
+METRICS_SERVER MISSING / NOT RESPONDING:
+No process matching '${METRICS_SERVER_PROC_PATTERN}', or it's running but not
+serving this box's own heartbeat file over HTTP (127.0.0.1:9100). The fleet
+checker pulls from here over Tailscale — either failure mode means the fleet
+dashboard can't see this box, even if HEARTBEAT_WRITER itself is fine.
+
+What to do:
+  1. curl http://127.0.0.1:9100/heartbeat_${HOST}.txt
+  2. launchctl kickstart -k gui/\$(id -u)/com.dennis.fleet-metrics-server
+------------------------------------------------------------------------"
+
+# --- Save state ---
+{
+    for svc in COMFY_HTTP COMFY_SCAN METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
+        for k in MISSING_${svc}_LAST_ALERT MISSING_${svc}_ACTIVE MISSING_${svc}_STREAK \
+                 DOWN_${svc}_LAST_ALERT DOWN_${svc}_ACTIVE DOWN_${svc}_STREAK; do
+            echo "$k=$(eval echo \$$k)"
+        done
+    done
+} > "$STATE_FILE"
+
+# --- Send alert email ---
+if [ -n "$ALERT_BODY" ]; then
+    {
+        echo "Subject: [${HOST}] HEALTH ALERT -- $(date '+%Y-%m-%d %H:%M')"
+        echo ""
+        echo -e "$ALERT_BODY"
+        echo "$FOOTER"
+    } | "$MSMTP" -a icloud "$TO"
+fi
+
+# --- Send all-clear email ---
+if [ -n "$CLEAR_BODY" ]; then
+    {
+        echo "Subject: [${HOST}] ALL CLEAR -- $(date '+%Y-%m-%d %H:%M')"
+        echo ""
+        echo "The following conditions have resolved:"
+        echo ""
+        echo -e "$CLEAR_BODY"
+    } | "$MSMTP" -a icloud "$TO"
+fi
+
+# --- Heartbeat (matches mmm's rationale) ---
+# Everything above is silent by design on a healthy run -- one line per run, always
+# emitted, to plain stdout so com.dennis.mb-health-monitor.plist's StandardOutPath
+# gives positive proof the job ran vs. silently broke.
+ACTIVE_COUNT=$(grep -c "_ACTIVE=1" "$STATE_FILE" 2>/dev/null || true)
+ACTIVE_COUNT=${ACTIVE_COUNT:-0}
+AUTOHEAL_NOTE=""
+[ "$COMFY_HTTP_AUTOHEALED" -eq 1 ] && AUTOHEAL_NOTE=" (auto-healed comfy-fleet-http)"
+echo "$(date '+%Y-%m-%d %H:%M:%S') check complete — ${ACTIVE_COUNT} active alert(s)${AUTOHEAL_NOTE}"

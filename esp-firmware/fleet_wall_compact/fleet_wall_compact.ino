@@ -143,6 +143,8 @@ static FleetTile tiles[MAX_TILES];
 static lv_obj_t *hosts_chip;
 static lv_obj_t *services_chip;
 static lv_obj_t *footer_label;
+static lv_obj_t *updated_label;
+static volatile uint32_t last_update_ms = 0;
 static lv_obj_t *alert_rail;
 static lv_obj_t *alert_label;
 
@@ -439,6 +441,16 @@ void fleet_ui_build(void) {
     lv_obj_set_style_text_color(footer_label, COL_TEXT_FAINT, 0);
     lv_obj_set_style_text_font(footer_label, &lv_font_montserrat_14, 0);
     lv_obj_align(footer_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    // Live "updated Ns ago" readout, bottom-right -- ticks every second in
+    // loop() independent of the 15s poll interval, so a frozen/stalled
+    // screen is obviously distinguishable from a live one (no other visual
+    // cue changes between polls otherwise).
+    updated_label = lv_label_create(bottom);
+    lv_label_set_text(updated_label, "updated --");
+    lv_obj_set_style_text_color(updated_label, COL_TEXT_FAINT, 0);
+    lv_obj_set_style_text_font(updated_label, &lv_font_montserrat_14, 0);
+    lv_obj_align(updated_label, LV_ALIGN_RIGHT_MID, -10, 0);
 }
 
 void fleet_ui_refresh(JsonDocument &doc) {
@@ -531,8 +543,29 @@ void fleet_ui_refresh(JsonDocument &doc) {
     }
     xSemaphoreGive(cache_mutex);
 
+    last_update_ms = millis();
+
+    // No RTC/NTP on this board, so there's no real date/time to show -- this
+    // is device uptime at the moment of the last successful poll, plus a
+    // count so it's obvious the number actually changed even if the uptime
+    // happens to look similar. Set once per poll here (not on a per-second
+    // timer in loop() -- that was itself forcing a screen touch every
+    // second and got dropped 2026-09-17, see loop()'s comment).
+    static uint32_t poll_count = 0;
+    poll_count++;
+    char updated_buf[32];
+    snprintf(updated_buf, sizeof(updated_buf), "poll #%lu  up %lus", (unsigned long)poll_count, (unsigned long)(last_update_ms / 1000));
+
     ESP_ERROR_CHECK(esp_lv_adapter_lock(-1));
     render_grid();
+    lv_label_set_text(updated_label, updated_buf);
+    // Force a full repaint rather than relying on LVGL's normal per-widget
+    // diffed invalidation -- the same experiment fleet_wall used against its
+    // RGB LCD ghosting/flicker on page switches. This layout redraws all 18
+    // tiles every poll (vs. fleet_wall's 8), so if partial-redraw tearing is
+    // the mechanism, it's the more likely culprit here (confirmed reproducing
+    // 2026-09-17: flicker on every 15s poll, no errors logged underneath it).
+    lv_obj_invalidate(lv_scr_act());
     esp_lv_adapter_unlock();
 }
 
@@ -793,6 +826,19 @@ static void show_detail_overlay(int machine_idx) {
 
 static void fleet_wifi_connect(void) {
     WiFi.mode(WIFI_STA);
+    // ESP32 WiFi's default modem-sleep power-saving mode cycles the radio in
+    // and out of a low-power state, and each transition briefly contends for
+    // the same internal memory bus the RGB LCD's DMA needs for its own
+    // continuous refresh -- a documented cause of exactly the kind of
+    // screen glitch/flicker seen here, and it lines up with what was
+    // actually observed: the flicker only ever showed up around a poll
+    // (i.e. WiFi TX/RX activity), never during idle stretches between
+    // polls. Disabling sleep trades a little extra power draw (this board
+    // runs on wall power, not battery) for a WiFi radio that never
+    // idle-cycles the shared bus. Tried 2026-09-17 after several earlier
+    // LVGL-side mitigations (bigger bounce buffer, full-invalidate-on-poll,
+    // dropping the per-second UI tick) reduced but didn't eliminate it.
+    WiFi.setSleep(false);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     Serial.printf("[fleet_wall] connecting to %s", WIFI_SSID);
     uint32_t start = millis();
@@ -915,7 +961,41 @@ void setup()
 void loop()
 {
     // Consolidated layout has no pagination -- networking (net_task) drives
-    // every redraw via fleet_ui_refresh()/render_grid(), so loop() has
-    // nothing left to do.
+    // every tile redraw via fleet_ui_refresh()/render_grid(). loop() only
+    // checks the watchdog every second; it deliberately does NOT touch the
+    // display here. An earlier version repainted the "updated Ns ago" label
+    // every single second to prove liveness, but that itself forced a screen
+    // touch every ~1-2s instead of the intended idle-15s-then-refresh
+    // pattern (reported 2026-09-17) -- likely adding to the flicker rather
+    // than just reporting on it. The updated_label text is now only touched
+    // once per actual poll, inside fleet_ui_refresh().
+    static uint32_t last_tick = 0;
+    uint32_t now = millis();
+    if (now - last_tick >= 1000) {
+        last_tick = now;
+        uint32_t elapsed_s = (last_update_ms == 0) ? 0 : (now - last_update_ms) / 1000;
+
+        // Self-heal watchdog: net_task's HTTPClient::GET() can wedge on a
+        // half-open socket without ever timing out or logging an error
+        // (confirmed 2026-09-17 -- the board sat with "updated 8914s ago"
+        // and produced zero Serial output the whole time it was stuck, so
+        // this isn't detectable any other way). A stale readout this far
+        // past the poll interval means net_task is stuck, not just slow --
+        // reboot rather than let the display silently go stale forever.
+        if (last_update_ms != 0 && elapsed_s > (POLL_INTERVAL_MS / 1000) * 4) {
+            Serial.printf("[fleet_wall] watchdog: no successful poll in %lus, restarting\n", (unsigned long)elapsed_s);
+            // Briefly take-then-release the LVGL adapter lock before
+            // restarting -- ESP.restart() doesn't wait for any in-flight
+            // RGB panel flush/DMA to finish, and reported 2026-09-17 that a
+            // watchdog reboot sometimes left the screen mid-paint, needing a
+            // manual power cycle to recover. Acquiring the lock blocks until
+            // the render task isn't mid-flush (same lock it flushes under),
+            // giving the panel a clean stopping point before the reset.
+            ESP_ERROR_CHECK(esp_lv_adapter_lock(-1));
+            esp_lv_adapter_unlock();
+            delay(150); // let the flush actually finish + the log line flush over serial
+            ESP.restart();
+        }
+    }
     delay(200);
 }
