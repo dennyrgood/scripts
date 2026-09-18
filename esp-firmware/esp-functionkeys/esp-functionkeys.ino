@@ -120,13 +120,13 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
     },
 };
 
-// Per-cell context handed to the event callback so it knows which
-// keystroke to send, in addition to which label to recolor.
 // Per-column colors, matching the physical printed key strip above the keys:
 // amber, amber, dark green, dark green, yellow, purple, dark green.
 static const uint32_t COL_FILL_HEX[N_COLS] = {0xE8590C, 0xE8590C, 0x22C55E, 0x22C55E, 0xFBBF24, 0x7B3FA6, 0x22C55E};
 static const bool COL_DARK_TEXT[N_COLS]    = {true,     true,     false,    false,    true,     false,    false};
 
+// Per-cell context handed to the event callback so it knows which
+// keystroke to send and which colors to restore after a press.
 struct CellCtx {
     lv_obj_t *content; // nullptr for blank cells
     int row, col;
