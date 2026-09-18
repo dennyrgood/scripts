@@ -992,15 +992,18 @@ void loop()
         // reboot rather than let the display silently go stale forever.
         if (last_update_ms != 0 && elapsed_s > (POLL_INTERVAL_MS / 1000) * 4) {
             Serial.printf("[fleet_wall] watchdog: no successful poll in %lus, restarting\n", (unsigned long)elapsed_s);
-            // Briefly take-then-release the LVGL adapter lock before
-            // restarting -- ESP.restart() doesn't wait for any in-flight
-            // RGB panel flush/DMA to finish, and reported 2026-09-17 that a
-            // watchdog reboot sometimes left the screen mid-paint, needing a
-            // manual power cycle to recover. Acquiring the lock blocks until
-            // the render task isn't mid-flush (same lock it flushes under),
-            // giving the panel a clean stopping point before the reset.
-            ESP_ERROR_CHECK(esp_lv_adapter_lock(-1));
-            esp_lv_adapter_unlock();
+            // Bounded-timeout lock attempt, not esp_lv_adapter_lock(-1)
+            // (infinite wait) -- confirmed 2026-09-17 the board sat frozen
+            // for 90+ minutes with the watchdog never firing, because this
+            // exact "wait for a clean flush point" step was itself blocking
+            // forever on the same lock a wedged render/display task was
+            // holding. If whatever's actually stuck IS the display side, an
+            // infinite wait here defeats the entire point of the watchdog.
+            // A short timeout still gives a real hang (net_task) a clean
+            // stopping point when possible, but the board reboots either way.
+            if (esp_lv_adapter_lock(2000) == ESP_OK) {
+                esp_lv_adapter_unlock(); // only if we actually got it -- giving a recursive mutex we don't own is undefined behavior
+            }
             delay(150); // let the flush actually finish + the log line flush over serial
             ESP.restart();
         }
