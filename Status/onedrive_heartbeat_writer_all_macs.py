@@ -37,6 +37,7 @@ HOSTNAME_MAP = {
     # DNS-rebinding 403 on hostname URLs); cover both raw spellings.
     "denniss-2nd-macbook-air.local": "denniss-2nd-macbook-air",
     "Mathes-Mac-mini.local":     "mathes-mac-mini",
+    "FleetDev":                  "fleetdev",
 }
 def _tailscale_self_host():
     """Fallback identity source for when socket.gethostname() misses HOSTNAME_MAP.

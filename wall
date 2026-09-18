@@ -7,6 +7,11 @@
 HOSTNAME=$(hostname -s)
 
 case "$HOSTNAME" in
+  FleetDev)
+    PROFILE_LINE='set current settings of fleetWin to settings set "Fleet"'
+    BOUNDS="{-640, 25, 0, 1080}"
+    LAYOUT="3fac,207x141,0,0[207x42,0,0{51x42,0,0,1,51x42,52,0,2,51x42,104,0,3,51x42,156,0,4},207x43,0,43{51x43,0,43,5,51x43,52,43,6,51x43,104,43,7,51x43,156,43,8},207x34,0,87{51x34,0,87,9,51x34,52,87,10,51x34,104,87,11,51x34,156,87,12},207x19,0,122,13]"
+    ;;
   denniss-macbook-air)
     PROFILE_LINE='set current settings of fleetWin to settings set "Fleet"'
     BOUNDS="{-640, 25, 0, 1080}"
@@ -62,7 +67,7 @@ echo "Launching wall..."
 
 osascript <<EOF
 tell application "Terminal"
-    set fleetWin to do script "tmuxp load -d -y ~/repos/fleet-configs/fleet.yaml; tmux set -t fleet pane-border-status top; tmux set -t fleet pane-border-format ' #{pane_title} '; tmux set -t fleet allow-rename off; tmux select-pane -t fleet:wall.0 -T AMSTDT; tmux select-pane -t fleet:wall.1 -T CWH; tmux select-pane -t fleet:wall.2 -T IB; tmux select-pane -t fleet:wall.3 -T TB; tmux select-pane -t fleet:wall.4 -T RWS; tmux select-pane -t fleet:wall.5 -T S3G; tmux select-pane -t fleet:wall.6 -T SGC; tmux select-pane -t fleet:wall.7 -T WBU; tmux select-pane -t fleet:wall.8 -T CWHU; tmux select-pane -t fleet:wall.9 -T NAS; tmux select-pane -t fleet:wall.10 -T MMM; tmux select-pane -t fleet:wall.11 -T MB2; tmux select-pane -t fleet:wall.12 -T MB; tmux attach -t fleet"
+    set fleetWin to do script "tmuxp load -d -y ~/repos/fleet-configs/fleet.yaml; tmux set -t fleet pane-border-status top; tmux set -t fleet pane-border-format ' #{pane_title} '; tmux set -t fleet allow-rename off; tmux select-pane -t fleet:wall.0 -T AMSTDT; tmux select-pane -t fleet:wall.1 -T CWH; tmux select-pane -t fleet:wall.2 -T IB; tmux select-pane -t fleet:wall.3 -T TB; tmux select-pane -t fleet:wall.4 -T RWS; tmux select-pane -t fleet:wall.5 -T S3G; tmux select-pane -t fleet:wall.6 -T FD; tmux select-pane -t fleet:wall.7 -T WBU; tmux select-pane -t fleet:wall.8 -T CWHU; tmux select-pane -t fleet:wall.9 -T NAS; tmux select-pane -t fleet:wall.10 -T MMM; tmux select-pane -t fleet:wall.11 -T MB2; tmux select-pane -t fleet:wall.12 -T MB; tmux attach -t fleet"
     $PROFILE_LINE
     activate
     delay 1.5
@@ -99,7 +104,7 @@ while tmux has-session -t fleet 2>/dev/null; do
   tmux select-pane -t fleet:wall.3  -T TB     2>/dev/null
   tmux select-pane -t fleet:wall.4  -T RWS    2>/dev/null
   tmux select-pane -t fleet:wall.5  -T S3G    2>/dev/null
-  tmux select-pane -t fleet:wall.6  -T SGC    2>/dev/null
+  tmux select-pane -t fleet:wall.6  -T FD     2>/dev/null
   tmux select-pane -t fleet:wall.7  -T WBU    2>/dev/null
   tmux select-pane -t fleet:wall.8  -T CWHU   2>/dev/null
   tmux select-pane -t fleet:wall.9  -T NAS    2>/dev/null

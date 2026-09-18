@@ -23,7 +23,7 @@
 # service (mirrors mmm/WBU): missing = process not found (crashed/quit), down =
 # process running but its own HTTP endpoint isn't answering (hung).
 
-HOST="Mac-mini.local"
+HOST="fleetdev"
 TO="dennyrgood@yahoo.com"
 MSMTP="/opt/homebrew/bin/msmtp"
 STATE_FILE="/tmp/fleetdev-monitor-state.tmp"

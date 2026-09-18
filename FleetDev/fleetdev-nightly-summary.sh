@@ -14,7 +14,7 @@
 
 MSMTP="/opt/homebrew/bin/msmtp"
 TO="dennyrgood@yahoo.com"
-HOST="Mac-mini.local"
+HOST="fleetdev"
 LINES=10
 MONITOR_STATE="/tmp/fleetdev-monitor-state.tmp"
 # 2026-09-04: briefly padded to 43200s (12h) after the identical bug surfaced on mb2
@@ -97,17 +97,17 @@ TLDR+="${SCAN_TLDR}\n"
 if [ -f "$MONITOR_STATE" ]; then
     MONITOR_AGE=$(( $(date +%s) - $(stat -f %m "$MONITOR_STATE") ))
     if [ "$MONITOR_AGE" -gt "$MONITOR_STALE_SECS" ]; then
-        TLDR+="  mb-health-monitor: ⚠️ stale (last-run $((MONITOR_AGE / 60))m ago; threshold $((MONITOR_STALE_SECS / 60))m)\n"
+        TLDR+="  fleetdev-health-monitor: ⚠️ stale (last-run $((MONITOR_AGE / 60))m ago; threshold $((MONITOR_STALE_SECS / 60))m)\n"
         [ "$OK" -eq 1 ] && { OK=0; REASON="health monitor stale/missing"; }
     else
-        TLDR+="  mb-health-monitor: last-run $((MONITOR_AGE / 60))m ago ✓\n"
+        TLDR+="  fleetdev-health-monitor: last-run $((MONITOR_AGE / 60))m ago ✓\n"
     fi
     MONITOR_ACTIVE=$(grep "_ACTIVE=1" "$MONITOR_STATE" 2>/dev/null)
     if [ -n "$MONITOR_ACTIVE" ]; then
-        TLDR+="  mb-health-monitor: ⚠️ active alerts\n"
+        TLDR+="  fleetdev-health-monitor: ⚠️ active alerts\n"
         [ "$OK" -eq 1 ] && { OK=0; REASON="active health alerts"; }
     else
-        TLDR+="  mb-health-monitor: no active alerts ✓\n"
+        TLDR+="  fleetdev-health-monitor: no active alerts ✓\n"
     fi
     TLDR+="    comfy-fleet-http:  $(svc_status COMFY_HTTP)\n"
     TLDR+="    metrics-server:    $(svc_status METRICS_SERVER)\n"
@@ -117,7 +117,7 @@ if [ -f "$MONITOR_STATE" ]; then
     TLDR+="    tmdb-explorer:     $(svc_status TMDB)\n"
     TLDR+="    travel-http:       $(svc_status TRAVEL_HTTP)\n"
 else
-    TLDR+="  mb-health-monitor: ⚠️ state file missing ($MONITOR_STATE)\n"
+    TLDR+="  fleetdev-health-monitor: ⚠️ state file missing ($MONITOR_STATE)\n"
     [ "$OK" -eq 1 ] && { OK=0; REASON="health monitor stale/missing"; }
 fi
 

@@ -30,15 +30,24 @@ Rebuild:
    and fleet-metrics-server LaunchAgents (plists live in `scripts/launchagents/`).
 3. Metrics writer/server code: `scripts/Status/onedrive_heartbeat_writer_all_macs.py`
    and `scripts/Status/fleet_metrics_server.py`.
-4. Host-specific health monitor + nightly summary (NOT version-controlled in
-   `scripts/launchagents/` — plists live only in `~/Library/LaunchAgents` on this
-   box): `scripts/FleetDev/fleetdev-health-monitor.sh`,
+4. Host-specific health monitor + nightly summary: `scripts/FleetDev/fleetdev-health-monitor.sh`,
    `scripts/FleetDev/fleetdev-nightly-summary.sh`, and their plists
-   `com.dennis.fleetdev-health-monitor.plist` / `com.dennis.fleetdev-nightly-summary.plist`.
-   HOST/STATE_FILE for these are keyed on the box's actual heartbeat-writer identity
-   (`Mac-mini.local` as of 2026-09-18, not the Tailscale hostname `FleetDev` — check
-   the live `heartbeat_*.txt` filename under `~/fleet_monitor/` before trusting this
-   is still current).
+   `com.dennis.fleetdev-health-monitor.plist` / `com.dennis.fleetdev-nightly-summary.plist`,
+   version-controlled in `scripts/launchagents/` same as mb's.
+   HOST is `fleetdev` (2026-09-18), matching this box's live
+   `heartbeat_fleetdev.txt` under `~/fleet_monitor/`.
+
+   Note: on first boot after the MigrationAssistant clone, the heartbeat-writer
+   briefly self-identified as `Mac-mini.local` (its pre-clone stock Bonjour name)
+   because `onedrive_heartbeat_writer_all_macs.py`'s `HOSTNAME_MAP` had no entry
+   for the raw `socket.gethostname()` value `FleetDev` and its Tailscale-DNSName
+   fallback hadn't resolved cleanly yet — HOST is cached for the life of that
+   process, so it kept writing `heartbeat_Mac-mini.local.txt` until restarted.
+   Fixed 2026-09-18 by adding `"FleetDev": "fleetdev"` to `HOSTNAME_MAP` in
+   `scripts/Status/onedrive_heartbeat_writer_all_macs.py` and kickstarting
+   `com.dennis.heartbeat-writer`. If a future clone/rename repeats this, check
+   the live `heartbeat_*.txt` filename under `~/fleet_monitor/` rather than
+   trusting `hostname`/`scutil` alone before wiring a new box's scripts to it.
 
 Captured here: live `launchctl` state, installed agent list, `brew leaves`, `sw_vers`.
 EOF
