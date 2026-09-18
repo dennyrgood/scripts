@@ -424,18 +424,35 @@ FLEET = [
             },
         ],
     },
+    # {
+    #     # New box added 2026-08-31, may eventually replace surface3-gc. Deliberately
+    #     # minimal for now (per user): only the base Fleet Metrics Server / Heartbeat /
+    #     # Watchdog pipeline is deployed (see SurfaceGoLaptopGC/sgc-health-monitor.ps1) --
+    #     # no Plex/Syncthing checks yet, so no "services" entries below. machine_info/
+    #     # heartbeat still gets pulled automatically like every other FLEET host.
+    #     "display_name": "Plex Server GC New",
+    #     "tailscale_name": "surfacegolaptopgc",
+    #     "tailscale_ip": "100.125.98.23",
+    #     "primary_role": "Plex Server",
+    #     "probe_port": 22,
+    #     "services": [],
+    # },
     {
-        # New box added 2026-08-31, may eventually replace surface3-gc. Deliberately
-        # minimal for now (per user): only the base Fleet Metrics Server / Heartbeat /
-        # Watchdog pipeline is deployed (see SurfaceGoLaptopGC/sgc-health-monitor.ps1) --
-        # no Plex/Syncthing checks yet, so no "services" entries below. machine_info/
-        # heartbeat still gets pulled automatically like every other FLEET host.
-        "display_name": "Plex Server GC New",
-        "tailscale_name": "surfacegolaptopgc",
-        "tailscale_ip": "100.125.98.23",
-        "primary_role": "Plex Server",
-        "probe_port": 22,
-        "services": [],
+        # New box added 2026-09-18 (per user: everything else same as mb/denniss-macbook-air).
+        "display_name": "FleetDev",
+        "tailscale_name": "fleetdev",
+        "tailscale_ip": "100.76.238.48",
+        "primary_role": "Ollama",
+        "probe_port": 11434,  # Ollama port (ignored; Tailscale ping used instead)
+        "services": [
+            {
+                "name": "Ollama",
+                "port": 11434,
+                "priority": "P",
+                "check_type": "ollama",
+                "public_url": None,
+            },
+        ],
     },
     {
         "display_name": "WorkBenchUnix",
