@@ -79,13 +79,16 @@ static const bool ROW_SHIFT[N_ROWS] = {true,  false, true,  false};
 static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 
 // [row][col] -- row 0 = Ctrl+Shift, row 1 = Ctrl, row 2 = Shift, row 3 = Plain.
-// Only F10/F11 use all four layers; F12 stops at Ctrl; F6-F9 stop at Shift.
+// F8/F10/F11 use all four layers; F12 stops at Ctrl; F6/F7/F9 stop at Shift.
+// Blank cells (line_count 0) are dark-tinted and unlabeled but STILL send
+// their keystroke, so a Hammerspoon binding can be added without touching
+// this file.
 // No modifier symbols in the action text itself anymore -- see MOD_TAG above.
 static const CellSpec GRID[N_ROWS][N_COLS] = {
     { // row 0 -- Ctrl+Shift
         {{"", ""}, 0, false},
         {{"", ""}, 0, false},
-        {{"", ""}, 0, false},
+        {{"new", ""}, 1, false},
         {{"", ""}, 0, false},
         {{"email", ""}, 1, false},
         {{"move", ""}, 1, false},
@@ -94,11 +97,11 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
     { // row 1 -- Ctrl
         {{"", ""}, 0, false},
         {{"", ""}, 0, false},
-        {{"", ""}, 0, false},
+        {{"iTerm", ""}, 1, true},
         {{"", ""}, 0, false},
         {{"live", ""}, 1, false},
         {{"tear", ""}, 1, false},
-        {{"open", "term"}, 2, false},
+        {{"open", "iTerm"}, 2, false},
     },
     { // row 2 -- Shift
         {{"Delay", ""}, 1, false},
@@ -140,7 +143,7 @@ static CellCtx CELL_CTX[N_ROWS][N_COLS];
 // a few ms rather than an instant press+release, matching how a real
 // physical chord is timed (both keys down together, briefly, then up).
 static void send_keystroke(int row, int col) {
-    if (GRID[row][col].line_count == 0) return; // blank cell -- no real binding
+    // Blank cells send too -- no line_count guard on purpose.
     if (ROW_CTRL[row])  Keyboard.press(KEY_LEFT_CTRL);
     if (ROW_SHIFT[row]) Keyboard.press(KEY_LEFT_SHIFT);
     Keyboard.press(FKEY_CODES[col]);
@@ -264,11 +267,11 @@ static void build_ui(void) {
             }
 
             // Corner reference: modifier tag + F-key together (e.g. "^Sh F10"),
-            // or the bare F-key alone for blank/no-modifier cells -- a tag on
-            // an empty cell would reference a keystroke that doesn't exist.
+            // or the bare F-key alone for the no-modifier row. Blank cells
+            // send their keystroke too, so they get the tag as well.
             lv_obj_t *fkey = lv_label_create(cell);
             char fkey_buf[16];
-            if (spec.line_count > 0 && MOD_TAG[row][0] != '\0') {
+            if (MOD_TAG[row][0] != '\0') {
                 snprintf(fkey_buf, sizeof(fkey_buf), "%s %s", MOD_TAG[row], FKEYS[col]);
             } else {
                 snprintf(fkey_buf, sizeof(fkey_buf), "%s", FKEYS[col]);

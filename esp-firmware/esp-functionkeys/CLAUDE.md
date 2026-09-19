@@ -9,11 +9,16 @@ and augments the user's physical Surface Dial + extended-F-key setup.
 - Row = modifier layer, top to bottom: Ctrl+Shift, Ctrl, Shift, Plain.
   ROW_CTRL[] / ROW_SHIFT[] give the modifiers per row.
 - Every cell is exactly one keystroke: the row's modifiers + the
-  column's F-key. Blank cells (line_count 0) send nothing.
+  column's F-key. Blank cells (line_count 0) are dark and unlabeled but
+  STILL send their keystroke, so bindings can be added in Hammerspoon
+  without touching the firmware.
 - The grid mirrors the user's Hammerspoon bindings (posCtrlShift /
   posCtrl / posShift / posPlain tables in ~/.hammerspoon/init.lua).
   The action words are short labels for what Hammerspoon does on that
-  key. To know what a label really does, read that file.
+  key. To know what a label really does, read the secret-free copy
+  ~/.hammerspoon/init.lua.safe. NEVER read init.lua or the
+  init.lua-* backups (real secrets; also denied in settings.json).
+  That includes grep/cat/sed via Bash, not just the Read tool.
 - The physical printed key strip above the real keys shows the same
   layout. Column colors here are chosen to match that strip.
 
@@ -40,7 +45,7 @@ looks at the panel (often sends a photo) -> adjust -> repeat.
   from the user are used as given, e.g. "#22c55e" -> 0x22C55E. If a
   color looks off, adjust and reflash rather than debating it.
 - Change a label: edit the string in GRID[row][col]. Keep it short.
-  Use 2 lines only where line_count is 2 (see "open"/"term").
+  Use 2 lines only where line_count is 2 (see "open"/"Iterm").
 - Add or remove the "(cyc)" tag: flip that cell's cyc flag.
 - Move or restyle text (alignment, font, corner tags): the cell is
   built in build_ui(). Label position is lv_obj_align on `content`.
@@ -106,7 +111,8 @@ connector is currently in use.
 - Command (from this directory):
   arduino-cli compile --upload -p /dev/cu.usbmodem5B5E0664711 \
     --fqbn "esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB,USBMode=default,CDCOnBoot=cdc" .
-  (flash-fkeys.sh does the same but waits for an Enter keypress.)
+  (./flash-fkeys.sh does the same: it defaults to the UART1 port, has
+  no BOOT/RESET prompt, and refuses the USB and other-board ports.)
 - Never flash /dev/cu.usbmodem5B5E0656511. That is the other board
   (fleet wall, fleet_wall_compact).
 - Do not edit esp_panel_board_custom_conf.h. It drives EXIO5 low to
