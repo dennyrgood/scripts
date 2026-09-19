@@ -17,12 +17,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# 2026-09-19: analysis reads a plain local copy of each box's reports, pulled
+# over rsync (see pull_host), NOT the OneDrive comfy-reports folder. Under
+# launchd the OneDrive folder's new files arrive as cloud-only placeholders
+# that this Mac's launchd context cannot download (Errno 11), which failed
+# every scheduled run from 2026-09-19. The Windows boxes still write to
+# OneDrive exactly as before.
+REPORTS_LOCAL="$SCRIPT_DIR/reports-local"
 NO_ANALYZE=false
+PULL_ONLY=false
 HOSTS=()
 
 for arg in "$@"; do
   case "$arg" in
     --no-analyze) NO_ANALYZE=true ;;
+    --pull-only) PULL_ONLY=true ;;
     ib|imagebeast)      HOSTS+=("imagebeast") ;;
     cwh|chatworkhorse)  HOSTS+=("chatworkhorse") ;;
     tb|travelbeast)     HOSTS+=("travelbeast") ;;
@@ -44,7 +53,7 @@ fi
 # What IS worth catching is the silent half of that duplication: adding a
 # machine to fleet_config.json and forgetting to add a case entry here, so it
 # never gets scanned and nothing ever says so. This check makes that loud.
-CONFIG_JSON="$HOME/OneDrive/DropBoxReplacement/MathesDropBox/0ComfyUI/Work/comfy-reports/fleet_config.json"
+CONFIG_JSON="$REPORTS_LOCAL/fleet_config.json"
 if [ -f "$CONFIG_JSON" ]; then
   for cfg_host in $(/opt/homebrew/bin/python3 -c '
 import json,sys
@@ -103,8 +112,38 @@ scan_host() {
   echo "  Done: $host"
 }
 
+# Pulls each machine's NEWEST file of every report type from its OneDrive
+# comfy-reports folder (Cygwin path form, per fleet notes) into $REPORTS_LOCAL.
+# Newest-per-type only, no --delete: the scan's own prune keeps the local dir
+# small, and pulling history would just re-fetch what it prunes.
+pull_host() {
+  local host="$1" user prefix src pat newest
+  case "$host" in
+    imagebeast)    user=Pc;    prefix=IMAGEBEAST ;;
+    chatworkhorse) user=pc;    prefix=CHATWORKHORSE ;;
+    travelbeast)   user=DrDen; prefix=TRAVELBEAST ;;
+    *) echo "No pull config for host: $host" >&2; return 1 ;;
+  esac
+  src="$host:/cygdrive/c/Users/$user/OneDrive/DropBoxReplacement/MathesDropBox/0ComfyUI/Work/comfy-reports/"
+  mkdir -p "$REPORTS_LOCAL"
+  for pat in "Models-*.csv" "CustomNodes-*.txt" "WorkflowMap-*-full_map.csv" \
+             "WorkflowMap-*-model_usage.csv" "WorkflowMap-*-unused_models.csv" \
+             "WorkflowMap-*-missing_models.csv" "WorkflowMap-*-node_types.csv" \
+             "WorkflowMap-*-summary.txt"; do
+    newest=$(rsync --list-only --include="${prefix}-${pat}" --exclude='*' "$src" \
+             | awk '{print $NF}' | grep -v '/$' | sort | tail -1) || true
+    if [ -z "$newest" ]; then
+      echo "  WARNING: no ${prefix}-${pat} on $host" >&2
+      continue
+    fi
+    rsync -a "$src$newest" "$REPORTS_LOCAL/" || echo "  WARNING: rsync failed for $newest" >&2
+  done
+  echo "  Pulled: $host -> $REPORTS_LOCAL"
+}
+
 for h in "${HOSTS[@]}"; do
-  scan_host "$h"
+  [ "$PULL_ONLY" = true ] || scan_host "$h"
+  pull_host "$h"
 done
 
 if [ "$NO_ANALYZE" = false ]; then
@@ -114,6 +153,5 @@ if [ "$NO_ANALYZE" = false ]; then
   echo "============================================="
   # Call comfy_fleet.py directly (not comfy_fleet.sh) -- comfy_fleet.sh calls
   # this script by default, and going back through it here would loop.
-  REPORTS_DIR="$HOME/OneDrive/DropBoxReplacement/MathesDropBox/0ComfyUI/Work/comfy-reports"
-  ( cd "$REPORTS_DIR" && /opt/homebrew/bin/python3 "$SCRIPT_DIR/comfy_fleet.py" )
+  ( cd "$REPORTS_LOCAL" && /opt/homebrew/bin/python3 "$SCRIPT_DIR/comfy_fleet.py" )
 fi

@@ -34,3 +34,4 @@ esp-firmware/fleet_wall*/fleet_wall_secrets.h
 # Local backup snapshots of the fleet_wall firmware dir -- not source, just
 # a pre-change safety copy; git history is the real backup.
 esp-firmware/fleet_wall.backup-*/
+comfyui/reports-local/

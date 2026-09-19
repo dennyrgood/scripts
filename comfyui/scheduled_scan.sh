@@ -10,7 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPORTS_DIR="$HOME/OneDrive/DropBoxReplacement/MathesDropBox/0ComfyUI/Work/comfy-reports"
+REPORTS_DIR="$(cd "$(dirname "$0")" && pwd)/reports-local"  # 2026-09-19: local, pulled by remote_scan.sh; not OneDrive
 OUTPUT_DIR="$REPORTS_DIR/fleet-output"
 # 2026-08-31: comfy-fleet-http serves LOCAL_OUTPUT_DIR, NOT $OUTPUT_DIR directly.
 # $OUTPUT_DIR lives inside OneDrive's live-syncing tree, and a long-running

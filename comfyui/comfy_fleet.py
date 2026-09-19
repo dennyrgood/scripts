@@ -128,6 +128,31 @@ def find_latest(reports_dir: Path, hostname: str, pattern: str) -> Path | None:
     return matches[-1] if matches else None
 
 
+def _hydrate(path: Path, attempts: int = 10) -> None:
+    """Force-reads a file so OneDrive downloads it if it's a cloud-only
+    ('dataless') placeholder, retrying with backoff (1,2,4,...,60s cap).
+
+    Found 2026-09-19: the Windows scan's new files arrived here as
+    placeholders and the scheduled run failed with Errno 11 even after
+    load_csv's ~63s retry; "Always Keep on This Device" did not stick. A
+    plain read from an interactive shell hydrated each file in <1s.
+    Logs the filename on failure so the scan log shows which file. Never
+    raises -- load_csv still gets its own retries and the final say.
+    """
+    import time
+    for attempt in range(attempts):
+        try:
+            with open(path, "rb") as f:
+                while f.read(1 << 20):
+                    pass
+            return
+        except OSError as e:
+            if attempt == attempts - 1:
+                print(f"  WARNING: could not hydrate {path.name}: {e}")
+                return
+            time.sleep(min(2 ** attempt, 60))
+
+
 def load_machine_files(reports_dir: Path, hostname: str) -> dict:
     """Load all report files for a machine, returning the latest of each type."""
     files = {}
@@ -143,6 +168,7 @@ def load_machine_files(reports_dir: Path, hostname: str) -> dict:
     for key, pattern in patterns.items():
         f = find_latest(reports_dir, hostname, pattern)
         if f:
+            _hydrate(f)
             files[key] = f
         else:
             print(f"  WARNING: No {key} file found for {hostname}")

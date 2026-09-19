@@ -14,7 +14,7 @@
 #    ./comfy_fleet.sh ib tb              # SSH-scan only these machines, then analyze
 # =============================================================
 
-REPORTS_DIR="$HOME/OneDrive/DropBoxReplacement/MathesDropBox/0ComfyUI/Work/comfy-reports"
+REPORTS_DIR="$(cd "$(dirname "$0")" && pwd)/reports-local"  # 2026-09-19: local, pulled by remote_scan.sh; not OneDrive
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 LOCAL_ONLY=false
