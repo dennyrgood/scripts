@@ -1,11 +1,13 @@
 #!/bin/bash
 # Created: 2026-08-30 UTC — daily health summary email for denniss-macbook-air (mb),
 # modeled on MathesMacMini/nightly_summary.sh but scoped to what actually runs on
-# THIS box. No UPS/Plex/Syncthing sections — none of that runs here. The one
-# scheduled (non-KeepAlive) job on this box, comfy-fleet-scan (daily 05:00), gets
-# its own freshness check here, the same role mmm's nightly script gives the Plex
-# sync log — mb-health-monitor.sh deliberately excludes it since a once-daily
-# StartCalendarInterval job is "missing" 23:55 hours a day by design.
+# THIS box. No UPS/Plex/Syncthing sections — none of that runs here.
+#
+# 2026-09-20: dropped the comfy-fleet-scan freshness check it used to carry here.
+# The scan agent (com.dennis.comfy-fleet-scan) isn't loaded on this box anymore --
+# it moved to fleetdev. The plist stays in the repo (launchagents/) as a backup
+# in case it's ever moved back here, but leave that plist alone; this script just
+# stopped checking for a job that's intentionally not running here.
 #
 # Sends via msmtp (iCloud SMTP, ~/.msmtprc) — see the mmm/WBU runbooks under
 # WorkBenchUnix/RUNBOOK_msmtp-credential-rotation.md for credential setup/rotation.
@@ -15,7 +17,6 @@
 MSMTP="/opt/homebrew/bin/msmtp"
 TO="dennyrgood@yahoo.com"
 HOST="denniss-macbook-air"
-LINES=10
 MONITOR_STATE="/tmp/denniss-macbook-air-monitor-state.tmp"
 # 2026-09-04: briefly padded to 43200s (12h) after the identical bug surfaced on mb2
 # (StartInterval launchd jobs don't fire/catch up during sleep, so a normal overnight
@@ -26,12 +27,6 @@ MONITOR_STATE="/tmp/denniss-macbook-air-monitor-state.tmp"
 # too if not already done). Padded a bit past the 5-min run interval to absorb ordinary
 # scheduling jitter, not to ride out sleep.
 MONITOR_STALE_SECS=1800   # 30 min (6x the 5-min run interval)
-
-SCAN_LOG="$HOME/Library/Logs/comfy_fleet_scan.log"
-SCAN_STALE_SECS=115200   # 32h — scan fires 05:00, nightly summary runs a few hours
-                         # later at 07:00; padded well past 24h so a single missed
-                         # day doesn't look identical to two missed days, matching
-                         # mmm's reasoning for its own padded threshold.
 
 fmt_age() {
     local secs=$1
@@ -61,39 +56,8 @@ OK=1
 REASON="all healthy"
 BODY=""
 
-# --- comfy-fleet-scan freshness ---
-# 2026-08-30: scan log content is untrusted (it's Windows paths from remote SSH
-# output, e.g. "...MathesDropBox\0ComfyUI\Work...") and gets embedded into BODY,
-# which is later rendered with `echo -e` further down. A raw backslash there is
-# not just cosmetic: echo -e treats "\0" as a literal NUL-byte escape, and a NUL
-# mid-body silently truncates the email for most mail clients/renderers -- the
-# UPS-analog section and the full state dump below never even made it out.
-# Doubling backslashes here defuses that before it reaches echo -e.
-BODY+="=== $SCAN_LOG ===\n"
-if [ -f "$SCAN_LOG" ]; then
-    BODY+="$(tail -$LINES "$SCAN_LOG" | sed 's/\\/\\\\/g')\n"
-else
-    BODY+="(file not found)\n"
-fi
-BODY+="\n"
-
-SCAN_TLDR=""
-if [ -f "$SCAN_LOG" ]; then
-    SCAN_AGE_SECS=$(( $(date +%s) - $(stat -f %m "$SCAN_LOG") ))
-    SCAN_AGE=$(fmt_age "$SCAN_AGE_SECS")
-    SCAN_TLDR="  comfy-fleet-scan: [${SCAN_AGE} ago] $(tail -1 "$SCAN_LOG" | sed 's/\\/\\\\/g')"
-    if [ "$OK" -eq 1 ] && [ "$SCAN_AGE_SECS" -gt "$SCAN_STALE_SECS" ]; then
-        OK=0; REASON="comfy-fleet-scan log stale (${SCAN_AGE})"
-        SCAN_TLDR="⚠️${SCAN_TLDR}"
-    fi
-else
-    SCAN_TLDR="  comfy-fleet-scan: ⚠️ log not found"
-    [ "$OK" -eq 1 ] && { OK=0; REASON="comfy-fleet-scan log missing — launchd may not have run it yet"; }
-fi
-
 # --- Health monitor watchdog (freshness + active alerts) in TLDR ---
 TLDR="============================= TLDR ===============================\n"
-TLDR+="${SCAN_TLDR}\n"
 if [ -f "$MONITOR_STATE" ]; then
     MONITOR_AGE=$(( $(date +%s) - $(stat -f %m "$MONITOR_STATE") ))
     if [ "$MONITOR_AGE" -gt "$MONITOR_STALE_SECS" ]; then
