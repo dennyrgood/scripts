@@ -80,7 +80,7 @@ static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 
 // [row][col] -- row 0 = Ctrl+Shift, row 1 = Ctrl, row 2 = Shift, row 3 = Plain.
 // F8/F10/F11 use all four layers; F12 stops at Ctrl; F6/F7/F9 stop at Shift.
-// Blank cells (line_count 0) are dark-tinted and unlabeled but STILL send
+// Blank cells (line_count 0) are unlabeled (same color, not dimmed) but STILL send
 // their keystroke, so a Hammerspoon binding can be added without touching
 // this file.
 // No modifier symbols in the action text itself anymore -- see MOD_TAG above.
@@ -133,7 +133,7 @@ static const bool COL_DARK_TEXT[N_COLS]    = {true,     true,     false,    fals
 struct CellCtx {
     lv_obj_t *content; // nullptr for blank cells
     int row, col;
-    lv_color_t fill;   // resting fill (dimmed for blank cells)
+    lv_color_t fill;   // resting fill
     lv_color_t border; // resting border
 };
 static CellCtx CELL_CTX[N_ROWS][N_COLS];
@@ -210,10 +210,10 @@ static void build_ui(void) {
             lv_obj_set_grid_cell(cell, LV_GRID_ALIGN_STRETCH, col, 1, LV_GRID_ALIGN_STRETCH, row, 1);
             lv_color_t base = lv_color_hex(COL_FILL_HEX[col]);
             lv_color_t txt  = COL_DARK_TEXT[col] ? lv_color_black() : lv_color_white();
-            // Blank cells (no binding) get a dark tint of the column color so
-            // populated cells stand out against them.
-            lv_color_t fill = (spec.line_count > 0) ? base : lv_color_mix(base, COL_BG, 60);
-            lv_color_t brd  = (spec.line_count > 0) ? lv_color_mix(lv_color_white(), base, 60) : lv_color_mix(base, COL_BG, 110);
+            // Blank cells are NOT dimmed: they send a keystroke like any other,
+            // so they get the same full column color, just with no label.
+            lv_color_t fill = base;
+            lv_color_t brd  = lv_color_mix(lv_color_white(), base, 60);
             CELL_CTX[row][col].fill = fill;
             CELL_CTX[row][col].border = brd;
             lv_obj_set_style_bg_color(cell, fill, 0);

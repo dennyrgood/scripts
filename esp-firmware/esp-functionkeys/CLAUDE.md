@@ -9,8 +9,8 @@ and augments the user's physical Surface Dial + extended-F-key setup.
 - Row = modifier layer, top to bottom: Ctrl+Shift, Ctrl, Shift, Plain.
   ROW_CTRL[] / ROW_SHIFT[] give the modifiers per row.
 - Every cell is exactly one keystroke: the row's modifiers + the
-  column's F-key. Blank cells (line_count 0) are dark and unlabeled but
-  STILL send their keystroke, so bindings can be added in Hammerspoon
+  column's F-key. Blank cells (line_count 0) are unlabeled (same full
+  color, not dimmed) but STILL send their keystroke, so bindings can be added in Hammerspoon
   without touching the firmware.
 - The grid mirrors the user's Hammerspoon bindings (posCtrlShift /
   posCtrl / posShift / posPlain tables in ~/.hammerspoon/init.lua).
@@ -33,8 +33,8 @@ and augments the user's physical Surface Dial + extended-F-key setup.
 - MOD_TAG[]: small modifier text in each cell's corner ("^Sh", "^",
   "Sh"). Text, not symbols: LV_SYMBOL_UP and "^" looked identical.
 - Cell layout: label top-left (Montserrat 20), F-key + modifier tag
-  bottom-right (Montserrat 14). Empty cells get a dark tint of their
-  column color. Pressed state = lighter fill + white border + glow.
+  bottom-right (Montserrat 14). Empty cells use the same column color
+  as labeled ones (no dimming). Pressed state = lighter fill + white border + glow.
 - send_keystroke(): the HID call, fires on release only.
 
 ## Common tasks (how requests usually go)
