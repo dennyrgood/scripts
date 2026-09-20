@@ -424,19 +424,19 @@ FLEET = [
             },
         ],
     },
-    # {
-    #     # New box added 2026-08-31, may eventually replace surface3-gc. Deliberately
-    #     # minimal for now (per user): only the base Fleet Metrics Server / Heartbeat /
-    #     # Watchdog pipeline is deployed (see SurfaceGoLaptopGC/sgc-health-monitor.ps1) --
-    #     # no Plex/Syncthing checks yet, so no "services" entries below. machine_info/
-    #     # heartbeat still gets pulled automatically like every other FLEET host.
-    #     "display_name": "Plex Server GC New",
-    #     "tailscale_name": "surfacegolaptopgc",
-    #     "tailscale_ip": "100.125.98.23",
-    #     "primary_role": "Plex Server",
-    #     "probe_port": 22,
-    #     "services": [],
-    # },
+    {
+        # New box added 2026-08-31, may eventually replace surface3-gc. Deliberately
+        # minimal for now (per user): only the base Fleet Metrics Server / Heartbeat /
+        # Watchdog pipeline is deployed (see SurfaceGoLaptopGC/sgc-health-monitor.ps1) --
+        # no Plex/Syncthing checks yet, so no "services" entries below. machine_info/
+        # heartbeat still gets pulled automatically like every other FLEET host.
+        "display_name": "Plex Server GC New",
+        "tailscale_name": "surfacegolaptopgc",
+        "tailscale_ip": "100.125.98.23",
+       "primary_role": "Plex Server",
+        "probe_port": 22,
+        "services": [],
+    },
     {
         # New box added 2026-09-18 (per user: same as mb/denniss-macbook-air, except
         # this one does not run Ollama, so no "services" entries below).

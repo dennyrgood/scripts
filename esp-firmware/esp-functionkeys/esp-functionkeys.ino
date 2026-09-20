@@ -92,7 +92,7 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
         {{"", ""}, 0, false},
         {{"email", ""}, 1, false},
         {{"move", ""}, 1, false},
-        {{"", ""}, 0, false},
+        {{"arrange", ""}, 1, false},
     },
     { // row 1 -- Ctrl
         {{"", ""}, 0, false},
