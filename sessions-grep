@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""sessions-grep ID-PREFIX REGEX - safely search inside one session.
+
+Prints only what was typed and said (user prompts and assistant replies, or
+the text of a claude.ai chat), never raw JSON or tool output. Each hit is a
+short snippet around the match, capped at -m hits (default 8), so the output
+is always small. Case-insensitive.
+
+  sessions-grep fcfcb089 'without a password|authorized'
+  sessions-grep d713b85f 'authorized_keys' -m 4
+
+Find ID-PREFIX with sessions-search. Stdlib only. ASCII only.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import claude_sessions_index as csi  # noqa: E402
+
+OUT = os.environ.get("CLAUDE_SESSIONS_DIR", os.path.expanduser("~/claude-sessions"))
+SNIP = 150  # characters of context each side of the match
+
+
+def snippet(text, m):
+    text = " ".join(text.split())
+    m2 = re.search(m.re.pattern, text, re.I)
+    a, b = (m2.start(), m2.end()) if m2 else (0, 0)
+    s = text[max(0, a - SNIP):b + SNIP]
+    return ("..." if a > SNIP else "") + s + ("..." if b + SNIP < len(text) else "")
+
+
+def find_record(prefix):
+    hits = []
+    with open(os.path.join(OUT, "INDEX.jsonl")) as fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r["id"].startswith(prefix):
+                hits.append(r)
+    if not hits:
+        sys.exit("no session id starts with '%s'" % prefix)
+    if len(hits) > 1:
+        sys.exit("'%s' is ambiguous: %s" % (prefix, ", ".join(h["id"][:10] for h in hits)))
+    return hits[0]
+
+
+def messages(r):
+    """Yield (label, text) for each user/assistant message, in order."""
+    path = r["transcript"]
+    if r.get("machine") == "WEB":
+        role, buf = "?", []
+        with open(path, errors="ignore") as fh:
+            for line in fh:
+                if line.startswith("## "):
+                    if buf:
+                        yield role, "\n".join(buf)
+                    role, buf = line[3:].strip(), []
+                elif not line.startswith("# "):
+                    buf.append(line.rstrip("\n"))
+        if buf:
+            yield role, "\n".join(buf)
+        return
+    with open(path, errors="ignore") as fh:
+        for line in fh:
+            try:
+                o = json.loads(line)
+            except ValueError:
+                continue
+            if o.get("type") not in ("user", "assistant") or o.get("isSidechain") or o.get("isMeta"):
+                continue
+            t = csi.block_text(o.get("message", {}).get("content"))
+            if t:
+                yield "%s %s" % ((o.get("timestamp") or "")[:16].replace("T", " "), o["type"]), t
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("prefix", help="session id prefix (8 characters is enough)")
+    ap.add_argument("regex", help="what to look for (case-insensitive regex, e.g. 'a|b')")
+    ap.add_argument("-m", type=int, default=8, help="max hits (default 8)")
+    a = ap.parse_args()
+
+    r = find_record(a.prefix)
+    try:
+        rx = re.compile(a.regex, re.I)
+    except re.error as e:
+        sys.exit("bad regex: %s" % e)
+    title = r.get("custom_title") or r.get("ai_title") or "(untitled)"
+    print("%s [%s] %s  %s" % (r["id"][:8], r["machine"], (r.get("last_ts") or "")[:10], title))
+    if not os.path.exists(r["transcript"]):
+        sys.exit("transcript file is missing: %s" % r["transcript"])
+    n = total = 0
+    for label, text in messages(r):
+        m = rx.search(text)
+        if not m:
+            continue
+        total += 1
+        if n < a.m:
+            n += 1
+            print("[%s] %s" % (label, snippet(text, m)))
+    if not total:
+        print("no matches for /%s/" % a.regex)
+    elif total > n:
+        print("(%d more matching messages not shown; narrow the regex or raise -m)" % (total - n))
+
+
+if __name__ == "__main__":
+    main()

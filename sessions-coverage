@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""sessions-coverage - how complete and how fresh is the session index?
+
+Prints one line per source (machine, plus WEB): how long ago it was last
+synced, whether it was reachable, and whether the transcripts on disk match
+the index (index lines == transcript files). The last line is a one-line
+verdict to paste into an answer. Read-only. Stdlib only. ASCII only.
+"""
+import glob
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+
+OUT = os.environ.get("CLAUDE_SESSIONS_DIR", os.path.expanduser("~/claude-sessions"))
+NOW = datetime.now(timezone.utc)
+
+
+def age(ts):
+    if not ts:
+        return None
+    try:
+        t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (NOW - t).total_seconds() / 3600.0
+
+
+def fmt(h):
+    if h is None:
+        return "never"
+    return "%dm ago" % (h * 60) if h < 1 else ("%.1fh ago" % h if h < 48 else "%.0fd ago" % (h / 24))
+
+
+def disk_count(m):
+    if m == "FleetDev":
+        own = re.sub(r"[/.]", "-", OUT)
+        return len([p for p in glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl"))
+                    if os.path.basename(os.path.dirname(p)) != own])
+    if m == "WEB":
+        return len(glob.glob(os.path.join(OUT, "machines", "WEB", "text", "*.txt")))
+    return len(glob.glob(os.path.join(OUT, "machines", m, "*", "*.jsonl")))
+
+
+def main():
+    sp = os.path.join(OUT, "STATUS.json")
+    if not os.path.exists(sp):
+        sys.exit("no STATUS.json in %s - run find-sessions first" % OUT)
+    st = json.load(open(sp))
+    print("index merged %s | %d sessions" % (fmt(age(st.get("generated_at"))), st.get("sessions", 0)))
+    problems, stale = [], []
+    for m, info in sorted(st["machines"].items(), key=lambda kv: kv[0].lower()):
+        n_idx = info.get("records", 0)
+        n_disk = disk_count(m)
+        by = " ".join("%s=%s" % kv for kv in sorted(info.get("by_status", {}).items())) or "-"
+        sync = info.get("sync")
+        if m == "FleetDev":
+            when = "live"
+        elif m == "WEB":
+            zips = glob.glob(os.path.join(OUT, "machines", "WEB", "*-000*.zip"))
+            when = "export %s" % (datetime.fromtimestamp(max(os.path.getmtime(z) for z in zips),
+                                                         timezone.utc).strftime("%Y-%m-%d")
+                                  if zips else "date unknown")
+        elif sync:
+            h = age(sync.get("last_success"))
+            when = "synced %s%s" % (fmt(h), "" if sync.get("reachable", True) else " (UNREACHABLE last try)")
+            if not sync.get("reachable", True):
+                problems.append("%s unreachable" % m)
+            if h is None or h > 6:
+                stale.append("%s %s" % (m, fmt(h)))
+        else:
+            when = "no sync record"
+            problems.append("%s has no sync record" % m)
+        ok = "match" if n_idx == n_disk else "MISMATCH"
+        if n_idx != n_disk:
+            problems.append("%s: %d indexed vs %d on disk" % (m, n_idx, n_disk))
+        print("  %-24s %-24s index=%-4d disk=%-4d %-8s %s" % (m, when, n_idx, n_disk, ok, by))
+    parts = []
+    if problems:
+        parts.append("WARNING - " + "; ".join(problems))
+    else:
+        parts.append("counts reconcile for all %d sources" % len(st["machines"]))
+    if stale:
+        parts.append("stale (>6h): " + "; ".join(stale))
+    if problems or stale:
+        parts.append("run find-sessions to refresh")
+    print("VERDICT: " + " | ".join(parts))
+
+
+if __name__ == "__main__":
+    main()

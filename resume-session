@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# resume-session <id-prefix> - reopen a Claude Code session found in the index.
+#
+#   resume-session a6ce0579        cd to its directory and `claude --resume` it
+#   resume-session -n a6ce0579     dry run: print the command instead of running it
+#
+# Looks the prefix up in ~/claude-sessions/INDEX.jsonl. If the session lives on
+# another machine, it runs the resume there over ssh (alias = machine name).
+
+set -u
+INDEX="$HOME/claude-sessions/INDEX.jsonl"
+DRY=0; PAUSE=1
+while [ "${1:-}" = "-n" ] || [ "${1:-}" = "-y" ]; do
+  [ "$1" = "-n" ] && DRY=1
+  [ "$1" = "-y" ] && PAUSE=0
+  shift
+done
+prefix="${1:-}"
+[ -z "$prefix" ] && { echo "usage: resume-session [-n] <id-prefix>" >&2; exit 2; }
+[ -f "$INDEX" ] || { echo "no index at $INDEX - run find-sessions first" >&2; exit 1; }
+
+matches="$(jq -r --arg p "$prefix" \
+  'select(.id|startswith($p)) | [.id,.machine,(.cwd // ""),(.custom_title // .ai_title // "")] | join("\t")' "$INDEX")"
+count="$(printf '%s' "$matches" | grep -c .)"
+if [ "$count" -eq 0 ]; then echo "no session id starts with '$prefix'" >&2; exit 1; fi
+if [ "$count" -gt 1 ]; then
+  echo "'$prefix' is ambiguous; use a longer prefix:" >&2
+  printf '%s\n' "$matches" | awk -F'\t' '{print "  " $1 "  " $2 "  " $4}' >&2
+  exit 1
+fi
+
+IFS=$'\t' read -r id machine cwd title <<< "$matches"
+echo "$title  [$machine]  $cwd" >&2
+
+# claude.ai web chats are not resumable from the CLI: open them in the browser.
+if [ "$machine" = "WEB" ]; then
+  url="https://claude.ai/chat/$id"
+  if [ "$DRY" -eq 1 ]; then echo "open $url"; exit 0; fi
+  echo "-> open $url" >&2
+  exec open "$url"
+fi
+[ -z "$cwd" ] && { echo "record has no cwd; cannot resume" >&2; exit 1; }
+
+if [ "$(printf '%s' "$machine" | tr 'A-Z' 'a-z')" = "$(hostname -s | tr 'A-Z' 'a-z')" ]; then
+  line="cd $(printf %q "$cwd") && claude --resume $id"
+  if [ "$DRY" -eq 1 ]; then echo "$line"; exit 0; fi
+  echo "-> $line" >&2
+  cd "$cwd" || exit 1
+  if [ "$PAUSE" -eq 1 ]; then
+    printf 'in %s on %s\n' "$(pwd)" "$(hostname -s)" >&2
+    printf 'Enter = start claude, Ctrl-C = cancel: ' >&2; read -r _
+  fi
+  exec claude --resume "$id"
+elif [[ "$cwd" =~ ^[A-Za-z]:[\\/] ]]; then
+  # Windows box: ssh lands in PowerShell, so send PowerShell syntax.
+  ps_cwd="${cwd//\'/\'\'}"
+  # Windows OpenSSH clears the screen when the session opens, wiping what was printed
+  # above, so the title is printed again from the remote side, after the clear.
+  ps_title="${title//\'/\'\'}"
+  ps_pause=""
+  [ "$PAUSE" -eq 1 ] && ps_pause="Write-Host '$ps_title  [$machine]'; Write-Host \"in \$((Get-Location).Path) on \$env:COMPUTERNAME\"; Write-Host 'then: claude --resume ${id:0:8}...'; Read-Host 'Enter = start claude, Ctrl-C = cancel' | Out-Null; "
+  remote="Set-Location '$ps_cwd'; ${ps_pause}claude --resume $id"
+  if [ "$DRY" -eq 1 ]; then echo "ssh -t $machine \"$remote\""; exit 0; fi
+  echo "-> ssh $machine: Set-Location '$cwd', then claude --resume ${id:0:8}..." >&2
+  exec ssh -t "$machine" "$remote"
+else
+  # -lic (login + interactive): plain -lc skips ~/.bashrc / ~/.zshrc, where nvm or
+  # ~/.local/bin put `claude` on the PATH, so it fails with "command not found".
+  # The pause runs on the remote side (after the cd) so you see the real directory.
+  # printf + read (no `read -p`): the remote login shell may be zsh, where -p differs.
+  sh_pause=""
+  [ "$PAUSE" -eq 1 ] && sh_pause="printf 'in %s on %s\\n' \"\$(pwd)\" \"\$(hostname -s)\" && printf 'Enter = start claude, Ctrl-C = cancel: ' && read -r _ && "
+  remote="cd $(printf %q "$cwd") && ${sh_pause}exec \$SHELL -lic 'claude --resume $id'"
+  if [ "$DRY" -eq 1 ]; then echo "ssh -t $machine \"$remote\""; exit 0; fi
+  echo "-> ssh $machine: cd $cwd, then claude --resume ${id:0:8}..." >&2
+  exec ssh -t "$machine" "$remote"
+fi

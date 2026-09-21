@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""sessions-search WORDS... - rank Claude sessions by fuzzy keyword match.
+
+Searches ~/claude-sessions/INDEX.jsonl (titles, keywords, summaries, first
+prompts, cwd) and prints the top matches, best first, each with its
+`resume-session` command. Filler words are dropped and simple endings are
+stripped (fixed -> fix), so a plain-English request works as the query:
+
+  sessions-search fixed passwordless ssh to mb
+  sessions-search -n 5 --machine WEB immich backup
+  sessions-search --since 2026-09-15 wall crash
+
+It scores index text only. To check what a session really says, use
+`sessions-grep <id-prefix> <regex>`. Stdlib only. ASCII only.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+
+OUT = os.environ.get("CLAUDE_SESSIONS_DIR", os.path.expanduser("~/claude-sessions"))
+STOP = set("""a an and the of to in on for with we i me my our you your it is was were be been by at as
+or from that this those these where when what which who how find session sessions chat chats conversation
+conversations claude code time one about did do does done have had has get got go went into out up down
+over under again also just only some any all please look looking search show tell""".split())
+
+
+def stem(t):
+    for suf in ("ing", "ed", "es", "s"):
+        if len(t) > 4 and t.endswith(suf):
+            return t[:-len(suf)]
+    return t
+
+
+def terms_from(words):
+    seen, out = set(), []
+    for w in re.findall(r"[A-Za-z0-9_.-]+", " ".join(words).lower()):
+        w = w.strip(".-")
+        if not w or w in STOP or w in seen:
+            continue
+        seen.add(w)
+        out.append(w)
+    return out
+
+
+def score(r, terms):
+    title = " ".join(filter(None, [r.get("custom_title"), r.get("ai_title")]))
+    kw = " ".join(r.get("keywords") or [])
+    summ = r.get("summary") or ""
+    other = " ".join(filter(None, [r.get("first_prompt"), r.get("cwd"), r.get("machine")]))
+    total, matched, hit = 0.0, 0, []
+    for t in terms:
+        rx = re.compile(r"\b" + re.escape(stem(t)), re.I)
+        s = 0
+        if rx.search(title):
+            s += 6
+        if rx.search(kw):
+            s += 4
+        n = len(rx.findall(summ))
+        if n:
+            s += 2 + (1 if n > 2 else 0)
+        if rx.search(other):
+            s += 1
+        if s:
+            matched += 1
+            hit.append(t)
+            total += s
+    if not matched:
+        return 0.0, hit
+    return total * (matched / len(terms)) ** 1.5, hit
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("words", nargs="+", help="what you remember, in plain words")
+    ap.add_argument("-n", type=int, default=10, help="how many results (default 10)")
+    ap.add_argument("--machine", help="only this machine (e.g. WEB, mb, FleetDev)")
+    ap.add_argument("--since", help="only sessions last active on/after YYYY-MM-DD")
+    a = ap.parse_args()
+
+    path = os.path.join(OUT, "INDEX.jsonl")
+    if not os.path.exists(path):
+        sys.exit("no index at %s - run find-sessions first" % path)
+    terms = terms_from(a.words)
+    if not terms:
+        sys.exit("no searchable words left after dropping filler; use more specific words")
+
+    rows, scanned = [], 0
+    with open(path) as fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if a.machine and r.get("machine", "").lower() != a.machine.lower():
+                continue
+            if a.since and (r.get("last_ts") or "")[:10] < a.since:
+                continue
+            scanned += 1
+            s, hit = score(r, terms)
+            if s > 0:
+                rows.append((s, r.get("last_ts") or "", r, hit))
+    rows.sort(key=lambda x: (x[0], x[1]), reverse=True)
+
+    print("query terms: %s | scanned %d sessions | showing top %d of %d matches"
+          % (", ".join(terms), scanned, min(a.n, len(rows)), len(rows)))
+    for i, (s, _, r, hit) in enumerate(rows[:a.n], 1):
+        title = r.get("custom_title") or r.get("ai_title") or "(untitled)"
+        summ = re.sub(r"\*\*Conversation [Oo]verview\*\*", "", r.get("summary") or "")
+        summ = " ".join(summ.split())[:230] or "(no summary: %s)" % r.get("status")
+        if r.get("status") == "pending":
+            summ = "(unsummarized, still active) " + " ".join((r.get("first_prompt") or "").split())[:180]
+        also = " also_on=" + ",".join(r["also_on"]) if r.get("also_on") else ""
+        kind = " WEB chat, opens in browser" if r.get("machine") == "WEB" else ""
+        print("%2d. [%s] %s  %s  (%s prompts)  score %.0f%s"
+              % (i, r.get("machine"), (r.get("last_ts") or "")[:10], title,
+                 r.get("user_turns"), s, also))
+        print("    " + summ)
+        print("    matched: %s | resume-session %s%s" % (", ".join(hit), r["id"][:8],
+                                                        " (" + kind.strip() + ")" if kind else ""))
+    if not rows:
+        print("no matches. Try fewer or different words, or drop --machine/--since.")
+
+
+if __name__ == "__main__":
+    main()
