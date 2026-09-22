@@ -9,6 +9,7 @@ OLLAMA=http://imagebeast:11434
 export ANTHROPIC_AUTH_TOKEN=ollama
 export ANTHROPIC_API_KEY=""
 export ANTHROPIC_BASE_URL="$OLLAMA"
+export CLAUDE_CODE_AUTO_MODE_SERVER=0
 
 # Must match OLLAMA_CONTEXT_LENGTH on ib (98304 = largest window that
 # stays 100% on GPU for this model on the 5090).

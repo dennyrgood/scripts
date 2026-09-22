@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include <esp_display_panel.hpp>
 #include <esp_err.h>
+#include <esp_lcd_panel_rgb.h>
 
 #include <lvgl.h>
 #include <demos/lv_demos.h>
@@ -144,6 +145,7 @@ static lv_obj_t *hosts_chip;
 static lv_obj_t *services_chip;
 static lv_obj_t *footer_label;
 static lv_obj_t *updated_label;
+static LCD *g_lcd = nullptr;
 static volatile uint32_t last_update_ms = 0;
 static lv_obj_t *alert_rail;
 static lv_obj_t *alert_label;
@@ -543,8 +545,6 @@ void fleet_ui_refresh(JsonDocument &doc) {
     }
     xSemaphoreGive(cache_mutex);
 
-    last_update_ms = millis();
-
     // Wall-clock time via NTP (synced in fleet_wifi_connect()) -- set once
     // per poll here (not on a per-second timer in loop() -- that was itself
     // forcing a screen touch every second and got dropped 2026-09-17, see
@@ -556,20 +556,35 @@ void fleet_ui_refresh(JsonDocument &doc) {
     if (localtime_r(&now_t, &tm_now) != nullptr && tm_now.tm_year >= (2020 - 1900)) {
         strftime(updated_buf, sizeof(updated_buf), "Upd: %H:%M", &tm_now);
     } else {
-        snprintf(updated_buf, sizeof(updated_buf), "Upd: up %lus", (unsigned long)(last_update_ms / 1000));
+        snprintf(updated_buf, sizeof(updated_buf), "Upd: up %lus", (unsigned long)(millis() / 1000));
     }
 
-    ESP_ERROR_CHECK(esp_lv_adapter_lock(-1));
+    // Bounded wait, and last_update_ms is stamped only AFTER the screen was
+    // really updated (2026-09-21): it used to be stamped before this lock, so
+    // a net_task blocked here forever left the stamp fresh, the loop()
+    // watchdog never fired, and the display froze with touch still alive.
+    // On timeout we skip the update and leave the stamp stale, so the
+    // watchdog reboots the board within ~60s.
+    if (esp_lv_adapter_lock(5000) != ESP_OK) {
+        Serial.println("[fleet_wall] display lock timeout, skipping update");
+        return;
+    }
     render_grid();
     lv_label_set_text(updated_label, updated_buf);
     // Force a full repaint rather than relying on LVGL's normal per-widget
-    // diffed invalidation -- the same experiment fleet_wall used against its
-    // RGB LCD ghosting/flicker on page switches. This layout redraws all 18
-    // tiles every poll (vs. fleet_wall's 8), so if partial-redraw tearing is
-    // the mechanism, it's the more likely culprit here (confirmed reproducing
-    // 2026-09-17: flicker on every 15s poll, no errors logged underneath it).
+    // diffed invalidation -- same experiment fleet_wall used against RGB LCD
+    // ghosting/flicker. Kept: the board ran glitch-free for hours with it.
     lv_obj_invalidate(lv_scr_act());
+    // Re-sync the RGB panel's scan with vsync once per poll ("screen drift":
+    // frame shifted/wrapped vertically after a PSRAM/bus stall). Done under
+    // the display lock so it can't interrupt a flush. Kept for the same
+    // reason; removing it was NOT tested and is not assumed safe.
+    if (g_lcd != nullptr) {
+        esp_lcd_rgb_panel_restart((esp_lcd_panel_handle_t)g_lcd->getHandle());
+    }
     esp_lv_adapter_unlock();
+
+    last_update_ms = millis();
 }
 
 // Paints tiles[] from machine_cache[] -- every cached machine gets one tile,
@@ -910,6 +925,7 @@ void setup()
         static_cast<BusRGB *>(lcd_bus)->configRGB_BounceBufferSize(lcd->getFrameWidth() * 20);
     }
 
+    g_lcd = lcd;
     assert(board->begin());
 
     esp_lv_adapter_config_t adapter_config = ESP_LV_ADAPTER_DEFAULT_CONFIG();
