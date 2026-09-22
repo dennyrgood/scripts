@@ -74,14 +74,52 @@ Set in `fleet_wall_image_secrets.h` (gitignored, copy from the `.example`):
   zero error output, and the board can sit frozen (screen unchanged, no
   crash) for over an hour with nothing to indicate why.
 
-## Build setup, flashing
+## Build setup (from a clean macOS machine)
 
-Same as `fleet_wall_compact` — see that project's README for the full
-`arduino-cli`/library install steps (Homebrew, board core, Waveshare's
-bundled libraries into `~/Documents/Arduino/libraries`). This project
-reuses the identical `esp_panel_board_custom_conf.h` (verified pin/panel
-config, don't hand-edit) but does NOT use `esp_lv_adapter_arduino.{h,cpp}`
-or LVGL at all.
+This project reuses the identical `esp_panel_board_custom_conf.h` (verified
+pin/panel config, don't hand-edit) but does NOT use `esp_lv_adapter_arduino.{h,cpp}`
+or LVGL at all — so, unlike `fleet_wall`/`fleet_wall_compact`, it needs no
+LVGL library extraction and no `ArduinoJson` (no on-device JSON parsing).
+It still needs `esp_display_panel.hpp`, hence the Waveshare library install
+below.
+
+1. **Homebrew**, if not already installed: https://brew.sh
+2. **arduino-cli**:
+   ```
+   brew install arduino-cli
+   ```
+3. Board core:
+   ```
+   arduino-cli config init
+   arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+   arduino-cli core update-index
+   arduino-cli core install esp32:esp32
+   ```
+4. Clone Waveshare's official demo repo and copy its bundled libraries into your
+   sketchbook's `libraries/` dir. On macOS this is `~/Documents/Arduino/libraries`
+   — **not** `~/Arduino/libraries`; arduino-cli won't find libraries in the wrong
+   one and will fail with a confusing "file not found" on `esp_display_panel.hpp`.
+   ```
+   git clone --depth 1 https://github.com/waveshareteam/ESP32-S3-Touch-LCD-7
+   cp -r ESP32-S3-Touch-LCD-7/examples/Arduino/libraries/{esp-lib-utils,ESP32_Display_Panel,ESP32_IO_Expander} \
+       ~/Documents/Arduino/libraries/
+   ```
+5. `esp_panel_board_custom_conf.h` in this directory is copied verbatim from
+   Waveshare's `examples/Arduino/examples/10_lvgl_v9_demo` — the exact,
+   verified pin/panel config for this board. Don't hand-edit the pin macros.
+
+## Find the board's serial port
+
+Plug the board into USB (either port on this model works; it enumerates as a
+native `usbmodem` device, not through a USB-serial chip driver), then:
+```
+ls /dev/cu.*
+```
+Look for something like `/dev/cu.usbmodemXXXXXXXXXXXX` — that's the `-p`
+argument for the compile/upload command below. It changes per-cable/per-port,
+so re-check if you move the cable.
+
+## Compile + flash
 
 ```
 cp fleet_wall_image_secrets.h.example fleet_wall_image_secrets.h
