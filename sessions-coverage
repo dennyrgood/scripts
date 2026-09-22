@@ -33,6 +33,14 @@ def fmt(h):
     return "%dm ago" % (h * 60) if h < 1 else ("%.1fh ago" % h if h < 48 else "%.0fd ago" % (h / 24))
 
 
+def load(path):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
 def disk_count(m):
     if m == "FleetDev":
         own = re.sub(r"[/.]", "-", OUT)
@@ -58,10 +66,16 @@ def main():
         if m == "FleetDev":
             when = "live"
         elif m == "WEB":
-            zips = glob.glob(os.path.join(OUT, "machines", "WEB", "*-000*.zip"))
-            when = "export %s" % (datetime.fromtimestamp(max(os.path.getmtime(z) for z in zips),
-                                                         timezone.utc).strftime("%Y-%m-%d")
-                                  if zips else "date unknown")
+            manifests = sorted(glob.glob(os.path.join(OUT, "machines", "WEB", "manifest-*.json")))
+            exported = None
+            if manifests:
+                exported = (load(manifests[-1]) or {}).get("created_at")
+            if not exported:
+                zips = glob.glob(os.path.join(OUT, "machines", "WEB", "*-000*.zip"))
+                if zips:
+                    exported = datetime.fromtimestamp(max(os.path.getmtime(z) for z in zips),
+                                                      timezone.utc).isoformat(timespec="seconds")
+            when = "exported %s" % fmt(age(exported))
         elif sync:
             h = age(sync.get("last_success"))
             when = "synced %s%s" % (fmt(h), "" if sync.get("reachable", True) else " (UNREACHABLE last try)")

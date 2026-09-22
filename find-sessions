@@ -149,6 +149,9 @@ if [ "$REFRESH" -eq 1 ]; then
   # only new/changed chats (asks first if that is more than 100). No-op otherwise.
   python3 "$(dirname "$0")/claude_web_index.py" --out "$OUT"
   python3 "$IDX" --merge
+
+  echo "== summary =="
+  CLAUDE_SESSIONS_LOCAL="$LOCAL" python3 "$(dirname "$0")/sessions-summary"
 fi
 
 if [ "$LAUNCH" -eq 1 ]; then

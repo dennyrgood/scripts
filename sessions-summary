@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""sessions-summary - table of what the last find-sessions refresh did.
+
+Reads the .sync and .summary.json files find-sessions/claude_sessions_index.py/
+claude_web_index.py leave behind and prints one row per machine (plus WEB):
+reachable or not, new/updated/same/duplicate counts, how many sessions are
+still actively being worked in, and any problem. find-sessions runs this right
+before opening the finder; it's also fine to run standalone. Read-only.
+Stdlib only. ASCII only.
+"""
+import glob
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+OUT = os.environ.get("CLAUDE_SESSIONS_DIR", os.path.expanduser("~/claude-sessions"))
+
+
+def web_export_time():
+    """The claude.ai export's own created_at, from the newest manifest; falls
+    back to the newest zip's mtime if no manifest is found."""
+    manifests = sorted(glob.glob(os.path.join(OUT, "machines", "WEB", "manifest-*.json")))
+    if manifests:
+        m = load(manifests[-1])
+        if m and m.get("created_at"):
+            return m["created_at"]
+    zips = glob.glob(os.path.join(OUT, "machines", "WEB", "*-000*.zip"))
+    if zips:
+        t = max(os.path.getmtime(z) for z in zips)
+        return datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="seconds")
+    return None
+
+
+def age_str(ts):
+    if not ts:
+        return "unknown"
+    try:
+        t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return ts
+    h = (datetime.now(timezone.utc) - t).total_seconds() / 3600.0
+    when = t.astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    ago = "%dm ago" % (h * 60) if h < 1 else ("%.1fh ago" % h if h < 48 else "%.0fd ago" % (h / 24))
+    return "%s (%s)" % (when, ago)
+
+
+def load(path):
+    try:
+        with open(path) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def main():
+    idxdir = os.path.join(OUT, "index")
+    machines = sorted({os.path.basename(f).split(".")[0] for f in
+                       glob.glob(os.path.join(idxdir, "*.jsonl"))} - {"WEB"})
+    rows = []
+    for m in machines:
+        summ = load(os.path.join(idxdir, m + ".summary.json")) or {}
+        sync = load(os.path.join(idxdir, m + ".sync"))
+        if m == os.environ.get("CLAUDE_SESSIONS_LOCAL", "") or sync is None:
+            reach, note = "local", ""
+        elif sync.get("reachable"):
+            reach, note = "ok", ""
+        else:
+            reach, note = "UNREACHABLE", "last synced " + (sync.get("last_success") or "never")
+        rows.append((m, reach, summ.get("new", 0), summ.get("updated", 0),
+                    summ.get("unchanged", 0), summ.get("duplicates", 0),
+                    summ.get("active_now", 0), summ.get("failed", 0), note))
+
+    web_export_at = web_export_time()
+    web = load(os.path.join(idxdir, "WEB.summary.json"))
+    if web:
+        rows.append(("WEB", "-", web.get("new", 0), web.get("updated", 0),
+                    web.get("unchanged", 0), 0, 0, web.get("failed", 0),
+                    "export: " + age_str(web_export_at)))
+
+    if not rows:
+        sys.exit("no summary data in %s yet - run find-sessions first" % idxdir)
+
+    if web_export_at:
+        print("WEB (claude.ai) last exported: %s - manual only; export again and "
+              "run find-sessions to refresh" % age_str(web_export_at))
+        print()
+
+    hdr = ("MACHINE", "STATUS", "NEW", "UPD", "SAME", "DUP", "OPEN NOW", "FAILED", "NOTE")
+    widths = [max(len(str(c)) for c in col) for col in zip(hdr, *rows)]
+    fmt = "  ".join("%-" + str(w) + "s" for w in widths)
+    print(fmt % hdr)
+    print(fmt % tuple("-" * w for w in widths))
+    total_new = total_upd = total_fail = 0
+    problems = []
+    for r in rows:
+        print(fmt % r)
+        total_new += r[2]; total_upd += r[3]; total_fail += r[7]
+        if r[1] == "UNREACHABLE":
+            problems.append("%s unreachable (%s)" % (r[0], r[8]))
+        if r[6]:
+            problems.append("%s: %d session(s) still open (summarized as of the refresh)" % (r[0], r[6]))
+        if r[7]:
+            problems.append("%s: %d failed to summarize (will retry next run)" % (r[0], r[7]))
+    print()
+    print("%d new, %d updated across %d sources." % (total_new, total_upd, len(rows)))
+    if problems:
+        print("Problems: " + "; ".join(problems))
+    else:
+        print("No problems.")
+
+
+if __name__ == "__main__":
+    main()

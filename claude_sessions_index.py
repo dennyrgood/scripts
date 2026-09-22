@@ -258,9 +258,12 @@ def main():
 
     now = time.time()
     todo, busy, unchanged, recent, dups = [], [], 0, 0, 0
+    new_ids, updated_ids, active_now = set(), set(), set()
     for sid, (proj, path) in found.items():
         st = os.stat(path)
         old = idx.get(sid)
+        if now - st.st_mtime < 600:  # informational only: shown in the summary table
+            active_now.add(sid)
         same = old and old.get("size") == st.st_size and old.get("mtime") == int(st.st_mtime)
         if same and old.get("status") in ("ok", "duplicate") and not a.force:
             unchanged += 1
@@ -276,12 +279,15 @@ def main():
             if not old:
                 busy.append((sid, proj, path, st))
             continue
+        (new_ids if not old else updated_ids).add(sid)
         todo.append((sid, proj, path, st))
 
     gone = [s for s in idx if s not in found and idx[s].get("machine") == a.machine]
     print("machine=%s sessions=%d unchanged=%d duplicates=%d recent(skipped)=%d "
-          "to_summarize=%d gone=%d"
-          % (a.machine, len(found), unchanged, dups, recent, len(todo), len(gone)))
+          "to_summarize=%d (new=%d updated=%d) gone=%d"
+          % (a.machine, len(found), unchanged, dups, recent, len(todo),
+             len(new_ids), len(updated_ids), len(gone)))
+    summary_path = os.path.join(os.path.dirname(index_path), a.machine + ".summary.json")
     if a.dry_run:
         for sid, proj, path, st in todo:
             print("  would summarize %s  %s" % (sid[:8], proj[-50:]))
@@ -335,6 +341,11 @@ def main():
     for s in gone:
         del idx[s]
     save_index(index_path, idx)
+    with open(summary_path, "w") as fh:
+        json.dump({"total": len(found), "new": len(new_ids), "updated": len(updated_ids),
+                   "unchanged": unchanged, "duplicates": dups, "pending": len(busy),
+                   "active_now": len(active_now), "gone": len(gone), "failed": failed,
+                   "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}, fh)
     print("done: summarized=%d failed=%d index=%s" % (done, failed, index_path))
     return 1 if failed else 0
 

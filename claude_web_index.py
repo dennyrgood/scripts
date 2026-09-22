@@ -264,6 +264,10 @@ def main():
                 break
 
     csi.save_index(index_path, idx)
+    with open(os.path.join(a.out, "index", "WEB.summary.json"), "w") as fh:
+        json.dump({"total": total, "new": new, "updated": updated, "unchanged": unchanged,
+                   "retry": retry, "processed": done, "failed": failed,
+                   "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}, fh)
     print("done: processed=%d failed=%d index=%s" % (done, failed, index_path))
     return 1 if failed else 0
 
