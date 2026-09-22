@@ -31,6 +31,17 @@ comfyui/fleet-output-local/
 # the auto-sync process's `git add -A`.
 esp-firmware/fleet_wall*/fleet_wall_secrets.h
 
+# Same as above, for fleet_wall_image/'s own secrets filename (it also holds
+# IMAGE_API_HOST/PORT and WALL_CHANNEL -- no secrets in those, but the file
+# is one unit and the WiFi credentials it also carries still need hiding).
+esp-firmware/fleet_wall_image/fleet_wall_image_secrets.h
+
+# wall-image/inbox/ is generated output (grid/detail/photo RGB565 frames,
+# rewritten by fleet_snapshot_producer.py/photo_producer.py every ~15s) --
+# not source, and large binary blobs that shouldn't accumulate in git history.
+wall-image/inbox/
+
+
 # Local backup snapshots of the fleet_wall firmware dir -- not source, just
 # a pre-change safety copy; git history is the real backup.
 esp-firmware/fleet_wall.backup-*/

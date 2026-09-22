@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
 """wall_server.py -- resident daemon serving pixels to fleet_wall_image
 ESP32 boards. Generalizes fleet_wall_image_spike/image_server.py's proven
-poll/fetch/CRC-verify pattern into two independent channels: each physical
-device is pointed at ONE channel (via its own secrets.h URL prefix) and
-stays there for its whole life -- no shared queue, no priority/preemption,
-because a device is either "the fleet wall" or "the photo frame", never both.
+poll/fetch/CRC-verify pattern into two channels PLUS a unified /display
+endpoint that switches between them live, via touch:
 
-Channels:
-  /fleet/frame.hash /fleet/frame.rgb565    -- current fleet snapshot, tap-interactive
-  /fleet/tap        (POST {"x":.., "y":..}) -- maps to the current image's tapmap;
-                                                a hit switches this channel to that
-                                                host's pre-rendered detail image;
-                                                any tap while already in detail
-                                                returns to the fleet grid.
-  /photos/frame.hash /photos/frame.rgb565  -- current photo, no tap handling
+  /display/frame.hash /display/frame.rgb565  -- whichever channel is
+                                                  currently active
+  /display/tap (POST {"x":.., "y":..})  -- gesture dispatch, see below
+  /fleet/*, /photos/*                    -- the two channels directly,
+                                             kept for a future board that's
+                                             dedicated to just one of them
+
+Gestures on /display/tap (2026-09-22):
+  bottom-right corner (110x70px), either channel -> switch active channel
+  fleet, elsewhere    -> existing tapmap hit-test (tile -> detail, tap
+                          again -> back to grid)
+  photos, left third  -> previous photo
+  photos, right third -> next photo
+  photos, middle third -> toggle pause/resume (freeze on the current photo)
+Prev/next/pause reach photo_producer.py (which owns rotation state and its
+own timer) via a tiny inbox/photos/control.json handshake -- this daemon
+does not control the producer directly.
 
 Producers own image production and just write files:
   inbox/fleet/grid.rgb565      + grid.json      (tapmap: [{x0,y0,x1,y1,host}, ...])
   inbox/fleet/detail/<host>.rgb565              (no sidecar needed)
   inbox/photos/current.rgb565                   (photo_producer picks/rotates)
+  inbox/photos/control.json                     (this daemon writes, photo_producer reads)
 This daemon only reads inbox/ and serves whatever's there -- it renders nothing.
 
 Frame format: 800x480 RGB565, little-endian, 768000 bytes -- same as the spike.
@@ -159,6 +167,73 @@ def handle_tap(x, y):
     return {"mode": "grid"}
 
 
+# --- Unified /display: one endpoint a device always polls; this daemon
+# decides which channel is "active" and what a tap zone means. ---
+CORNER_W, CORNER_H = 110, 70  # bottom-right hit zone, both channels -- the channel-switch gesture
+
+_display_lock = threading.Lock()
+_display_state = {"channel": "fleet", "photos_paused": False}
+
+
+def _in_corner(x, y):
+    return x >= W - CORNER_W and y >= H - CORNER_H
+
+
+def _active_channel_obj():
+    with _display_lock:
+        ch = _display_state["channel"]
+    return fleet_chan if ch == "fleet" else photos_chan
+
+
+def _write_photo_control(action):
+    path = os.path.join(INBOX, "photos", "control.json")
+    # A wall-clock-ms sequence number is enough here (single writer: this
+    # daemon) to let photo_producer.py tell "already applied" from "new
+    # command" without a shared counter file both processes would need to
+    # read-modify-write.
+    seq = int(time.time() * 1000)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"action": action, "seq": seq}, f)
+    os.replace(tmp, path)
+
+
+def handle_display_tap(x, y):
+    with _display_lock:
+        channel = _display_state["channel"]
+
+    if _in_corner(x, y):
+        new_channel = "photos" if channel == "fleet" else "fleet"
+        with _display_lock:
+            _display_state["channel"] = new_channel
+        if new_channel == "fleet":
+            # Land on the grid, not whatever detail screen was showing last
+            # time this device was on the fleet channel.
+            with _fleet_state_lock:
+                _fleet_state["mode"] = "grid"
+                _fleet_state["detail_host"] = None
+            _load_fleet_grid()
+        return {"channel": new_channel, "action": "switch"}
+
+    if channel == "fleet":
+        result = handle_tap(x, y)
+        return {"channel": "fleet", **result}
+
+    # photos: left third = prev, right third = next, middle = pause/resume.
+    # (The corner is carved out above, so "right third" here never overlaps it.)
+    if x < W / 3:
+        _write_photo_control("prev")
+        return {"channel": "photos", "action": "prev"}
+    if x > 2 * W / 3:
+        _write_photo_control("next")
+        return {"channel": "photos", "action": "next"}
+    with _display_lock:
+        paused = _display_state["photos_paused"]
+        _display_state["photos_paused"] = not paused
+    _write_photo_control("resume" if paused else "pause")
+    return {"channel": "photos", "action": "resume" if paused else "pause"}
+
+
 def _watch_loop():
     """Polls inbox/ for producer writes. A real filesystem watch (watchdog
     lib) would be nicer, but this stays stdlib-only and 1s latency is fine --
@@ -214,22 +289,31 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/photos/frame.rgb565":
             _, d = photos_chan.get()
             self._send(200, d, "application/octet-stream")
+        elif self.path == "/display/frame.hash":
+            h, _ = _active_channel_obj().get()
+            self._send(200, h.encode())
+        elif self.path == "/display/frame.rgb565":
+            _, d = _active_channel_obj().get()
+            self._send(200, d, "application/octet-stream")
         else:
-            self._send(200, b"wall_server: /fleet/* /photos/*\n")
+            self._send(200, b"wall_server: /display/* /fleet/* /photos/*\n")
 
-    def do_POST(self):
-        if self.path != "/fleet/tap":
-            self._send(404, b"not found")
-            return
+    def _read_tap_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length) if length else b"{}"
+        body = json.loads(raw)
+        return int(body["x"]), int(body["y"])
+
+    def do_POST(self):
+        if self.path not in ("/fleet/tap", "/display/tap"):
+            self._send(404, b"not found")
+            return
         try:
-            body = json.loads(raw)
-            x, y = int(body["x"]), int(body["y"])
+            x, y = self._read_tap_body()
         except (json.JSONDecodeError, KeyError, ValueError):
             self._send(400, b'{"error":"expected {\\"x\\":int,\\"y\\":int}"}', "application/json")
             return
-        result = handle_tap(x, y)
+        result = handle_display_tap(x, y) if self.path == "/display/tap" else handle_tap(x, y)
         self._send(200, json.dumps(result).encode(), "application/json")
 
     def log_message(self, fmt, *args):

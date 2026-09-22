@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """fleet_snapshot_producer.py -- draws the fleet-wall grid + per-host detail
 screens with Pillow (no headless browser, no fonts-over-network) and writes
-them into wall_server.py's inbox/fleet/. Polls fleet_api.py directly, same
-data source and machine_info/services schema as esp-firmware/fleet_wall*.
+them into wall_server.py's inbox/fleet/. Same machine_info/services schema
+as esp-firmware/fleet_wall*.
 
-Run continuously (its own loop, POLL_SECONDS apart) under launchd.
-Needs: venv/bin/python3 (pillow) -- NOT the bare system python3.
+Does NOT touch the network itself -- reads inbox/fleet/status.json, which
+fetch_fleet_status.sh writes on its own timer. That split exists because of
+a macOS Local Network permission quirk (confirmed 2026-09-22): under
+launchd, curl succeeds when its immediate parent is bash, but fails when
+its immediate parent is an unsigned Homebrew python3, even with a trusted
+bash further up the ancestry chain. See fetch_fleet_status.sh's docstring.
+
+Run continuously (its own loop, polling that file, not the network) under
+launchd. Needs: venv/bin/python3 (pillow) -- NOT the bare system python3.
 2026-09-22
 """
 import io
 import json
 import os
 import time
-import urllib.request
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -22,9 +28,6 @@ HEADER_H, FOOTER_H = 40, 28
 CELL_W = W // GRID_COLS
 CELL_H = (H - HEADER_H - FOOTER_H) // GRID_ROWS
 
-FLEET_API_HOST = os.environ.get("FLEET_API_HOST", "192.168.178.158")
-FLEET_API_PORT = int(os.environ.get("FLEET_API_PORT", "5010"))
-POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
 BASE = os.path.dirname(os.path.abspath(__file__))
 INBOX = os.path.join(BASE, "inbox", "fleet")
 
@@ -41,6 +44,15 @@ COL_TEXT_DIM = (132, 160, 156)
 COL_TEXT_FAINT = (77, 102, 99)
 
 _font_cache = {}
+
+# This script's own mtime, formatted once at import time -- shown in the
+# header so it's possible to tell at a glance whether a producer restart
+# actually picked up a recent edit (same idea as __DATE__/__TIME__ in the
+# old ESP32 firmware, but pointed at this file: there's no board-side
+# rendering left to verify in this architecture, the producer script is the
+# thing that changes). Recomputed from disk, not hand-bumped, so it can't
+# go stale the way a manually-typed version string would.
+_BUILD_STAMP = time.strftime("V-%Y.%m.%d.%H.%M", time.localtime(os.path.getmtime(os.path.abspath(__file__))))
 
 
 def font(size, bold=False):
@@ -86,10 +98,22 @@ def to_rgb565_bytes(img: Image.Image) -> bytes:
     return bytes(out)
 
 
-def fetch_status():
-    url = f"http://{FLEET_API_HOST}:{FLEET_API_PORT}/api/status"
-    with urllib.request.urlopen(url, timeout=10) as r:
-        return json.load(r)
+STATUS_PATH = os.path.join(INBOX, "status.json")
+
+
+def read_status():
+    """Reads the JSON fetch_fleet_status.sh last wrote -- this process does
+    no networking itself. Returns None if the file doesn't exist yet (the
+    fetcher hasn't completed its first poll) or is mid-write (fetcher writes
+    to .tmp then renames, so a torn read here should be rare, but a bad
+    parse just means "nothing new this tick," not a crash)."""
+    if not os.path.exists(STATUS_PATH):
+        return None
+    try:
+        with open(STATUS_PATH) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def draw_grid(data):
@@ -98,7 +122,7 @@ def draw_grid(data):
 
     d.rectangle([0, 0, W, HEADER_H], fill=COL_PANEL2)
     d.text((14, 12), "FLEET_WALL - CONSOLIDATED", font=font(14, True), fill=COL_TEAL)
-    d.text((W - 100, 12), time.strftime("V-%H:%M:%S"), font=font(12), fill=COL_TEXT_FAINT)
+    d.text((W - 150, 12), _BUILD_STAMP, font=font(12), fill=COL_TEXT_FAINT)
 
     machines = data.get("machines", [])[: GRID_COLS * GRID_ROWS]
     summary = data.get("summary", {})
@@ -157,6 +181,10 @@ def draw_grid(data):
     sup, stotal = summary.get("services_up", 0), summary.get("services_total", 0)
     d.text((10, fy0 + 6), f"HOSTS {up}/{total}  SERVICES {sup}/{stotal}", font=font(13), fill=COL_TEXT_FAINT)
 
+    stamp = time.strftime("%Y %m %d %H %M %S")
+    stamp_w = d.textlength(stamp, font=font(13, True))
+    d.text((W - stamp_w - 10, fy0 + 6), stamp, font=font(13, True), fill=COL_TEXT)
+
     return img, tapmap
 
 
@@ -204,8 +232,7 @@ def write_atomic(path, data):
     os.replace(tmp, path)
 
 
-def run_once():
-    data = fetch_status()
+def run_once(data):
     grid_img, tapmap = draw_grid(data)
     write_atomic(os.path.join(INBOX, "grid.rgb565"), to_rgb565_bytes(grid_img))
     write_atomic(os.path.join(INBOX, "grid.json"), json.dumps({"tapmap": tapmap}).encode())
@@ -221,13 +248,18 @@ def run_once():
 
 if __name__ == "__main__":
     os.makedirs(INBOX, exist_ok=True)
-    print(f"[fleet_snapshot_producer] polling {FLEET_API_HOST}:{FLEET_API_PORT} every {POLL_SECONDS}s -> {INBOX}",
-          flush=True)
+    print(f"[fleet_snapshot_producer] watching {STATUS_PATH}", flush=True)
+    last_mtime = 0.0
     while True:
-        t0 = time.time()
         try:
-            run_once()
-            print(f"[fleet_snapshot_producer] wrote grid + details in {time.time() - t0:.2f}s", flush=True)
-        except (urllib.error.URLError, OSError, KeyError, ValueError) as e:
+            mtime = os.path.getmtime(STATUS_PATH) if os.path.exists(STATUS_PATH) else 0.0
+            if mtime != last_mtime:
+                data = read_status()
+                if data is not None:
+                    t0 = time.time()
+                    run_once(data)
+                    last_mtime = mtime
+                    print(f"[fleet_snapshot_producer] wrote grid + details in {time.time() - t0:.2f}s", flush=True)
+        except (OSError, KeyError, ValueError) as e:
             print(f"[fleet_snapshot_producer] error: {e}", flush=True)
-        time.sleep(POLL_SECONDS)
+        time.sleep(1)  # cheap check; the real cadence is however often fetch_fleet_status.sh actually writes
