@@ -150,19 +150,10 @@ python3 wall_server.py                                    # stdlib only, plain p
 ```
 
 To inspect what's actually being shown without a physical board, convert
-`inbox/{fleet,photos}/*.rgb565` to a viewable PNG:
-```python
-from PIL import Image
-def load(path, W=800, H=480):
-    data = open(path, "rb").read()
-    img = Image.new("RGB", (W, H)); px = img.load(); i = 0
-    for y in range(H):
-        for x in range(W):
-            lo, hi = data[i], data[i+1]; v = lo | (hi << 8); i += 2
-            r, g, b = (v>>11)&0x1F, (v>>5)&0x3F, v&0x1F
-            px[x, y] = (r*255//31, g*255//63, b*255//31)
-    return img
-load("inbox/fleet/grid.rgb565").save("/tmp/preview.png")
+`inbox/{fleet,photos}/*.rgb565` to viewable PNGs with `rgb565_to_png.py`:
+```
+./venv/bin/python3 rgb565_to_png.py            # converts everything currently in inbox/ to /tmp/*.png
+./venv/bin/python3 rgb565_to_png.py FILE.rgb565  # convert just one file
 ```
 `inbox/` is gitignored (regenerated output, rewritten every poll — not
 source) and Finder can't preview `.rgb565` files directly, which is
