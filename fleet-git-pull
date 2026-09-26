@@ -7,7 +7,7 @@
 # Usage: ./fleet-git-pull.sh [--dry-run] [--repos repo1,repo2] [host ...]
 #   --dry-run          report what would be pulled, don't actually pull
 #   --repos r1,r2      comma-separated repo names to consider (default: all repos found, like fleet-git-check)
-#   host ...           restrict to hosts: tailscale name, alias (mb, cwh...), or substring (mac)
+#   host ...           restrict to hosts: tailscale name, OS group (win/mac/ubuntu), alias (mb, cwh...), or substring
 
 set -uo pipefail
 
@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Resolve host args: exact name, short alias (amsdt, cwh, mb, ...), or a
+# Resolve host args: OS group (win/mac/ubuntu), exact name, short alias (amsdt, cwh, mb, ...), or a
 # case-insensitive substring/glob of a fleet host name (e.g. `mac` or '*mac*').
 # Note: quote globs, or use a bare substring, so the shell doesn't expand them.
 resolve_hosts() {
@@ -67,6 +67,13 @@ resolve_hosts() {
       s3g) lc=surface3-gc ;; tb) lc=travelbeast ;; wbu) lc=workbenchunix ;;
     esac
     found=0
+    case "$lc" in windows) lc=win ;; macos) lc=mac ;; esac
+    case "$lc" in win|mac|ubuntu)
+      for pair in "${FLEET_HOSTS[@]}"; do
+        [ "${pair##*:}" = "$lc" ] && { out+=("${pair%%:*}"); found=1; }
+      done ;;
+    esac
+    [ "$found" -eq 1 ] && continue
     for pair in "${FLEET_HOSTS[@]}"; do
       name="${pair%%:*}"
       if [ "$name" = "$lc" ]; then out+=("$name"); found=1; break; fi
