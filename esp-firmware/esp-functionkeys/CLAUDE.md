@@ -36,6 +36,15 @@ and augments the user's physical Surface Dial + extended-F-key setup.
   bottom-right (Montserrat 14). Empty cells use the same column color
   as labeled ones (no dimming). Pressed state = lighter fill + white border + glow.
 - send_keystroke(): the HID call, fires on release only.
+- Two themes: color-coded (default) and "classic" (dark blue, cyan
+  outline; COL_CELL/COL_BORDER/COL_TEXT/... macros at the top). The
+  choice lives in flash (NVS namespace "fkeys", key "classic") and is
+  read in setup(). Hold the top-left cell (Ctrl+Shift F6,
+  THEME_TOGGLE_ROW/COL) for THEME_TOGGLE_MS (2s), then release: it
+  flips the flag and reboots into the other theme, sending NO
+  keystroke. A normal tap on that cell still sends its keystroke.
+  Any new per-cell color must be handled in both themes (build_ui()
+  and cell_event_cb() branch on g_classic).
 
 ## Common tasks (how requests usually go)
 Every change follows: edit .ino -> compile-check -> flash -> user

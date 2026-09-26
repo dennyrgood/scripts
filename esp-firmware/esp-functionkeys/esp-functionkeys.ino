@@ -34,8 +34,20 @@
 
 #include <USB.h>
 #include <USBHIDKeyboard.h>
+#include <Preferences.h>
 
 static USBHIDKeyboard Keyboard;
+
+// Two looks, chosen at boot from flash (NVS, namespace "fkeys", key
+// "classic"): false = per-column colors (default), true = the older dark-blue
+// cyan-outline look (COL_CELL/COL_BORDER/... above). Hold the cell below for
+// THEME_TOGGLE_MS to flip it; the board reboots into the other look. A normal
+// tap on that cell still sends its keystroke like any other cell.
+static bool g_classic = false;
+static uint32_t g_press_ms = 0;
+#define THEME_TOGGLE_ROW 0
+#define THEME_TOGGLE_COL 0
+#define THEME_TOGGLE_MS  2000
 
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
@@ -151,6 +163,16 @@ static void send_keystroke(int row, int col) {
     Keyboard.releaseAll();
 }
 
+static void toggle_theme_and_restart(void) {
+    Preferences prefs;
+    prefs.begin("fkeys", false);
+    prefs.putBool("classic", !g_classic);
+    prefs.end();
+    Serial.println("Theme toggled, restarting");
+    delay(50);
+    ESP.restart();
+}
+
 static void cell_event_cb(lv_event_t *e) {
     lv_obj_t *cell = (lv_obj_t *)lv_event_get_target(e);
     lv_event_code_t code = lv_event_get_code(e);
@@ -158,11 +180,19 @@ static void cell_event_cb(lv_event_t *e) {
     lv_obj_t *content = ctx->content;
 
     if (code == LV_EVENT_PRESSED) {
-        // Saturated fills can't "glow" by brightening like the old dark
-        // cells did -- lighten the fill and flash a white border instead.
-        lv_obj_set_style_bg_color(cell, lv_color_mix(lv_color_white(), ctx->fill, 90), 0);
-        lv_obj_set_style_border_color(cell, lv_color_white(), 0);
-        lv_obj_set_style_shadow_color(cell, lv_color_white(), 0);
+        g_press_ms = millis();
+        if (g_classic) {
+            lv_obj_set_style_bg_color(cell, COL_PRESSED_BG, 0);
+            lv_obj_set_style_border_color(cell, COL_PRESSED_BRD, 0);
+            lv_obj_set_style_shadow_color(cell, COL_BORDER, 0);
+            if (content) lv_obj_set_style_text_color(content, COL_PRESSED_TEXT, 0);
+        } else {
+            // Saturated fills can't "glow" by brightening like the old dark
+            // cells did -- lighten the fill and flash a white border instead.
+            lv_obj_set_style_bg_color(cell, lv_color_mix(lv_color_white(), ctx->fill, 90), 0);
+            lv_obj_set_style_border_color(cell, lv_color_white(), 0);
+            lv_obj_set_style_shadow_color(cell, lv_color_white(), 0);
+        }
         lv_obj_set_style_shadow_width(cell, 22, 0);
         lv_obj_set_style_shadow_spread(cell, 2, 0);
         lv_obj_set_style_shadow_opa(cell, LV_OPA_70, 0);
@@ -171,10 +201,17 @@ static void cell_event_cb(lv_event_t *e) {
         lv_obj_set_style_border_color(cell, ctx->border, 0);
         lv_obj_set_style_shadow_width(cell, 0, 0);
         lv_obj_set_style_shadow_opa(cell, LV_OPA_TRANSP, 0);
+        if (g_classic && content) lv_obj_set_style_text_color(content, COL_TEXT, 0);
         // Fire on an actual release (finger lifted while still on the cell),
         // not on PRESS_LOST (finger dragged off) -- matches a real button's
         // behavior, where dragging off before releasing cancels the press.
         if (code == LV_EVENT_RELEASED) {
+            // Long hold on the toggle cell flips the theme INSTEAD of sending.
+            if (ctx->row == THEME_TOGGLE_ROW && ctx->col == THEME_TOGGLE_COL &&
+                millis() - g_press_ms >= THEME_TOGGLE_MS) {
+                toggle_theme_and_restart();
+                return;
+            }
             send_keystroke(ctx->row, ctx->col);
         }
     }
@@ -214,6 +251,18 @@ static void build_ui(void) {
             // so they get the same full column color, just with no label.
             lv_color_t fill = base;
             lv_color_t brd  = lv_color_mix(lv_color_white(), base, 60);
+            lv_color_t cyc_col  = txt;
+            lv_color_t fkey_col = txt;
+            lv_opa_t cyc_opa  = LV_OPA_80;
+            lv_opa_t fkey_opa = LV_OPA_70;
+            if (g_classic) {
+                fill = COL_CELL;
+                brd  = COL_BORDER;
+                txt  = COL_TEXT;
+                cyc_col  = COL_TEXT_DIM;
+                fkey_col = COL_FKEY;
+                cyc_opa = fkey_opa = LV_OPA_COVER;
+            }
             CELL_CTX[row][col].fill = fill;
             CELL_CTX[row][col].border = brd;
             lv_obj_set_style_bg_color(cell, fill, 0);
@@ -260,8 +309,8 @@ static void build_ui(void) {
                 lv_obj_t *cyc = lv_label_create(cell);
                 lv_label_set_text(cyc, "(cyc)");
                 lv_obj_set_style_text_font(cyc, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(cyc, txt, 0);
-                lv_obj_set_style_text_opa(cyc, LV_OPA_80, 0);
+                lv_obj_set_style_text_color(cyc, cyc_col, 0);
+                lv_obj_set_style_text_opa(cyc, cyc_opa, 0);
                 lv_obj_clear_flag(cyc, LV_OBJ_FLAG_CLICKABLE);
                 lv_obj_align(cyc, LV_ALIGN_TOP_LEFT, 2, 32);
             }
@@ -278,8 +327,8 @@ static void build_ui(void) {
             }
             lv_label_set_text(fkey, fkey_buf);
             lv_obj_set_style_text_font(fkey, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(fkey, txt, 0);
-            lv_obj_set_style_text_opa(fkey, LV_OPA_70, 0);
+            lv_obj_set_style_text_color(fkey, fkey_col, 0);
+            lv_obj_set_style_text_opa(fkey, fkey_opa, 0);
             lv_obj_clear_flag(fkey, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_align(fkey, LV_ALIGN_BOTTOM_RIGHT, -4, -3);
 
@@ -305,6 +354,14 @@ void setup()
     USB.begin();
 
     Serial.println("ESP-FUNCTIONKEYS start");
+
+    {
+        Preferences prefs;
+        prefs.begin("fkeys", false); // rw so the namespace is created on first boot
+        g_classic = prefs.getBool("classic", false);
+        prefs.end();
+        Serial.println(g_classic ? "Theme: classic" : "Theme: color-coded");
+    }
 
     Board *board = new Board();
     if ((board == nullptr) || !board->init()) {
