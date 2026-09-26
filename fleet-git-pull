@@ -7,7 +7,7 @@
 # Usage: ./fleet-git-pull.sh [--dry-run] [--repos repo1,repo2] [host ...]
 #   --dry-run          report what would be pulled, don't actually pull
 #   --repos r1,r2      comma-separated repo names to consider (default: all repos found, like fleet-git-check)
-#   host ...           restrict to specific tailscale names (default: whole fleet)
+#   host ...           restrict to hosts: tailscale name, alias (mb, cwh...), or substring (mac)
 
 set -uo pipefail
 
@@ -51,6 +51,44 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Resolve host args: exact name, short alias (amsdt, cwh, mb, ...), or a
+# case-insensitive substring/glob of a fleet host name (e.g. `mac` or '*mac*').
+# Note: quote globs, or use a bare substring, so the shell doesn't expand them.
+resolve_hosts() {
+  local arg pair name a lc found
+  local -a out=()
+  for arg in "$@"; do
+    lc=$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]'); lc="${lc//\*/}"
+    case "$lc" in
+      amsdt) lc=amsterdamdesktop ;; cwhu) lc=chatworkhorseunix ;; cwh) lc=chatworkhorse ;;
+      ib) lc=imagebeast ;; mb2) lc=denniss-2nd-macbook-air ;; mb) lc=denniss-macbook-air ;;
+      mmm) lc=mathes-mac-mini ;; nas) lc=fleetnas ;; rws) lc=remotews ;;
+      s3g) lc=surface3-gc ;; tb) lc=travelbeast ;; wbu) lc=workbenchunix ;;
+    esac
+    found=0
+    for pair in "${FLEET_HOSTS[@]}"; do
+      name="${pair%%:*}"
+      if [ "$name" = "$lc" ]; then out+=("$name"); found=1; break; fi
+    done
+    if [ "$found" -eq 0 ]; then
+      for pair in "${FLEET_HOSTS[@]}"; do
+        name="${pair%%:*}"
+        case "$name" in *"$lc"*) out+=("$name"); found=1 ;; esac
+      done
+    fi
+    [ "$found" -eq 0 ] && echo "!! no fleet host matches: $arg (skipping)" >&2
+  done
+  [ "${#out[@]}" -gt 0 ] && printf '%s\n' "${out[@]}" | sort -u
+  return 0
+}
+
+if [ "${#HOSTS[@]}" -gt 0 ]; then
+  _resolved=$(resolve_hosts "${HOSTS[@]}")
+  HOSTS=()
+  while IFS= read -r _h; do [ -n "$_h" ] && HOSTS+=("$_h"); done <<< "$_resolved"
+  [ "${#HOSTS[@]}" -eq 0 ] && exit 1
+fi
 
 if [ "${#HOSTS[@]}" -eq 0 ]; then
   for pair in "${FLEET_HOSTS[@]}"; do HOSTS+=("${pair%%:*}"); done
