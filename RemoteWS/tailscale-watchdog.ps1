@@ -98,6 +98,13 @@ $AliveMarkerFile = Join-Path $LogDir ".tailscale_watchdog_remotews.alive"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Force -Path $LogDir | Out-Null }
 
 function Log($msg) {
+    # ASCII only, same rule as FleetMetricsWatchdog.ps1 - this shares its log
+    # file. Confirmed 2026-09-28: $info.Health can contain a raw Tailscale
+    # relay error with a non-ASCII city name (e.g. "Sao Paulo"), and
+    # Add-Content writes it in PowerShell 5.1's legacy codepage, not UTF-8 -
+    # producing a byte that broke fleet_api.py's strict UTF-8 decode and blanked
+    # the ENTIRE log for this host on the dashboard, not just that one line.
+    $msg = $msg -replace '[^\x00-\x7F]', '?'
     $line = "$(Get-Date -Format o) $LogTag $msg"
     Write-Output $line
     Add-Content -Path $LogFile -Value $line

@@ -62,6 +62,8 @@ $IntervalSeconds = 300   # 5 min, matching the original Task Scheduler repeat ca
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Force -Path $LogDir | Out-Null }
 
 function Log($msg) {
+    # ASCII only - see tailscale-watchdog.ps1's Log() for why (shares this log file).
+    $msg = $msg -replace '[^\x00-\x7F]', '?'
     $line = "$(Get-Date -Format o) $LogTag $msg"
     Write-Output $line
     Add-Content -Path $LogFile -Value $line

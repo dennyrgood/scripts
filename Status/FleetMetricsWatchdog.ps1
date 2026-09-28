@@ -49,6 +49,12 @@ $checkUrl = "http://127.0.0.1:9100/heartbeat_$checkerHost.txt"
 $timeoutSec = 5
 
 function Log($msg) {
+    # ASCII only (see header comment) - enforced here too, not just by convention,
+    # since this log is shared with tailscale-watchdog.ps1/jumpconnect-watchdog.ps1
+    # on remotews. Confirmed 2026-09-28: a non-ASCII byte from one of those scripts
+    # broke fleet_api.py's strict UTF-8 decode of the WHOLE log, not just its own
+    # line - dashboard showed "no watchdog" for a host that was actually fine.
+    $msg = $msg -replace '[^\x00-\x7F]', '?'
     $line = "$(Get-Date -Format o) $msg"
     Write-Output $line
     Add-Content -Path $logFile -Value $line

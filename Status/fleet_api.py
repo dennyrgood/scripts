@@ -122,7 +122,15 @@ def get_watchdog_log(host):
 
     try:
         with urllib.request.urlopen(url, timeout=3) as r:
-            text = r.read().decode("utf-8-sig")
+            # errors="replace", not the default strict: a single non-UTF-8 byte
+            # anywhere in the log (e.g. a watchdog script logging a raw error
+            # message containing a non-ASCII character, like a Tailscale relay
+            # city name) must not blank out the ENTIRE log for a host - confirmed
+            # 2026-09-28 on remotews ("Sao Paulo" written in the system codepage
+            # by tailscale-watchdog.ps1 broke strict decoding here, making the
+            # dashboard show "no watchdog" for a host whose watchdog was actually
+            # running fine).
+            text = r.read().decode("utf-8-sig", errors="replace")
     except Exception:
         text = ""
 
