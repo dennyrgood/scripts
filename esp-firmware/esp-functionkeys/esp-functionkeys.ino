@@ -38,12 +38,16 @@
 
 static USBHIDKeyboard Keyboard;
 
-// Two looks, chosen at boot from flash (NVS, namespace "fkeys", key
-// "classic"): false = per-column colors (default), true = the older dark-blue
-// cyan-outline look (COL_CELL/COL_BORDER/... above). Hold the cell below for
-// THEME_TOGGLE_MS to flip it; the board reboots into the other look. A normal
-// tap on that cell still sends its keystroke like any other cell.
-static bool g_classic = false;
+// Four looks, cycled by holding the cell below for THEME_TOGGLE_MS and
+// releasing: THEME_COLOR (default, per-column colors) -> THEME_CLASSIC (the
+// original dark-blue/cyan look) -> THEME_AMBER -> THEME_GREEN (1970s/80s
+// monochrome CRT looks) -> back to THEME_COLOR. The choice is saved to flash
+// (NVS, namespace "fkeys", key "theme") and the board reboots into the next
+// one; a normal tap on that cell still sends its keystroke like any other.
+// THEME_COLOR keeps the per-column palette (COL_FILL_HEX/COL_DARK_TEXT
+// below); the other three are monochrome and use MONO_PALETTES[] instead.
+enum Theme { THEME_COLOR = 0, THEME_CLASSIC, THEME_AMBER, THEME_GREEN, THEME_COUNT };
+static Theme g_theme = THEME_COLOR;
 static uint32_t g_press_ms = 0;
 #define THEME_TOGGLE_ROW 0
 #define THEME_TOGGLE_COL 0
@@ -52,15 +56,21 @@ static uint32_t g_press_ms = 0;
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
 
-#define COL_BG           lv_color_hex(0x050d14) // page background, shows as the thin gap between cells
-#define COL_CELL         lv_color_hex(0x0a1c2e)
-#define COL_BORDER       lv_color_hex(0x22d3ee)
-#define COL_TEXT         lv_color_hex(0x5fd6ee)
-#define COL_TEXT_DIM     lv_color_hex(0x6b93a8) // "(cyc)" tag
-#define COL_FKEY         lv_color_hex(0x4f7488) // corner F-key reference, dimmest element on screen
-#define COL_PRESSED_BG   lv_color_hex(0x14495c)
-#define COL_PRESSED_TEXT lv_color_hex(0xffffff)
-#define COL_PRESSED_BRD  lv_color_hex(0x8febff)
+#define COL_BG lv_color_hex(0x050d14) // page background, shows as the thin gap between cells
+
+// One palette per monochrome theme (indexed by Theme, THEME_COLOR's slot
+// unused). CRT amber/green pick a near-black cell fill and a bright, fully
+// saturated border/text in that single hue -- no gradient, like a real
+// phosphor display. Classic keeps its original dark-blue/cyan values.
+struct MonoPalette {
+    uint32_t cell, border, text, text_dim, fkey, pressed_bg, pressed_text, pressed_brd;
+};
+static const MonoPalette MONO_PALETTES[THEME_COUNT] = {
+    /* THEME_COLOR   */ {0, 0, 0, 0, 0, 0, 0, 0}, // unused
+    /* THEME_CLASSIC */ {0x0a1c2e, 0x22d3ee, 0x5fd6ee, 0x6b93a8, 0x4f7488, 0x14495c, 0xffffff, 0x8febff},
+    /* THEME_AMBER   */ {0x120a00, 0xffb000, 0xffb000, 0xa5730a, 0x8a5f08, 0x2e1c00, 0xffe9b3, 0xffcf66},
+    /* THEME_GREEN   */ {0x001200, 0x33ff33, 0x33ff33, 0x1f9e1f, 0x1a7f1a, 0x002e00, 0xccffcc, 0x8cff8c},
+};
 
 #define N_COLS 7
 #define N_ROWS 4
@@ -163,12 +173,13 @@ static void send_keystroke(int row, int col) {
     Keyboard.releaseAll();
 }
 
-static void toggle_theme_and_restart(void) {
+static void advance_theme_and_restart(void) {
+    Theme next = (Theme)((g_theme + 1) % THEME_COUNT);
     Preferences prefs;
     prefs.begin("fkeys", false);
-    prefs.putBool("classic", !g_classic);
+    prefs.putUChar("theme", (uint8_t)next);
     prefs.end();
-    Serial.println("Theme toggled, restarting");
+    Serial.printf("Theme -> %d, restarting\n", (int)next);
     delay(50);
     ESP.restart();
 }
@@ -181,11 +192,12 @@ static void cell_event_cb(lv_event_t *e) {
 
     if (code == LV_EVENT_PRESSED) {
         g_press_ms = millis();
-        if (g_classic) {
-            lv_obj_set_style_bg_color(cell, COL_PRESSED_BG, 0);
-            lv_obj_set_style_border_color(cell, COL_PRESSED_BRD, 0);
-            lv_obj_set_style_shadow_color(cell, COL_BORDER, 0);
-            if (content) lv_obj_set_style_text_color(content, COL_PRESSED_TEXT, 0);
+        if (g_theme != THEME_COLOR) {
+            const MonoPalette &pal = MONO_PALETTES[g_theme];
+            lv_obj_set_style_bg_color(cell, lv_color_hex(pal.pressed_bg), 0);
+            lv_obj_set_style_border_color(cell, lv_color_hex(pal.pressed_brd), 0);
+            lv_obj_set_style_shadow_color(cell, lv_color_hex(pal.border), 0);
+            if (content) lv_obj_set_style_text_color(content, lv_color_hex(pal.pressed_text), 0);
         } else {
             // Saturated fills can't "glow" by brightening like the old dark
             // cells did -- lighten the fill and flash a white border instead.
@@ -201,15 +213,17 @@ static void cell_event_cb(lv_event_t *e) {
         lv_obj_set_style_border_color(cell, ctx->border, 0);
         lv_obj_set_style_shadow_width(cell, 0, 0);
         lv_obj_set_style_shadow_opa(cell, LV_OPA_TRANSP, 0);
-        if (g_classic && content) lv_obj_set_style_text_color(content, COL_TEXT, 0);
+        if (g_theme != THEME_COLOR && content) {
+            lv_obj_set_style_text_color(content, lv_color_hex(MONO_PALETTES[g_theme].text), 0);
+        }
         // Fire on an actual release (finger lifted while still on the cell),
         // not on PRESS_LOST (finger dragged off) -- matches a real button's
         // behavior, where dragging off before releasing cancels the press.
         if (code == LV_EVENT_RELEASED) {
-            // Long hold on the toggle cell flips the theme INSTEAD of sending.
+            // Long hold on the toggle cell advances the theme INSTEAD of sending.
             if (ctx->row == THEME_TOGGLE_ROW && ctx->col == THEME_TOGGLE_COL &&
                 millis() - g_press_ms >= THEME_TOGGLE_MS) {
-                toggle_theme_and_restart();
+                advance_theme_and_restart();
                 return;
             }
             send_keystroke(ctx->row, ctx->col);
@@ -255,12 +269,13 @@ static void build_ui(void) {
             lv_color_t fkey_col = txt;
             lv_opa_t cyc_opa  = LV_OPA_80;
             lv_opa_t fkey_opa = LV_OPA_70;
-            if (g_classic) {
-                fill = COL_CELL;
-                brd  = COL_BORDER;
-                txt  = COL_TEXT;
-                cyc_col  = COL_TEXT_DIM;
-                fkey_col = COL_FKEY;
+            if (g_theme != THEME_COLOR) {
+                const MonoPalette &pal = MONO_PALETTES[g_theme];
+                fill = lv_color_hex(pal.cell);
+                brd  = lv_color_hex(pal.border);
+                txt  = lv_color_hex(pal.text);
+                cyc_col  = lv_color_hex(pal.text_dim);
+                fkey_col = lv_color_hex(pal.fkey);
                 cyc_opa = fkey_opa = LV_OPA_COVER;
             }
             CELL_CTX[row][col].fill = fill;
@@ -358,9 +373,10 @@ void setup()
     {
         Preferences prefs;
         prefs.begin("fkeys", false); // rw so the namespace is created on first boot
-        g_classic = prefs.getBool("classic", false);
+        uint8_t saved = prefs.getUChar("theme", THEME_COLOR);
+        g_theme = (saved < THEME_COUNT) ? (Theme)saved : THEME_COLOR; // guard against a stale/garbage value
         prefs.end();
-        Serial.println(g_classic ? "Theme: classic" : "Theme: color-coded");
+        Serial.printf("Theme: %d\n", (int)g_theme);
     }
 
     Board *board = new Board();
