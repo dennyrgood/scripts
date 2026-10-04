@@ -55,13 +55,27 @@ if [ ${#MACHINES[@]} -eq 0 ]; then
   fi
 fi
 
-SSHO=(-o BatchMode=yes -o ConnectTimeout=8 -o LogLevel=ERROR)
+# ServerAlive* drops a connection that opens and then goes silent (ConnectTimeout
+# only covers the TCP connect), so one wedged box can't stall the parallel pull.
+SSHO=(-o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 -o LogLevel=ERROR)
+
+# tmo <secs> cmd...: hard wall-clock limit (macOS has no `timeout`). Needed because
+# remotews connects and authenticates, then its shell never answers the command;
+# sshd keeps replying, so ServerAlive never fires and ssh hangs forever.
+# perl forks the command and kills it on timeout itself (exit 124, one-line note on
+# stderr), so bash never prints its own "Alarm clock: 14 perl -e ..." job message.
+tmo() {
+  perl -e '$t = shift; $p = fork; if (!$p) { exec @ARGV; exit 127 }
+    $SIG{ALRM} = sub { kill "TERM", $p; select(undef, undef, undef, 0.5); kill "KILL", $p;
+      waitpid($p, 0); print STDERR "timed out after ${t}s ($ARGV[0])\n"; exit 124 };
+    alarm $t; waitpid($p, 0); exit(($? & 127) ? 128 + ($? & 127) : $? >> 8)' "$@"
+}
 
 # is_windows <host>: no `uname -s` answer over ssh means a PowerShell (Windows) box.
 # (An unreachable host also lands here; the pull then fails and is reported as such.)
 is_windows() {
   local os
-  os=$(ssh "${SSHO[@]}" "$1" 'uname -s' 2>/dev/null) && [[ "$os" =~ ^[A-Za-z]+$ ]] && return 1
+  os=$(tmo 20 ssh "${SSHO[@]}" "$1" 'uname -s' 2>/dev/null) && [[ "$os" =~ ^[A-Za-z]+$ ]] && return 1
   return 0
 }
 
@@ -84,16 +98,16 @@ pull_one() {
   local m=$1 dest="$OUT/machines/$1" home drive rest scratch
   mkdir -p "$dest"
   if is_windows "$m"; then
-    home=$(ssh "${SSHO[@]}" "$m" '$HOME' | tr -d '\r' | tail -1) || return 1
+    home=$(tmo 20 ssh "${SSHO[@]}" "$m" '$HOME' | tr -d '\r' | tail -1) || return 1
     [ -n "$home" ] || { echo "cannot read HOME on $m"; return 1; }
     drive=$(printf %s "${home:0:1}" | tr 'A-Z' 'a-z'); rest=${home:2}; rest=${rest//\\//}
-    if ssh "${SSHO[@]}" "$m" 'Get-Command rsync -ErrorAction SilentlyContinue' | grep -q .; then
+    if tmo 20 ssh "${SSHO[@]}" "$m" 'Get-Command rsync -ErrorAction SilentlyContinue' | grep -q .; then
       "${RSYNC[@]}" "$m:/cygdrive/$drive$rest/.claude/projects/" "$dest/"
     else
       scratch=$(mktemp -d)
       # -p / -Rp keep the remote modified times; otherwise every pull looks like
       # a change and the session is re-summarized on every run.
-      if scp -r -p -q "${SSHO[@]}" "$m:.claude/projects" "$scratch/"; then
+      if tmo 300 scp -r -p -q "${SSHO[@]}" "$m:.claude/projects" "$scratch/"; then
         cp -Rp "$scratch/projects/." "$dest/"; rm -rf "$scratch"
       else
         rm -rf "$scratch"; return 1
@@ -108,9 +122,11 @@ if [ "$REFRESH" -eq 1 ]; then
   mkdir -p "$OUT/index" "$OUT/machines"
   tmp="$(mktemp -d)"
 
-  echo "== pulling transcripts (parallel) =="
+  echo "== pulling transcripts (parallel, ${#MACHINES[@]} machines) =="
+  T0=$SECONDS
   for m in "${MACHINES[@]}"; do
     (
+      t=$SECONDS
       if pull_one "$m" >"$tmp/$m.log" 2>&1; then
         ok=true
       elif grep -qiE 'no such file|cannot find|does not exist|link_stat|invalid path' "$tmp/$m.log"; then
@@ -119,7 +135,20 @@ if [ "$REFRESH" -eq 1 ]; then
         ok=false
       fi
       echo "$ok" > "$tmp/$m.ok"
+      printf '  [%3ss] %-26s %s\n' "$((SECONDS - T0))" "$m" \
+        "$([ "$ok" = true ] && echo done || echo FAILED)"
     ) &
+  done
+  # Instead of a silent `wait`: report which machines are still pending, so a hang
+  # shows up by name (each ssh/scp step has its own hard limit, see tmo).
+  while :; do
+    pending=()
+    for m in "${MACHINES[@]}"; do [ -e "$tmp/$m.ok" ] || pending+=("$m"); done
+    [ ${#pending[@]} -eq 0 ] && break
+    sleep 5
+    still=()
+    for m in "${pending[@]}"; do [ -e "$tmp/$m.ok" ] || still+=("$m"); done
+    [ ${#still[@]} -gt 0 ] && printf '  [%3ss] waiting on %d: %s\n' "$((SECONDS - T0))" "${#still[@]}" "${still[*]}"
   done
   wait
 
@@ -140,14 +169,18 @@ if [ "$REFRESH" -eq 1 ]; then
   rm -rf "$tmp"
 
   echo "== indexing (only new/changed sessions are summarized) =="
+  echo "-- $LOCAL (local)"
   python3 "$IDX" --root "$HOME/.claude/projects" --machine "$LOCAL" --idle-minutes 0
   for m in "${MACHINES[@]}"; do
+    echo "-- $m"
     python3 "$IDX" --root "$OUT/machines/$m" --machine "$m" --idle-minutes 0 \
       --skip-dupes-of "$HOME/.claude/projects"
   done
   # claude.ai export: unzips any new zips dropped in machines/WEB/ and summarizes
   # only new/changed chats (asks first if that is more than 100). No-op otherwise.
+  echo "-- WEB"
   python3 "$(dirname "$0")/claude_web_index.py" --out "$OUT"
+  echo "-- merging"
   python3 "$IDX" --merge
 
   echo "== summary =="

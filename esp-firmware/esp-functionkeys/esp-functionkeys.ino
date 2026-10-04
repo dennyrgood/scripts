@@ -108,7 +108,7 @@ static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 // No modifier symbols in the action text itself anymore -- see MOD_TAG above.
 static const CellSpec GRID[N_ROWS][N_COLS] = {
     { // row 0 -- Ctrl+Shift
-        {{"", ""}, 0, false},
+        {{"Max", ""}, 1, false},
         {{"", ""}, 0, false},
         {{"new", ""}, 1, false},
         {{"", ""}, 0, false},
@@ -117,7 +117,7 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
         {{"arrange", ""}, 1, false},
     },
     { // row 1 -- Ctrl
-        {{"", ""}, 0, false},
+        {{"Min", ""}, 1, false},
         {{"", ""}, 0, false},
         {{"iTerm", ""}, 1, true},
         {{"", ""}, 0, false},
