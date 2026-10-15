@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dennis.money-web</string>
+
+    <!-- Money replacement web app (~/repos/money), waitress on 127.0.0.1:5040 (port from its config.toml);
+         reached over the tailnet with `tailscale serve`. Config: ~/repos/money/config.toml.
+         Added 2026-10-15 (money M7). -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dennishmathes/repos/money/.venv/bin/money</string>
+        <string>--config</string>
+        <string>/Users/dennishmathes/repos/money/config.toml</string>
+        <string>serve</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dennishmathes/repos/money</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_web.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_web.log</string>
+</dict>
+</plist>

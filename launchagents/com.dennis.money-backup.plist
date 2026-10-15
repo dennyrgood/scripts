@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dennis.money-backup</string>
+
+    <!-- Nightly `money backup`: snapshots every money book into ~/MoneyData/backups (30 daily, 12 monthly),
+         each checked with PRAGMA integrity_check. Local only for now; off-host copies later.
+         Added 2026-10-15 (money M7). -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dennishmathes/repos/money/.venv/bin/money</string>
+        <string>--config</string>
+        <string>/Users/dennishmathes/repos/money/config.toml</string>
+        <string>backup</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dennishmathes/repos/money</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Same as the nightly-summary agents: see mb-health-monitor.plist's comment for the launchd-throttling
+         issue this avoids. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_backup.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_backup.log</string>
+</dict>
+</plist>

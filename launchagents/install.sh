@@ -45,7 +45,13 @@ FLEET_ONLY="com.dennis.heartbeat-writer com.dennis.fleet-metrics-server"
 # directly on mmm, separate from the live one on mb (different host, same port,
 # no conflict). Same plist as mb's — see launchagents/README.md.
 MMM_ONLY="$FLEET_ONLY com.dennis.mmm-plex-backup com.dennis.mmm-nightly-summary com.dennis.mmm-health-monitor com.dennis.tmdb-explorer"
-ALL_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $MMM_ONLY"
+# money (~/repos/money), added 2026-10-15: its web app and nightly backup. On mb (part of ALL_AGENTS) as the warm
+# standby; FleetDev, its real home, gets them once FleetDev is added to the case below.
+MONEY_AGENTS="com.dennis.money-web com.dennis.money-backup"
+ALL_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $MMM_ONLY $MONEY_AGENTS"
+# mb's own list (2026-10-15 06:21 UTC): its GUIs, the fleet agents, tmdb-explorer and money. Not the mmm-* agents (Plex backup,
+# nightly summary, health monitor: Mac mini only) and not comfy-fleet-scan. Before this, mb got ALL_AGENTS.
+MB_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http $FLEET_ONLY com.dennis.tmdb-explorer $MONEY_AGENTS"
 
 RAW_HOST="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
 # Normalize: strip apostrophes (straight ' and curly macOS default '),
@@ -58,7 +64,7 @@ RAW_HOST="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
 HOST="$(echo "$RAW_HOST" | sed "s/['’]//g" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
 case "$HOST" in
     denniss-macbook-air)
-        LABELS="$ALL_AGENTS" ;;
+        LABELS="$MB_AGENTS" ;;
     denniss-2nd-macbook-air)
         LABELS="$FLEET_ONLY" ;;
     mathes-mac-mini)

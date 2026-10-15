@@ -20,6 +20,8 @@ at every login, restart automatically if they crash, and log to files.
 | `com.dennis.mmm-plex-backup` | `MathesMacMini/backup_plex_to_fleetnas.sh` — daily 4am rsync mirror, Mac Mini Plex library → FleetNAS | — | `~/Library/Logs/mmm_plex_backup.log` (script's own detailed log: `~/.cache/fleetnas-sync/plex_*.log`) |
 | `com.dennis.mmm-nightly-summary` | `MathesMacMini/nightly_summary.sh` — daily 7am email report on the Plex backup's health | — | `~/Library/Logs/mmm_nightly_summary.log` |
 | `com.dennis.mmm-health-monitor` | `MathesMacMini/mathes-mac-mini-health-monitor.sh` — every 5 min, Plex/Syncthing process+API health + disk usage, alert/all-clear emails | — | `~/Library/Logs/mmm_health_monitor.log` |
+| `com.dennis.money-web` | money web app (`~/repos/money`: `.venv/bin/money serve`, waitress on 127.0.0.1 only; tailnet via `tailscale serve`). mb for now (warm standby), FleetDev later. Added 2026-10-15. | 5040 | `~/Library/Logs/money_web.log` |
+| `com.dennis.money-backup` | `money backup` — daily 02:30, snapshots every money book into `~/MoneyData/backups` (30 daily, 12 monthly), integrity-checked; local only for now | — | `~/Library/Logs/money_backup.log` |
 
 Port notes: 5000 is taken by macOS AirPlay; travel deliberately sits at 5030
 so the 8xxx range stays free for ad-hoc testing (the generic `start_http`
@@ -32,7 +34,8 @@ grant), see `MIGRATION.md`.
 
 `install.sh` is host-aware — it looks at `scutil --get ComputerName` and
 only installs the agents that machine should run: mb (`denniss-macbook-air`,
-primary) gets everything; mb2 (`denniss-2nd-macbook-air`) is fleet-only
+primary) gets its GUIs, the fleet agents, `tmdb-explorer` and the money agents, but not
+the `mmm-*` agents or `comfy-fleet-scan` (changed 2026-10-15 06:21 UTC; before that it got everything); mb2 (`denniss-2nd-macbook-air`) is fleet-only
 (`heartbeat-writer` + `fleet-metrics-server` — no Ollama, no
 search_adv/search_shows/travel/tmdb GUIs); mmm (`mathes-mac-mini`) gets
 those two plus its own three Plex/Syncthing agents (`mmm-plex-backup`,
