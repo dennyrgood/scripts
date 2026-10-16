@@ -47,7 +47,7 @@ FLEET_ONLY="com.dennis.heartbeat-writer com.dennis.fleet-metrics-server"
 MMM_ONLY="$FLEET_ONLY com.dennis.mmm-plex-backup com.dennis.mmm-nightly-summary com.dennis.mmm-health-monitor com.dennis.tmdb-explorer"
 # money (~/repos/money), added 2026-10-15: its web app and nightly backup. On mb (part of ALL_AGENTS) as the warm
 # standby; FleetDev, its real home, gets them once FleetDev is added to the case below.
-MONEY_AGENTS="com.dennis.money-web com.dennis.money-backup"
+MONEY_AGENTS="com.dennis.money-web com.dennis.money-backup com.dennis.money-simplefin"   # simplefin: daily fetch, added 2026-10-16
 ALL_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $MMM_ONLY $MONEY_AGENTS"
 # mb's own list (2026-10-15 06:21 UTC): its GUIs, the fleet agents, tmdb-explorer and money. Not the mmm-* agents (Plex backup,
 # nightly summary, health monitor: Mac mini only) and not comfy-fleet-scan. Before this, mb got ALL_AGENTS.
