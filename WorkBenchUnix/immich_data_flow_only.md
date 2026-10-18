@@ -7,10 +7,11 @@
 %% 2026-07-08 ~21:30 UTC — flattened: subgraph boxes removed (Mermaid's cluster layout was stacking them); grouping now carried in node labels; ELK directive and invisible links removed; linkStyle 0-19 unchanged
 %% 2026-07-08 ~21:55 UTC — reconciled against live logs: CWHU warm-sync is cron 4am (was 6am); PG→BC edge appended (index 20, teal) — backup-c's DB dump is its own pg_dumpall inside backup_immich.sh
 %% Edit rule: one edge per flow — change a cron time or script name on its line, done.
+%% 2026-09-29 UTC — PGDATA relocated off the root partition (/ was 84% full, 16G free) to /mnt/immich-data/immich/postgres; PG node label updated above. Only immich-app/.env changed: the nightly dump runs `docker exec immich_postgres pg_dumpall`, restic backs up images/ and postgres-dumps-latest/ by explicit path, and the FleetNAS/Mac Mini syncs and checksum audits are all scoped to images/ — so no script referenced the old path.
 flowchart LR
 
   LIVE[("immich-data — WBU<br/>live images/ — Source")]
-  PG[("Postgres — live DB, WBU<br/>/srv/immich/postgres")]
+  PG[("Postgres — live DB, WBU<br/>/mnt/immich-data/immich/postgres")]
   DUMPS[("postgres-dumps-latest/<br/>on immich-data — pg_dumpall, kept-2")]
   FLAT[("export_flat/ — WBU")]
   MULTI[("export_multi/ — WBU")]

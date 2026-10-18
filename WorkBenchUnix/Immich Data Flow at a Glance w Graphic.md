@@ -1,8 +1,8 @@
 # Immich Data Flow at a Glance
 
-Edit log: 2026-07-08 \~20:20 UTC — created (Mermaid, maintainable sibling of immich\_data\_flow.svg); reflects live WBU crontab as of 2026-07-08. Edit log: 2026-07-08 \~20:35 UTC — DB dump source corrected: pg\_dumpall reads live Postgres (`/srv/immich/postgres`), not immich-data; PG node added. Edit log: 2026-07-08 \~21:05 UTC — invisible ordering links added to pin destination groups beside WBU (did not fix stacking). Edit log: 2026-07-08 \~21:15 UTC — switched renderer to ELK via init directive (still stacked in chat renderer). Edit log: 2026-07-08 \~21:30 UTC — flattened: subgraph boxes removed (Mermaid cluster layout was stacking them); grouping carried in node labels instead; ELK directive and invisible links removed. Edit log: 2026-07-08 \~21:55 UTC — reconciled against live logs: CWHU warm-sync is cron 4am (was 6am); PG→BC edge appended (index 20\) — backup-c's DB dump is its own pg\_dumpall inside backup\_immich.sh.
+Edit log: 2026-07-08 \~20:20 UTC — created (Mermaid, maintainable sibling of immich\_data\_flow.svg); reflects live WBU crontab as of 2026-07-08. Edit log: 2026-07-08 \~20:35 UTC — DB dump source corrected: pg\_dumpall reads live Postgres (`/srv/immich/postgres`), not immich-data; PG node added. Edit log: 2026-07-08 \~21:05 UTC — invisible ordering links added to pin destination groups beside WBU (did not fix stacking). Edit log: 2026-07-08 \~21:15 UTC — switched renderer to ELK via init directive (still stacked in chat renderer). Edit log: 2026-07-08 \~21:30 UTC — flattened: subgraph boxes removed (Mermaid cluster layout was stacking them); grouping carried in node labels instead; ELK directive and invisible links removed. Edit log: 2026-07-08 \~21:55 UTC — reconciled against live logs: CWHU warm-sync is cron 4am (was 6am); PG→BC edge appended (index 20\) — backup-c's DB dump is its own pg\_dumpall inside backup\_immich.sh. Edit log: 2026-09-29 UTC — PGDATA relocated off the root partition (/ was 84% full, 16G free) to /mnt/immich-data/immich/postgres; PG node label updated above. Only immich-app/.env changed: the nightly dump runs `docker exec immich\_postgres pg\_dumpall`, restic backs up images/ and postgres-dumps-latest/ by explicit path, and the FleetNAS/Mac Mini syncs and checksum audits are all scoped to images/ — so no script referenced the old path.
 
-Image copies trace back to **immich-data on WBU** (live `images/`). DB copies trace to the **live Postgres** at `/srv/immich/postgres`, via `postgres-dumps-latest/` (a small, drive-independent shared DB source for CWHU \+ Mac Mini). Nothing downstream reads from backup-a/b/c; backup-a and backup-b crons are currently commented out. Exports: build (`export_archive.py`) and push are two separate manual actions — no schedule.
+Image copies trace back to **immich-data on WBU** (live `images/`). DB copies trace to the **live Postgres** at `/mnt/immich-data/immich/postgres`, via `postgres-dumps-latest/` (a small, drive-independent shared DB source for CWHU \+ Mac Mini). Nothing downstream reads from backup-a/b/c; backup-a and backup-b crons are currently commented out. Exports: build (`export_archive.py`) and push are two separate manual actions — no schedule.
 
 **Cron order:** 1am backup-c → 3:30am DB dump → 4am CWHU pull → Fri 5:00 / 5:05am Mac Mini weekly.
 
@@ -14,7 +14,7 @@ flowchart LR
 
   LIVE\[("immich-data — WBU\<br/\>live images/ — Source")\]
 
-  PG\[("Postgres — live DB, WBU\<br/\>/srv/immich/postgres")\]
+  PG\[("Postgres — live DB, WBU\<br/\>/mnt/immich-data/immich/postgres")\]
 
   DUMPS\[("postgres-dumps-latest/\<br/\>on immich-data — pg\_dumpall, kept-2")\]
 

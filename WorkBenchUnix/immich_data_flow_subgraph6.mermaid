@@ -7,10 +7,11 @@ flowchart LR
   %% 2026-07-08 ~23:00 UTC — ELK directive restored as line 1 (mmdc 11.x supports it); edge labels shortened
   %% 2026-07-11 ~14:00 UTC — node labels and edge labels restored to match flat version verbatim;
   %%   edge order matches flat version so linkStyle indexes are identical
+  %% 2026-09-29 UTC — PGDATA relocated off the root partition (/ was 84% full, 16G free) to /mnt/immich-data/immich/postgres; PG node label updated above. Only immich-app/.env changed: the nightly dump runs `docker exec immich_postgres pg_dumpall`, restic backs up images/ and postgres-dumps-latest/ by explicit path, and the FleetNAS/Mac Mini syncs and checksum audits are all scoped to images/ — so no script referenced the old path.
 
   subgraph WBU["WBU — WorkBenchUnix"]
     LIVE[("immich-data — WBU<br/>live images/ — Source")]
-    PG[("Postgres — live DB, WBU<br/>/srv/immich/postgres")]
+    PG[("Postgres — live DB, WBU<br/>/mnt/immich-data/immich/postgres")]
     DUMPS[("postgres-dumps-latest/<br/>on immich-data — pg_dumpall, kept-2")]
     FLAT[("export_flat/ — WBU")]
     MULTI[("export_multi/ — WBU")]
