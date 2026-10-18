@@ -8,6 +8,8 @@
 #                         note on immich_machine_learning gunicorn hang / reboot fix.
 # 2026-07-18 20:10 UTC — removed immich_machine_learning from monitored containers;
 #                         intentionally stopped by user, no longer expected to run.
+# 2026-10-18 08:45 CEST — added Check 0: LAN IPv4 self-repair (nmcli con up) after a
+#                         5-day silent outage; see the NO LAN IPv4 footer section.
 # CWHU system health monitor. Runs every 5 minutes via cron.
 # Checks: iowait, D-state processes, disk usage, docker containers.
 # Emails on first detection and every 30 minutes while condition persists.
@@ -40,6 +42,20 @@ UPS_NAME="ups2"
 UPS_HOST="192.168.178.242"   # WBU LAN address; works whether this VM is bridged or NAT'd
 UPS_FAIL_THRESHOLD=2
 
+# LAN IPv4 self-repair (added 2026-10-18). On 2026-10-13 an internet outage left this
+# VM with a bogus 192.168.0.x lease, then (Oct 16) no IPv4 at all once NetworkManager
+# gave up on the profile. IPv6 + Tailscale kept working, so the box looked online, but
+# DNS failed and every email (alerts included) died in msmtp for 5 days. Alerting can't
+# help when mail is the thing that's broken, so this check repairs instead of reporting:
+# re-activating the profile (what fixed it by hand) is safe to repeat. Needs root, which
+# it has from root's crontab.
+NET_IF="enp0s3"
+NET_CON="netplan-enp0s3"
+NET_EXPECT_PREFIX="192.168.178."   # the bogus lease was an IPv4 too, so check the subnet
+NET_FAIL_THRESHOLD=2               # ~10 min, rides out a normal DHCP renew
+NET_RETRY_INTERVAL=$((15 * 60))    # each attempt bounces the NIC; don't do it every 5 min
+NET_LOG="/var/log/cwhu-ipv4-recover.log"
+
 # --- Load state (defaults to zero/inactive if file absent) ---
 IOWAIT_LAST_ALERT=0; IOWAIT_ACTIVE=0
 DSTATE_LAST_ALERT=0; DSTATE_ACTIVE=0; DSTATE_STREAK=0
@@ -47,6 +63,7 @@ DISK_LAST_ALERT=0;   DISK_ACTIVE=0
 # Name is load-bearing: the nightly summary lists active alerts by grepping
 # '_ACTIVE=1$' and stripping the suffix, so this prefix is the label in the email.
 UPS_UNREACHABLE_LAST_ALERT=0; UPS_UNREACHABLE_ACTIVE=0; UPS_UNREACHABLE_STREAK=0
+NET_V4_STREAK=0; NET_V4_LAST_TRY=0; NET_V4_UNREPORTED=0
 
 # Per-container state initialized dynamically below
 for c in "${DOCKER_CONTAINERS[@]}"; do
@@ -55,6 +72,27 @@ for c in "${DOCKER_CONTAINERS[@]}"; do
 done
 
 [ -f "$STATE_FILE" ] && source "$STATE_FILE"
+
+# --- Check 0: LAN IPv4, with self-repair (added 2026-10-18) ---
+# Runs first so the UPS check below and this run's alert email use the repaired network.
+# NET_V4_UNREPORTED stays 1 until an alert email actually goes out, so the repair gets
+# reported once mail works again instead of being lost with the failed sends.
+if ip -4 -o addr show dev "$NET_IF" 2>/dev/null | grep -qF "inet ${NET_EXPECT_PREFIX}"; then
+    NET_V4_STREAK=0
+else
+    NET_V4_STREAK=$(( NET_V4_STREAK + 1 ))
+    if [ "$NET_V4_STREAK" -ge "$NET_FAIL_THRESHOLD" ] && \
+       [ $(( NOW - NET_V4_LAST_TRY )) -ge $NET_RETRY_INTERVAL ]; then
+        NET_V4_LAST_TRY=$NOW
+        OLD_V4=$(ip -4 -o addr show dev "$NET_IF" 2>/dev/null | awk '{print $4}' | head -1)
+        NM_OUT=$(timeout 90 nmcli con up "$NET_CON" 2>&1 | tr '\n' ' ')
+        NEW_V4=$(ip -4 -o addr show dev "$NET_IF" 2>/dev/null | awk '{print $4}' | head -1)
+        echo "$(date '+%F %T') ${NET_IF} had ${OLD_V4:-no IPv4} for ${NET_V4_STREAK} checks;" \
+             "nmcli con up ${NET_CON} -> ${NEW_V4:-still no IPv4} (${NM_OUT})" >> "$NET_LOG"
+        NET_V4_UNREPORTED=1
+        case "$NEW_V4" in "$NET_EXPECT_PREFIX"*) NET_V4_STREAK=0 ;; esac
+    fi
+fi
 
 # --- Check 1: iowait ---
 IOWAIT=$(iostat -c 1 6 2>/dev/null | awk '
@@ -254,6 +292,15 @@ for c in "${DOCKER_CONTAINERS[@]}"; do
     esac
 done
 
+# LAN IPv4 self-repair (Check 0). Not a streak/alert condition: the repair already
+# ran, this just reports it — repeated each run until one email gets through.
+if [ "$NET_V4_UNREPORTED" -eq 1 ]; then
+    ALERT_BODY+="=== NO LAN IPv4 -- AUTO-RECONNECT RAN ===\n"
+    ALERT_BODY+="${NET_IF} lost its ${NET_EXPECT_PREFIX}x address; ran 'nmcli con up ${NET_CON}'.\n"
+    ALERT_BODY+="Mail sent while it was down was lost. Recent attempts (${NET_LOG}):\n"
+    ALERT_BODY+="$(tail -5 "$NET_LOG")\n\n"
+fi
+
 # --- Educational footer ---
 FOOTER="------------------------------------------------------------------------
 WHAT THESE ALERTS MEAN AND WHAT TO DO
@@ -293,6 +340,18 @@ What to do:
   4. docker inspect --format='{{json .State.Health}}' <name> | jq
   5. If wedged: cd /home/dhm/immich-app && docker compose up -d --force-recreate <service>
 
+NO LAN IPv4 -- AUTO-RECONNECT RAN:
+${NET_IF} had no ${NET_EXPECT_PREFIX}x address for ${NET_FAIL_THRESHOLD}+ checks, so this
+monitor re-activated the NetworkManager profile itself (at most every
+$((NET_RETRY_INTERVAL / 60)) min). Usually follows an internet/router outage. If the
+log shows 'still no IPv4' or a 192.168.0.x address, something else on the
+LAN is handing out addresses.
+
+What to do:
+  1. ip -4 -br addr                        -- expect ${NET_EXPECT_PREFIX}198
+  2. tail ${NET_LOG}
+  3. On WBU: sudo ~/dhcp-scan.sh           -- lists every DHCP server
+
 NOTE: immich_machine_learning on CWHU (VirtualBox VM) can enter a state
 where gunicorn's worker hangs but the container stays 'running'.
 force-recreate does not always fix it. If unhealthy persists after
@@ -312,6 +371,9 @@ host stays up.
     echo "UPS_UNREACHABLE_LAST_ALERT=$UPS_UNREACHABLE_LAST_ALERT"
     echo "UPS_UNREACHABLE_ACTIVE=$UPS_UNREACHABLE_ACTIVE"
     echo "UPS_UNREACHABLE_STREAK=$UPS_UNREACHABLE_STREAK"
+    echo "NET_V4_STREAK=$NET_V4_STREAK"
+    echo "NET_V4_LAST_TRY=$NET_V4_LAST_TRY"
+    echo "NET_V4_UNREPORTED=$NET_V4_UNREPORTED"
     for c in "${DOCKER_CONTAINERS[@]}"; do
         for k in MISSING_${c}_LAST_ALERT MISSING_${c}_ACTIVE MISSING_${c}_STREAK \
                  UNHEALTHY_${c}_LAST_ALERT UNHEALTHY_${c}_ACTIVE UNHEALTHY_${c}_STREAK; do
@@ -328,7 +390,8 @@ if [ -n "$ALERT_BODY" ]; then
         echo ""
         echo -e "$ALERT_BODY"
         echo "$FOOTER"
-    } | msmtp --account=icloud "$TO"
+    } | msmtp --account=icloud "$TO" && [ "$NET_V4_UNREPORTED" -eq 1 ] && \
+        sed -i 's/^NET_V4_UNREPORTED=1$/NET_V4_UNREPORTED=0/' "$STATE_FILE"
 fi
 
 # --- Send all-clear email ---
