@@ -27,6 +27,15 @@ MONITOR_STATE="/tmp/denniss-macbook-air-monitor-state.tmp"
 # too if not already done). Padded a bit past the 5-min run interval to absorb ordinary
 # scheduling jitter, not to ride out sleep.
 MONITOR_STALE_SECS=1800   # 30 min (6x the 5-min run interval)
+# 2026-10-18: that AC/no-sleep assumption doesn't hold for mb -- it ran on battery
+# overnight and idle-slept 01:23-07:21 (pmset battery profile has sleep=1). launchd
+# then fired this missed 07:00 job immediately on wake, ~1.5 min BEFORE the monitor's
+# first post-wake run, so it reported "stale (237m)" for a monitor that was fine.
+# So: if the state file looks stale, wait up to one monitor cycle (+ margin) for a
+# fresh run before judging. A genuinely dead monitor still gets flagged, just ~6 min
+# later than before.
+MONITOR_WAIT_SECS=360
+MONITOR_POLL_SECS=15
 
 fmt_age() {
     local secs=$1
@@ -60,6 +69,19 @@ BODY=""
 TLDR="============================= TLDR ===============================\n"
 if [ -f "$MONITOR_STATE" ]; then
     MONITOR_AGE=$(( $(date +%s) - $(stat -f %m "$MONITOR_STATE") ))
+    WAITED=0
+    while [ "$MONITOR_AGE" -gt "$MONITOR_STALE_SECS" ] && [ "$WAITED" -lt "$MONITOR_WAIT_SECS" ]; do
+        sleep "$MONITOR_POLL_SECS"
+        WAITED=$(( WAITED + MONITOR_POLL_SECS ))
+        MONITOR_AGE=$(( $(date +%s) - $(stat -f %m "$MONITOR_STATE") ))
+    done
+    if [ "$WAITED" -gt 0 ] && [ "$MONITOR_AGE" -le "$MONITOR_STALE_SECS" ]; then
+        # kern.waketime looks like "{ sec = 1792300899, usec = 0 }"
+        WAKE_EPOCH=$(sysctl -n kern.waketime 2>/dev/null | sed -n 's/.*sec = \([0-9]*\),.*/\1/p')
+        WAKE_NOTE=""
+        [ -n "$WAKE_EPOCH" ] && WAKE_NOTE=", last wake $(date -r "$WAKE_EPOCH" '+%H:%M')"
+        TLDR+="  (monitor was stale at start -- waited ${WAITED}s for a post-wake run${WAKE_NOTE})\n"
+    fi
     if [ "$MONITOR_AGE" -gt "$MONITOR_STALE_SECS" ]; then
         TLDR+="  mb-health-monitor: ⚠️ stale (last-run $((MONITOR_AGE / 60))m ago; threshold $((MONITOR_STALE_SECS / 60))m)\n"
         [ "$OK" -eq 1 ] && { OK=0; REASON="health monitor stale/missing"; }

@@ -82,7 +82,12 @@ done
 [ -f "$STATE_FILE" ] && source "$STATE_FILE"
 
 # --- Check: all services (process presence, then HTTP health if present) ---
-declare -A MISSING_TRIGGERED DOWN_TRIGGERED
+declare -A MISSING_TRIGGERED DOWN_TRIGGERED DOWN_DETAIL_HTTP
+# 2026-10-18: on a non-200, log *why* (HTTP code, curl exit, elapsed) to this script's
+# log and carry it into the alert body. Two self-resolving METRICS_SERVER outages
+# (Oct 17 12:36, Oct 18 10:14) couldn't be diagnosed after the fact because only a
+# pass/fail was kept. curl exit 28 = hit --max-time, 7 = connection refused,
+# 0 with a non-200 code = server answered with an error (e.g. 404 on the file).
 check_service() {
     local svc=$1 pattern=$2 url=$3
     if ! pgrep -f "$pattern" >/dev/null 2>&1; then
@@ -95,11 +100,17 @@ check_service() {
             # by the freshness check layered on below instead.
             DOWN_TRIGGERED[$svc]=0
         else
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null)
+            local out rc elapsed
+            out=$(curl -s -o /dev/null -w "%{http_code} %{time_total}" --max-time 5 "$url" 2>/dev/null)
+            rc=$?
+            CODE=${out%% *}
+            elapsed=${out##* }
             if [ "$CODE" = "200" ]; then
                 DOWN_TRIGGERED[$svc]=0
             else
                 DOWN_TRIGGERED[$svc]=1
+                DOWN_DETAIL_HTTP[$svc]="HTTP ${CODE:-none}, curl exit ${rc}, ${elapsed:-?}s -- ${url}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S') ${svc} probe failed: ${DOWN_DETAIL_HTTP[$svc]}"
             fi
         fi
     fi
@@ -229,7 +240,9 @@ for svc in COMFY_HTTP METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TM
                 if [ "$svc" = "HEARTBEAT_WRITER" ] && [ -n "$DOWN_DETAIL_HEARTBEAT_WRITER" ]; then
                     ALERT_BODY+="Present for ${new_streak} consecutive checks (~$((new_streak * 5)) min):\n$(echo -e "$DOWN_DETAIL_HEARTBEAT_WRITER")\n\n"
                 else
-                    ALERT_BODY+="Process is running but its HTTP endpoint did not return 200 for ${new_streak} consecutive checks.\n\n"
+                    ALERT_BODY+="Process is running but its HTTP endpoint did not return 200 for ${new_streak} consecutive checks.\n"
+                    ALERT_BODY+="Latest probe: ${DOWN_DETAIL_HTTP[$svc]}\n"
+                    ALERT_BODY+="(earlier probes: grep '${svc} probe failed' ~/Library/Logs/mb_health_monitor.log)\n\n"
                 fi
                 ;;
             clear)   eval "DOWN_${svc}_ACTIVE=0"

@@ -25,6 +25,15 @@
     <key>KeepAlive</key>
     <true/>
 
+    <!-- 2026-10-18: mb's health monitor caught this server timing out (curl exit 28,
+         no reply in 5s) on a launchd-run probe while 60/60 interactive probes a few
+         minutes later answered in <10ms; also two self-resolving ~10-min NOT
+         RESPONDING alerts (Oct 17 12:36, Oct 18 10:14). Same suspected cause as the
+         2026-08-05 health-monitor fix: macOS throttling a Background-class agent.
+         ProcessType Interactive opts it out. Shared by every Mac via install.sh. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
     <key>StandardOutPath</key>
     <string>/Users/dennishmathes/Library/Logs/fleet_metrics_server.log</string>
     <key>StandardErrorPath</key>
