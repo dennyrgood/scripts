@@ -22,6 +22,8 @@ at every login, restart automatically if they crash, and log to files.
 | `com.dennis.mmm-health-monitor` | `MathesMacMini/mathes-mac-mini-health-monitor.sh` — every 5 min, Plex/Syncthing process+API health + disk usage, alert/all-clear emails | — | `~/Library/Logs/mmm_health_monitor.log` |
 | `com.dennis.money-web` | money web app (`~/repos/money`: `.venv/bin/money serve`, waitress on 127.0.0.1 only; tailnet via `tailscale serve`). mb for now (warm standby), FleetDev later. Added 2026-10-15. | 5040 | `~/Library/Logs/money_web.log` |
 | `com.dennis.money-backup` | `money backup` — daily 02:30, snapshots every money book into `~/MoneyData/backups` (30 daily, 12 monthly), integrity-checked; local only for now | — | `~/Library/Logs/money_backup.log` |
+| `com.dennis.money-copy-off` | `money copy-off` — daily 03:00, mb only: backs up the money books, then rsyncs `~/MoneyData` over SSH to FleetDev (`~/MoneyData-from-mb`; `[copy.*]` in money's config.toml), never deleting there; each snapshot hash-checked on arrival. Added 2026-10-19. | — | `~/Library/Logs/money_copy_off.log` |
+| `com.dennis.money-copy-to-nas` | `FleetDev/money-copy-to-nas.sh` — daily 06:30, FleetDev only: pushes `~/MoneyData-from-mb` to FleetNAS (`misc/money/`), never deleting there; each book's newest snapshot hash-checked; warns if mb's copy is over 2 days old. Not in install.sh (no FleetDev case yet): copy and `launchctl bootstrap` by hand. Added 2026-10-19. | — | `~/Library/Logs/money_copy_to_nas.log` |
 
 Port notes: 5000 is taken by macOS AirPlay; travel deliberately sits at 5030
 so the 8xxx range stays free for ad-hoc testing (the generic `start_http`

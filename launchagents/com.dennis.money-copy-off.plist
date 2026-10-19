@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dennis.money-copy-off</string>
+
+    <!-- Nightly `money copy-off`: backs up every money book, then rsyncs ~/MoneyData over SSH to each [copy.<name>]
+         in money's config.toml (FleetDev, FleetNAS), without the live book files and never deleting anything there;
+         each book's snapshot is checked by hash on arrival. mb only, until money moves to FleetDev (money PLAN M9).
+         Added 2026-10-19 04:23 UTC. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dennishmathes/repos/money/.venv/bin/money</string>
+        <string>--config</string>
+        <string>/Users/dennishmathes/repos/money/config.toml</string>
+        <string>copy-off</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dennishmathes/repos/money</string>
+
+    <!-- After money-backup's 02:30; copy-off takes its own backup first anyway, so the order doesn't matter. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Same as the nightly-summary agents: see mb-health-monitor.plist's comment for the launchd-throttling
+         issue this avoids (and mmm-plex-backup's rsync, which needed it). -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_copy_off.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_copy_off.log</string>
+</dict>
+</plist>

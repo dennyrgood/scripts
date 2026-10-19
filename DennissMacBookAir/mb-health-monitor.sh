@@ -100,12 +100,22 @@ check_service() {
             # by the freshness check layered on below instead.
             DOWN_TRIGGERED[$svc]=0
         else
-            local out rc elapsed
-            out=$(curl -s -o /dev/null -w "%{http_code} %{time_total}" --max-time 5 "$url" 2>/dev/null)
-            rc=$?
-            CODE=${out%% *}
-            elapsed=${out##* }
+            # 2026-10-19: up to 3 tries per run. Since Oct 17 (Internet Sharing on, cruise
+            # wifi) ~1 in 3 launchd-run METRICS_SERVER probes hit the 5s timeout at random
+            # while interactive probes answer in ms; two unlucky runs in a row = alert, the
+            # next good one = all-clear, i.e. an email pair every ~30 min. A hung server
+            # fails all 3 tries, so real outages still alert.
+            local out rc elapsed try
+            for try in 1 2 3; do
+                out=$(curl -s -o /dev/null -w "%{http_code} %{time_total}" --max-time 5 "$url" 2>/dev/null)
+                rc=$?
+                CODE=${out%% *}
+                elapsed=${out##* }
+                [ "$CODE" = "200" ] && break
+                [ "$try" -lt 3 ] && sleep 2
+            done
             if [ "$CODE" = "200" ]; then
+                [ "$try" -gt 1 ] && echo "$(date '+%Y-%m-%d %H:%M:%S') ${svc} probe ok on try ${try}"
                 DOWN_TRIGGERED[$svc]=0
             else
                 DOWN_TRIGGERED[$svc]=1

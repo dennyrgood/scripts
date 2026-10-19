@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dennis.money-copy-to-nas</string>
+
+    <!-- FleetDev only: FleetDev/money-copy-to-nas.sh pushes ~/MoneyData-from-mb (mb's money data folder, sent by
+         mb's com.dennis.money-copy-off) to FleetNAS's misc share and hash-checks each book's newest snapshot there.
+         Until money moves to FleetDev (money PLAN M9). Added 2026-10-19 04:48 UTC. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/dennishmathes/repos/scripts/FleetDev/money-copy-to-nas.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- See mb-health-monitor.plist's comment for the launchd throttling this avoids (and mmm-plex-backup's rsync). -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_copy_to_nas.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_copy_to_nas.log</string>
+</dict>
+</plist>
