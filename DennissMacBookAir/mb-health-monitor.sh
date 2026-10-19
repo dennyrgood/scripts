@@ -46,6 +46,9 @@ FAIL_THRESHOLD=2   # consecutive 5-min samples before alerting (anti-flap on res
 # known-flaky service without dulling real alerts for the services that actually
 # blind the fleet dashboard if missed.
 FAIL_THRESHOLD_COMFY_HTTP=5   # ~25 min instead of the default ~10 min
+# 2026-10-19: METRICS_SERVER stalls ~20s at random since Internet Sharing went on
+# (Oct 17); even with per-run retries, two unlucky runs in a row still flapped.
+FAIL_THRESHOLD_METRICS_SERVER=3   # ~15 min
 threshold_for() {
     local svc=$1 override
     override=$(eval echo \$FAIL_THRESHOLD_${svc})
