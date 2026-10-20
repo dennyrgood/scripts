@@ -12,6 +12,9 @@
 # 2026-10-20 18:53 UTC — ~/MoneyData-from-mb -> ~/MoneyData on FleetDev, misc/money/MoneyData-from-mb -> misc/money/MoneyData on the
 #   NAS: FleetDev's standby serves the copy as it is (money README "FleetDev as the standby"). Snapshots are now
 #   read from FleetDev's own backup folder, the one mb's copy fills.
+# 2026-10-20 19:54 UTC — the live books (app/*.db and their -wal/-shm) and the Sunriise jars are left out, as mb's copy-off does:
+#   after cutover FleetDev's books are written while this runs, and the checked snapshots in backups/ are their safe
+#   copies; the jars are downloaded by money's install-tools.sh.
 set -euo pipefail
 
 SRC="$HOME/MoneyData"
@@ -38,6 +41,8 @@ fi
 
 set +e
 "$RSYNC" -rlt --itemize-changes --timeout=600 --partial-dir=.rsync-partial --exclude=.rsync-partial/ \
+    --exclude='/app/*.db' --exclude='*.db-wal' --exclude='*.db-shm' --exclude='*.db-journal' --exclude='*.part' \
+    --exclude='/*.jar' \
     -e "$SSH_OPTS" "$SRC/" "$DEST_RSYNC" > /tmp/money-copy-to-nas.out 2>&1
 RC=$?
 set -e
