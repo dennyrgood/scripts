@@ -5,9 +5,10 @@
     <key>Label</key>
     <string>com.dennis.money-copy-to-nas</string>
 
-    <!-- FleetDev only: FleetDev/money-copy-to-nas.sh pushes ~/MoneyData-from-mb (mb's money data folder, sent by
+    <!-- FleetDev only: FleetDev/money-copy-to-nas.sh pushes ~/MoneyData (mb's money data folder, sent by
          mb's com.dennis.money-copy-off) to FleetNAS's misc share and hash-checks each book's newest snapshot there.
-         Until money moves to FleetDev (money PLAN M9). Added 2026-10-19 04:48 UTC. -->
+         Until money moves to FleetDev (money PLAN M9). Added 2026-10-19 04:48 UTC; 2026-10-20 18:53 UTC: ~/MoneyData-from-mb renamed
+         ~/MoneyData, NAS folder misc/money/MoneyData. -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>

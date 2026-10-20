@@ -1,5 +1,5 @@
 #!/bin/bash
-# Created: 2026-10-19 04:48 UTC — pushes FleetDev's copy of mb's money data folder (~/MoneyData-from-mb, sent each
+# Created: 2026-10-19 04:48 UTC — pushes FleetDev's copy of mb's money data folder (~/MoneyData, sent each
 # night by mb's `money copy-off`) to FleetNAS's misc share, then checks the newest snapshot of each book there by
 # SHA-256 against FleetDev's. Runs ON FleetDev, daily, via launchagents/com.dennis.money-copy-to-nas.plist, until
 # money moves to FleetDev (money PLAN M9). mb doesn't push to the NAS itself: away from home its link (ship, Tailscale
@@ -9,21 +9,24 @@
 # for the NAS only, ConnectTimeout/ServerAlive on every ssh/rsync, UGOS's share-name path for rsync and the real path
 # for ssh. Differences: never --delete (a file lost upstream never removes the good one on the NAS), and a half-sent
 # file waits in .rsync-partial for the next run instead of starting over.
+# 2026-10-20 18:53 UTC — ~/MoneyData-from-mb -> ~/MoneyData on FleetDev, misc/money/MoneyData-from-mb -> misc/money/MoneyData on the
+#   NAS: FleetDev's standby serves the copy as it is (money README "FleetDev as the standby"). Snapshots are now
+#   read from FleetDev's own backup folder, the one mb's copy fills.
 set -euo pipefail
 
-SRC="$HOME/MoneyData-from-mb"
+SRC="$HOME/MoneyData"
 DEST_HOST="dhm@192.168.178.123"
 SSH_KEY="$HOME/.ssh/id_ed25519_fleetnas"
 SSH_OPTS="ssh -i $SSH_KEY -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3"
-DEST_RSYNC="$DEST_HOST:misc/money/MoneyData-from-mb/"    # UGOS's rsync: share name, no /volume1
-DEST_PATH="/volume1/misc/money/MoneyData-from-mb"         # plain ssh commands: the real path
+DEST_RSYNC="$DEST_HOST:misc/money/MoneyData/"            # UGOS's rsync: share name, no /volume1
+DEST_PATH="/volume1/misc/money/MoneyData"                 # plain ssh commands: the real path
 STALE_DAYS=2                                              # warn when mb's newest snapshot is older than this
 RSYNC="rsync"
 [ -x /opt/homebrew/bin/rsync ] && RSYNC=/opt/homebrew/bin/rsync
 
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $1"; }
 
-log "=== money copy: FleetDev ~/MoneyData-from-mb -> FleetNAS misc/money ==="
+log "=== money copy: FleetDev ~/MoneyData -> FleetNAS misc/money/MoneyData ==="
 if [ ! -d "$SRC/backups/daily" ]; then
     log "FAIL nothing to send: no $SRC/backups/daily (has mb's money copy-off reached FleetDev yet?)"
     exit 1

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dennis.money-take-copies</string>
+
+    <!-- The standby's side of the nightly copy (money PLAN M9 item 4): `money take-copies` puts the newest snapshot
+         of each book (sent by the primary's com.dennis.money-copy-off) into the books folder, checked, for the
+         read-only app (standby = true in money's config.toml). Refuses on a primary. FleetDev until cutover, then
+         mb. 06:00: after mb's 03:00 copy, before money-copy-to-nas at 06:30; also at load. Added 2026-10-20 18:12 UTC. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dennishmathes/repos/money/.venv/bin/money</string>
+        <string>--config</string>
+        <string>/Users/dennishmathes/repos/money/config.toml</string>
+        <string>take-copies</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dennishmathes/repos/money</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- See mb-health-monitor.plist's comment for the launchd throttling this avoids. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_take_copies.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dennishmathes/Library/Logs/money_take_copies.log</string>
+</dict>
+</plist>
