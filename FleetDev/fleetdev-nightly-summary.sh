@@ -27,6 +27,18 @@ MONITOR_STATE="/tmp/fleetdev-monitor-state.tmp"
 # scheduling jitter, not to ride out sleep.
 MONITOR_STALE_SECS=1800   # 30 min (6x the 5-min run interval)
 
+# 2026-10-20 20:07 UTC: money (~/repos/money), FleetDev as its read-only standby until cutover: `money health` (the web
+# app, the books, the copy from mb arrived and put in place) and the 06:30 copy to FleetNAS (its log ends "=== done ===").
+# `money health` follows the role: after cutover it reports FleetDev's fetches, backups and its copy-off to mb instead.
+# The NAS check runs only while com.dennis.money-copy-to-nas is loaded: at cutover FleetDev's own copy-off
+# ([copy.fleetnas]) replaces it, and `money health` reports that copy.
+MONEY_REPO="$HOME/repos/money"
+NAS_LOG="$HOME/Library/Logs/money_copy_to_nas.log"
+NAS_STALE_SECS=93600     # 26h: a daily 06:30 job
+# 2026-10-20 20:07 UTC: the send is tried again every 10 minutes for an hour (msmtp gives up at once when offline, exit 75).
+SEND_TRIES=7
+SEND_WAIT_SECS=600
+
 SCAN_LOG="$HOME/Library/Logs/comfy_fleet_scan.log"
 SCAN_STALE_SECS=115200   # 32h — scan fires 05:00, nightly summary runs a few hours
                          # later at 07:00; padded well past 24h so a single missed
@@ -121,6 +133,39 @@ else
     [ "$OK" -eq 1 ] && { OK=0; REASON="health monitor stale/missing"; }
 fi
 
+# --- money: the standby and its copy to FleetNAS ---
+if [ -x "$MONEY_REPO/.venv/bin/money" ]; then
+    MONEY_OUT=$("$MONEY_REPO/.venv/bin/money" --config "$MONEY_REPO/config.toml" health 2>&1)
+    MONEY_RC=$?
+    TLDR+="  money:\n$(printf '%s\n' "$MONEY_OUT" | sed 's/^/    /')\n"
+    if [ "$MONEY_RC" -ne 0 ] && [ "$OK" -eq 1 ]; then
+        OK=0
+        REASON="money: $(printf '%s\n' "$MONEY_OUT" | grep -m1 -E '^(FAIL|WARN)' | sed -E 's/^(FAIL|WARN) +//; s/:.*//')"
+        [ "$REASON" = "money: " ] && REASON="money: health check failed"
+    fi
+else
+    TLDR+="  money: ⚠️ no $MONEY_REPO/.venv/bin/money\n"
+    [ "$OK" -eq 1 ] && { OK=0; REASON="money: not installed"; }
+fi
+if ! launchctl print "gui/$(id -u)/com.dennis.money-copy-to-nas" >/dev/null 2>&1; then
+    :                                            # not this Mac's job (any more): money health covers the copies
+elif [ -f "$NAS_LOG" ]; then
+    NAS_AGE=$(( $(date +%s) - $(stat -f %m "$NAS_LOG") ))
+    NAS_LAST=$(tail -1 "$NAS_LOG")
+    if [ "$NAS_AGE" -gt "$NAS_STALE_SECS" ]; then
+        TLDR+="    FAIL  copy to FleetNAS: no run for $(fmt_age "$NAS_AGE")\n"
+        [ "$OK" -eq 1 ] && { OK=0; REASON="money: copy to FleetNAS stale"; }
+    elif [[ "$NAS_LAST" == *"=== done ==="* ]]; then
+        TLDR+="    OK    copy to FleetNAS: done $(fmt_age "$NAS_AGE") ago, newest snapshots hash-checked\n"
+    else
+        TLDR+="    FAIL  copy to FleetNAS: $(grep -E 'FAIL|WARN' "$NAS_LOG" | tail -1 | sed -E 's/^\[[^]]*\] //')\n"
+        [ "$OK" -eq 1 ] && { OK=0; REASON="money: copy to FleetNAS failed"; }
+    fi
+else
+    TLDR+="    FAIL  copy to FleetNAS: no log yet ($NAS_LOG)\n"
+    [ "$OK" -eq 1 ] && { OK=0; REASON="money: copy to FleetNAS never ran"; }
+fi
+
 TLDR+="===================================================================\n\n"
 BODY="${TLDR}${BODY}"
 
@@ -140,7 +185,7 @@ fi
 if [ "$OK" -eq 1 ]; then EMOJI="✅"; else EMOJI="⚠️"; fi
 SUBJECT="${EMOJI} FleetDev nightly $(date '+%Y-%m-%d') — ${REASON}"
 
-{
+MESSAGE=$({
     echo "Subject: $SUBJECT"
     # 2026-08-31 UTC — Cc self (dennis.mathes@icloud.com), nightly-summary only, never
     # the health-monitor alerts. That CC'd copy lands in the account's own INBOX
@@ -149,4 +194,11 @@ SUBJECT="${EMOJI} FleetDev nightly $(date '+%Y-%m-%d') — ${REASON}"
     echo "Cc: dennis.mathes@icloud.com"
     echo ""
     echo -e "$BODY"
-} | "$MSMTP" -a icloud "$TO" dennis.mathes@icloud.com
+})
+for TRY in $(seq 1 "$SEND_TRIES"); do
+    printf '%s\n' "$MESSAGE" | "$MSMTP" -a icloud "$TO" dennis.mathes@icloud.com && exit 0
+    RC=$?
+    echo "$(date '+%Y-%m-%d %H:%M') send failed (try $TRY of $SEND_TRIES, msmtp exit $RC)"
+    [ "$TRY" -lt "$SEND_TRIES" ] && sleep "$SEND_WAIT_SECS"
+done
+exit "$RC"

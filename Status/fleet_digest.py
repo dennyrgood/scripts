@@ -22,6 +22,11 @@ Credential: reuses msmtp's existing passwordeval (macOS Keychain) -- never print
 no new secret storage. Requires ~/.msmtprc with an "icloud" account block using
 passwordeval (not a literal password line).
 
+2026-10-20 20:03 UTC: away from home (ship, hotel) mb is often offline at 08:00, and the IMAP connect
+crashed with a traceback (OSError: Network is unreachable). The fetch and the send are now
+tried again every 10 minutes for an hour; if the network never comes, one line says so and
+the exit status is 75 (EX_TEMPFAIL), as msmtp's is in the nightly summaries.
+
 Usage:
   python3 fleet_digest.py            # print only
   python3 fleet_digest.py --send     # print AND email the report
@@ -35,7 +40,25 @@ import imaplib
 import re
 import shlex
 import subprocess
+import sys
+import time
 from pathlib import Path
+
+TRIES = 7                 # network calls: tried this many times...
+RETRY_WAIT_SECS = 600     # ...this far apart (an hour in all)
+
+
+def with_retries(what, call):
+    """call() until it gets through; OSError covers no network, DNS, refused and SMTP errors."""
+    for attempt in range(1, TRIES + 1):
+        try:
+            return call()
+        except OSError as e:
+            print(f"{datetime.datetime.now():%Y-%m-%d %H:%M} {what} failed (try {attempt} of {TRIES}): {e}", flush=True)
+            if attempt < TRIES:
+                time.sleep(RETRY_WAIT_SECS)
+    print(f"{what}: no network for an hour, digest not sent")
+    sys.exit(75)
 
 # Sourced directly from each box's own nightly-summary script's $HOST /
 # display-name variable -- not guessed. See scripts repo, 2026-08-31.
@@ -196,7 +219,7 @@ if __name__ == "__main__":
     target_date = datetime.date.fromisoformat(args.date) if args.date else datetime.date.today()
 
     user, password = get_credential()
-    subjects = fetch_todays_subjects(user, password, target_date)
+    subjects = with_retries("reading the INBOX", lambda: fetch_todays_subjects(user, password, target_date))
     print(f"({len(subjects)} matching-subject email(s) found in INBOX for {target_date})\n")
     report, counts = build_report(subjects, target_date)
     print(report)
@@ -209,5 +232,5 @@ if __name__ == "__main__":
             f"Fleet Digest {target_date.isoformat()} -- "
             f"{counts['ok']} OK / {counts['notok']} NOT-OK / {counts['missing']} MISSING"
         )
-        send_report(user, password, FLEET_DIGEST_TO, subject, report)
+        with_retries("sending", lambda: send_report(user, password, FLEET_DIGEST_TO, subject, report))
         print(f"\nSent to {FLEET_DIGEST_TO}: {subject}")
