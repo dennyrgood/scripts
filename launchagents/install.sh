@@ -54,6 +54,11 @@ ALL_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.tra
 # money-copy-off (2026-10-19 04:23 UTC): nightly copy of ~/MoneyData to FleetDev (FleetDev passes it on to FleetNAS). mb only, not in
 # MONEY_AGENTS: FleetDev must not copy to itself once money moves there (money PLAN M9).
 MB_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http $FLEET_ONLY com.dennis.tmdb-explorer $MONEY_AGENTS com.dennis.money-copy-off"
+# FleetDev (2026-10-20 19:24 UTC): money only, for now. FleetDev's other agents (GUIs, fleet, wall, health monitor) are already
+# loaded and aren't in this list, so this installs or reloads money's and leaves the rest alone (and --uninstall
+# removes only money's). money-take-copies: FleetDev is money's read-only standby until cutover (money PLAN M9 item 4);
+# it refuses once FleetDev is the primary, so it comes out at cutover. money-copy-to-nas: FleetDev's copy to FleetNAS.
+FLEETDEV_AGENTS="$MONEY_AGENTS com.dennis.money-take-copies com.dennis.money-copy-to-nas"
 
 RAW_HOST="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
 # Normalize: strip apostrophes (straight ' and curly macOS default '),
@@ -71,6 +76,8 @@ case "$HOST" in
         LABELS="$FLEET_ONLY" ;;
     mathes-mac-mini)
         LABELS="$MMM_ONLY" ;;
+    fleetdev)
+        LABELS="$FLEETDEV_AGENTS" ;;
     *)
         if [[ "${1:-}" == "--all" ]]; then
             LABELS="$ALL_AGENTS"
