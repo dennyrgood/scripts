@@ -211,7 +211,15 @@ fi
 # once. Before that this is simply not deployed yet, and failing on its absence
 # would make the check red until the Task Scheduler entry exists.
 GC_TXT=""
-GC_JSON=$(curl -sf --max-time 15 "$GC_VERIFY_URL" 2>/dev/null) || GC_JSON=""
+# Retried: a single 15s timeout to s3g (2026-10-12, 2026-10-20) was enough to
+# report "stopped reporting" while the file sat there unchanged. Three misses
+# a minute apart is a real outage; one is a slow wake on a Surface 3.
+GC_JSON=""
+for _try in 1 2 3; do
+    GC_JSON=$(curl -sf --max-time 15 "$GC_VERIFY_URL" 2>/dev/null) && break
+    GC_JSON=""
+    [ "$_try" -lt 3 ] && sleep 60
+done
 
 if [ -n "$GC_JSON" ]; then
     GC_PARSED=$(printf '%s' "$GC_JSON" | python3 -c "
