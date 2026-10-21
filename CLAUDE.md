@@ -27,17 +27,17 @@ The user refers to fleet machines by short alias in conversation — recognize t
 
 ## Flask backend migration (in progress)
 
-`Flask/` is the **new, canonical** location for backend code being consolidated out of several previously-separate app repos. The corresponding **older/diverged** copies live as sibling repos one level up, at `/Users/dennishmathes/repos/`:
+`Flask/` is the **canonical** location for backend code consolidated out of several previously-separate app repos. Those repos (`excel-web-interface`, `movies-shows-editor`, `weather-dashboard`) **no longer exist** under `/Users/dennishmathes/repos/` — on 2026-07-06 their frontends were folded into `dennyrgood.github.io` as subdirectories (commit `f3da870` there):
 
-| App | Canonical (here) | Old/diverged sibling repo |
+| App | Backend (here) | Frontend (in `../dennyrgood.github.io/`) |
 |---|---|---|
-| Movies/Shows Excel editor | `Flask/movies_shows/excel-web-interface/excel_backend.py`, `Flask/movies_shows/MoviesShowsFullEdit/excel_backend_full_edit.py` | `../excel-web-interface/` (frontend only now) and `../movies-shows-editor/` |
-| Weather dashboard | `Flask/weather/weather-dashboard/weather_backend.py` + HTML/JS | `../weather-dashboard/` (frontend only now) |
+| Movies/Shows Excel editor | `Flask/movies_shows/excel-web-interface/excel_backend.py`, `Flask/movies_shows/MoviesShowsFullEdit/excel_backend_full_edit.py` | `excel/` (was `excel-web-interface`) and `excel_edit/` (was `movies-shows-editor`) |
+| Weather dashboard | `Flask/weather/weather-dashboard/weather_backend.py` | `weather/` (was `weather-dashboard`) |
 
-Per git history in both this repo and the sibling frontend repos:
-- Frontend HTML/JS/CSS for these apps used to live alongside the backend in this repo's `Flask/` dir but was **removed** (commit `f903ec3`, "Remove front-end files from Flask dir; served from GitHub Pages") — frontends are now served via GitHub Pages from the sibling app repos (`../excel-web-interface`, `../movies-shows-editor`, `../weather-dashboard`), each of which still has leftover copies of shared JS/HTML (e.g. `shared-data.js`, `index_*_shared.html`) and its own `CLAUDE.md`.
-- Those sibling repos previously had their own `Scripts/`/`OLD/` backend dirs, since removed ("backends moved to scripts repo") — the backend Python now lives only under `Flask/` here.
-- So: **`Flask/` = canonical backend**, **sibling repos one level up = canonical frontend + legacy/diverged backend history**. `Flask/movies_shows/` and `Flask/weather/` still contain some static assets (xlsx/csv data files, leftover HTML) left over from when frontend files were copied in before being removed again — treat the HTML under `Flask/weather/weather-dashboard/` as stale relative to `../weather-dashboard/`.
+History:
+- Frontend HTML/JS/CSS for these apps used to live alongside the backend in this repo's `Flask/` dir but was **removed** (commit `f903ec3`, "Remove front-end files from Flask dir; served from GitHub Pages") — frontends are served via GitHub Pages, now from `dennyrgood.github.io` (`ldmathes.cc/weather`, `/excel`, `/excel_edit`).
+- The old app repos previously had their own `Scripts/`/`OLD/` backend dirs, since removed ("backends moved to scripts repo") — the backend Python lives only under `Flask/` here.
+- So: **`Flask/` = canonical backend**, **`dennyrgood.github.io` subdirs = canonical frontend**. `Flask/movies_shows/` and `Flask/weather/` still contain some static assets (xlsx/csv data files, leftover HTML) left over from when frontend files were copied in before being removed again — treat the HTML under `Flask/weather/weather-dashboard/` as stale relative to `dennyrgood.github.io/weather/`.
 - No `requirements.txt`/`pyproject.toml` exists for the Flask apps; dependencies (Flask, flask_cors, openpyxl, requests) must be installed manually. There is no run script committed — the backends are Flask apps meant to be run directly (`python3 weather_backend.py`, `python3 excel_backend.py`) or via whatever process manager is configured on the host (see `Status/` fleet docs, host `amsterdamdesktop` is described as "Flask/API Primary").
 - `excel_backend.py` hardcodes a Windows path to the target `.xlsx` (`D:\OneDrive\...\Movies Shows - to add.xlsx`), so it's expected to run on a specific Windows host, not portably.
 
@@ -98,9 +98,3 @@ No lint/test/build commands exist anywhere in this repo — there is no test sui
 - `python3 Flask/weather/weather-dashboard/weather_backend.py` / `python3 Flask/movies_shows/excel-web-interface/excel_backend.py` — run the Flask backends directly (dependencies must be installed manually; no requirements file).
 - `tasks/run.sh` / `tasks/run-g.sh` — run the Google Tasks export scripts (uses `tasks/venv`).
 - `./sync-this "msg"` / `./sync-all "msg" [--dry-run|--all]` — git commit/pull/push for the current repo or every repo under `$HOME/repos` (Mac/Ubuntu). Windows equivalents: `.\sync-this.ps1 "msg"` / `.\sync-all.ps1 "msg" [-DryRun|-All|-RepoRoot <path>]`.
-
-## Giving the user commands to paste
-
-When a command is meant for the user to paste into their own shell (not run via a tool) — especially a one-liner with a quoted path plus several arguments (e.g. `$env:...`/`Program Files` on Windows, a long flag-heavy invocation on macOS/Ubuntu) — keep it short. Long single-line commands can soft-wrap in the terminal rendering the response; if the user's terminal doesn't distinguish a wrapped line from a real newline on copy, the paste splits into two commands at the wrap point (confirmed on ChatWorkhorse 2026-08-12: a ~98-char `VBoxManage.exe startvm ...` line pasted back as `VBoxManage.exe startvm` alone — which just printed usage help — followed by the VM name/flags as an orphaned second command; same class of failure seen on Ubuntu/macOS sessions too, not Windows-specific). If a command would run long, write it to a small script file instead — `.ps1` on Windows, `.sh` elsewhere — and hand back a short one-line invocation of that file. This applies even to plain CLI commands the user is meant to type/paste themselves, separate from the GUI-vs-CLI point below.
-
-This is distinct from admin/elevated actions (Scheduled Task creation, VirtualBox VM settings, etc.), which should be handed to the user as click-by-click GUI steps rather than commands at all, per user preference.
