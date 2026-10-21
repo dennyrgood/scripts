@@ -44,7 +44,11 @@ search_adv/search_shows/travel/tmdb GUIs); mmm (`mathes-mac-mini`) gets
 those two plus its own three Plex/Syncthing agents (`mmm-plex-backup`,
 `mmm-nightly-summary`, `mmm-health-monitor`) plus `tmdb-explorer` (added
 2026-08-11 — a second, independent instance for browsing directly on that
-box). An unrecognized host aborts with an error rather than silently
+box). FleetDev (`fleetdev`) gets what is loaded there: the GUIs, `comfy-fleet-http`/`-scan`,
+the fleet agents, `tmdb-explorer`, its own health monitor and nightly summary, `fleet-digest`
+and the money agents; its `wall-*` agents are installed by hand (their plists aren't in this
+folder). Since 2026-10-21 09:59 UTC, mb's list also has its health monitor, nightly summary and
+`fleet-digest`, and `--all` means every plist in this folder. An unrecognized host aborts with an error rather than silently
 installing everything; add it to the `case` statement in `install.sh` first.
 
 `mmm-plex-backup` briefly lived as a crontab entry instead (2026-08-05) while a

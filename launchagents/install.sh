@@ -48,17 +48,24 @@ MMM_ONLY="$FLEET_ONLY com.dennis.mmm-plex-backup com.dennis.mmm-nightly-summary 
 # money (~/repos/money), added 2026-10-15: its web app and nightly backup. On mb (part of ALL_AGENTS) as the warm
 # standby; FleetDev, its real home, gets them once FleetDev is added to the case below.
 MONEY_AGENTS="com.dennis.money-web com.dennis.money-backup com.dennis.money-simplefin"   # simplefin: daily fetch, added 2026-10-16
-ALL_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $MMM_ONLY $MONEY_AGENTS"
+# --all (2026-10-21 09:59 UTC): every plist in this folder, so a new agent can't be left out of it (before, the list missed
+# money's copy and standby jobs and every health monitor and nightly summary).
+ALL_AGENTS="$(cd "$HERE" && ls com.dennis.*.plist | sed 's/\.plist$//' | tr '\n' ' ')"
 # mb's own list (2026-10-15 06:21 UTC): its GUIs, the fleet agents, tmdb-explorer and money. Not the mmm-* agents (Plex backup,
 # nightly summary, health monitor: Mac mini only) and not comfy-fleet-scan. Before this, mb got ALL_AGENTS.
 # money-copy-off (2026-10-19 04:23 UTC): nightly copy of ~/MoneyData to FleetDev (FleetDev passes it on to FleetNAS). mb only, not in
 # MONEY_AGENTS: FleetDev must not copy to itself once money moves there (money PLAN M9).
-MB_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http $FLEET_ONLY com.dennis.tmdb-explorer $MONEY_AGENTS com.dennis.money-copy-off"
-# FleetDev (2026-10-20 19:24 UTC): money only, for now. FleetDev's other agents (GUIs, fleet, wall, health monitor) are already
-# loaded and aren't in this list, so this installs or reloads money's and leaves the rest alone (and --uninstall
-# removes only money's). money-take-copies: FleetDev is money's read-only standby until cutover (money PLAN M9 item 4);
+# 2026-10-21 09:59 UTC: mb-health-monitor, mb-nightly-summary and fleet-digest added. They were loaded on mb but in no list, so
+# a rebuilt mb wouldn't have got them back from this script.
+MB_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http $FLEET_ONLY com.dennis.tmdb-explorer $MONEY_AGENTS com.dennis.money-copy-off com.dennis.mb-health-monitor com.dennis.mb-nightly-summary com.dennis.fleet-digest"
+# FleetDev (2026-10-20 19:24 UTC): money only at first. money-take-copies: FleetDev is money's read-only standby until cutover (money PLAN M9 item 4);
 # it refuses once FleetDev is the primary, so it comes out at cutover. money-copy-to-nas: FleetDev's copy to FleetNAS.
-FLEETDEV_AGENTS="$MONEY_AGENTS com.dennis.money-take-copies com.dennis.money-copy-to-nas"
+# 2026-10-21 09:59 UTC: FleetDev's full list, as loaded there today: its GUIs, comfy-fleet-http/scan, the fleet agents,
+# tmdb-explorer, its own health monitor and nightly summary, fleet-digest, and money. So --uninstall now removes all of
+# these, as on mb. Not the wall-* agents: their plists live only in FleetDev's ~/Library/LaunchAgents (wall-image/README.md
+# "Deployment"), not in this folder. fleet-digest is loaded on mb and FleetDev both, as today; which one keeps it is
+# migrate_mb_mm_m4.md's open question.
+FLEETDEV_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $FLEET_ONLY com.dennis.tmdb-explorer com.dennis.fleetdev-health-monitor com.dennis.fleetdev-nightly-summary com.dennis.fleet-digest $MONEY_AGENTS com.dennis.money-take-copies com.dennis.money-copy-to-nas"
 
 RAW_HOST="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
 # Normalize: strip apostrophes (straight ' and curly macOS default '),
