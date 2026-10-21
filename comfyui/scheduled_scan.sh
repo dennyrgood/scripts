@@ -33,7 +33,40 @@ trap 'rc=$?; echo "*** FAILED: ${BASH_SOURCE[0]} line $LINENO exited $rc ***" >&
 
 echo "=== $(date) [epoch:$(date +%s)] -- scheduled fleet scan starting ==="
 
-"$SCRIPT_DIR/comfy_fleet.sh"
+# 2026-10-21: preflight + timeout. After a Homebrew upgrade moved
+# /opt/homebrew/bin/python3 to a new Cellar path (3.14.x -> 3.15.0), macOS TCC had
+# no OneDrive (FileProviderDomain) grant for the new binary, so the 05:00 run sat
+# in open() on a OneDrive directory for 6+ hours with no output -- the only symptom
+# was the stale-scan health alert. The grant is keyed to the exact Cellar path, so
+# it recurs on every upgrade. Fail in a minute with the reason in the log instead.
+PY=/opt/homebrew/bin/python3
+if ! perl -e 'alarm 60; exec @ARGV' "$PY" -I -c '
+import json, os, sys
+d = json.load(open(sys.argv[1])).get("prime_workflows_dir")
+if d: os.listdir(d)
+' "$REPORTS_DIR/fleet_config.json"; then
+    echo "*** PREFLIGHT FAILED: could not list the OneDrive workflows dir within 60s as $("$PY" -c 'import os,sys;print(os.path.realpath(sys.executable))')" >&2
+    echo "*** Likely a missing macOS privacy grant after a Python upgrade: run this job once via" >&2
+    echo "*** launchctl kickstart and click Allow (or check TCC kTCCServiceFileProviderDomain)." >&2
+    exit 1
+fi
+
+# Whole-scan backstop: kill the process group if the scan runs past 30 minutes
+# (normal is ~2 min with all machines offline, ~8 with one scanned). macOS has no
+# `timeout`; the child gets its own process group so the kill reaches its python.
+rc=0
+perl -e '
+my $p = fork;
+if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127; }
+$SIG{ALRM} = sub { kill "TERM", -$p; sleep 2; kill "KILL", -$p; exit 124; };
+alarm 1800;
+waitpid($p, 0);
+exit($? >> 8);
+' "$SCRIPT_DIR/comfy_fleet.sh" || rc=$?
+if [ "$rc" -eq 124 ]; then
+    echo "*** TIMEOUT: comfy_fleet.sh exceeded 30 minutes and was killed ***" >&2
+fi
+[ "$rc" -eq 0 ] || exit "$rc"
 
 # Keep the last 3 runs' worth of timestamped files (inputs, fleet-output,
 # history). Runs BEFORE the latest/mirror step below so the published copies

@@ -79,9 +79,19 @@ COMFY_SCAN_PROC_PATTERN=""     # no long-lived process -- freshness check only
 
 TRAVEL_HTTP_PROC_PATTERN="http.server 5030"
 TRAVEL_HTTP_URL="http://127.0.0.1:5030/"
+# wall-photo-producer reads a OneDrive folder, and macOS grants that access per exact
+# Homebrew Cellar path -- so a `brew upgrade` of its Python can leave it denied
+# (PermissionError crash, or a blocked open()) with no prompt. Either way the panel
+# just freezes on the last photo. It rewrites current.rgb565 every --seconds (30s in
+# its plist), so a stale file is the symptom. A "pause" tap legitimately stops the
+# rewrites (photo_producer.py run()), so skip the freshness test while paused.
+WALL_PHOTO_PROC_PATTERN="photo_producer.py"
+WALL_PHOTO_FILE="$HOME/repos/scripts/wall-image/inbox/photos/current.rgb565"
+WALL_PHOTO_CONTROL="$HOME/repos/scripts/wall-image/inbox/photos/control.json"
+WALL_PHOTO_STALE_SECS=600
 
 # --- Load state (defaults to zero/inactive if file absent) ---
-for svc in COMFY_HTTP COMFY_SCAN METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
+for svc in COMFY_HTTP COMFY_SCAN WALL_PHOTO METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
     eval "MISSING_${svc}_LAST_ALERT=0; MISSING_${svc}_ACTIVE=0; MISSING_${svc}_STREAK=0"
     eval "DOWN_${svc}_LAST_ALERT=0;    DOWN_${svc}_ACTIVE=0;    DOWN_${svc}_STREAK=0"
 done
@@ -154,6 +164,23 @@ check_service SEARCH_ADV "$SEARCH_ADV_PROC_PATTERN" "$SEARCH_ADV_URL"
 check_service SEARCH_SHOWS "$SEARCH_SHOWS_PROC_PATTERN" "$SEARCH_SHOWS_URL"
 check_service TMDB "$TMDB_PROC_PATTERN" "$TMDB_URL"
 check_service TRAVEL_HTTP "$TRAVEL_HTTP_PROC_PATTERN" "$TRAVEL_HTTP_URL"
+check_service WALL_PHOTO "$WALL_PHOTO_PROC_PATTERN" ""
+
+# --- Check: wall-photo-producer output freshness (same shape as HEARTBEAT_WRITER) ---
+DOWN_DETAIL_WALL_PHOTO=""
+if [ "${MISSING_TRIGGERED[WALL_PHOTO]}" -eq 0 ] \
+   && ! grep -q '"action": *"pause"' "$WALL_PHOTO_CONTROL" 2>/dev/null; then
+    if [ ! -f "$WALL_PHOTO_FILE" ]; then
+        DOWN_TRIGGERED[WALL_PHOTO]=1
+        DOWN_DETAIL_WALL_PHOTO="${WALL_PHOTO_FILE} does not exist.\n"
+    else
+        WP_AGE=$(( NOW - $(stat -f %m "$WALL_PHOTO_FILE") ))
+        if [ "$WP_AGE" -gt "$WALL_PHOTO_STALE_SECS" ]; then
+            DOWN_TRIGGERED[WALL_PHOTO]=1
+            DOWN_DETAIL_WALL_PHOTO="${WALL_PHOTO_FILE} last written $((WP_AGE / 60))m ago (threshold $((WALL_PHOTO_STALE_SECS / 60))m).\n"
+        fi
+    fi
+fi
 
 # --- Check: heartbeat-writer freshness (only meaningful if the basic check above
 # didn't already find it missing) — same shape as mmm's version: no HTTP endpoint
@@ -262,7 +289,7 @@ check_condition_streak() {
 ALERT_BODY=""
 CLEAR_BODY=""
 
-for svc in COMFY_HTTP COMFY_SCAN METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
+for svc in COMFY_HTTP COMFY_SCAN WALL_PHOTO METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
     # Missing (process not found)
     trig=${MISSING_TRIGGERED[$svc]}
     last=$(eval echo \$MISSING_${svc}_LAST_ALERT)
@@ -311,6 +338,8 @@ for svc in COMFY_HTTP COMFY_SCAN METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEAR
                 fi
                 if [ "$svc" = "COMFY_SCAN" ] && [ -n "$DOWN_DETAIL_COMFY_SCAN" ]; then
                     ALERT_BODY+="$(echo -e "$DOWN_DETAIL_COMFY_SCAN")\nCheck: grep -E 'scan complete|FAILED' ${COMFY_SCAN_LOG} | tail\n\n"
+                elif [ "$svc" = "WALL_PHOTO" ] && [ -n "$DOWN_DETAIL_WALL_PHOTO" ]; then
+                    ALERT_BODY+="Present for ${new_streak} consecutive checks (~$((new_streak * 5)) min):\n$(echo -e "$DOWN_DETAIL_WALL_PHOTO")\n\n"
                 elif [ "$svc" = "HEARTBEAT_WRITER" ] && [ -n "$DOWN_DETAIL_HEARTBEAT_WRITER" ]; then
                     ALERT_BODY+="Present for ${new_streak} consecutive checks (~$((new_streak * 5)) min):\n$(echo -e "$DOWN_DETAIL_HEARTBEAT_WRITER")\n\n"
                 else
@@ -369,6 +398,18 @@ What to do:
   1. ls -la ${HEARTBEAT_FILE}   -- confirm how stale
   2. launchctl kickstart -k gui/\$(id -u)/com.dennis.heartbeat-writer
 
+WALL_PHOTO MISSING / NOT RESPONDING:
+wall-photo-producer is gone or its photo (current.rgb565) hasn't been rewritten
+within ${WALL_PHOTO_STALE_SECS}s, so the wall panel is frozen on one image. Not checked while the
+panel is paused. Most likely cause after a Homebrew Python upgrade: macOS has no
+OneDrive grant for the new Cellar path (look for PermissionError in the log).
+
+What to do:
+  1. tail -30 ~/Library/Logs/wall_photo_producer.log
+  2. In System Settings > Privacy & Security > Files and Folders / Full Disk
+     Access, allow the new python3.14 under /opt/homebrew/Cellar
+  3. launchctl kickstart -k gui/\$(id -u)/com.dennis.wall-photo-producer
+
 METRICS_SERVER MISSING / NOT RESPONDING:
 No process matching '${METRICS_SERVER_PROC_PATTERN}', or it's running but not
 serving this box's own heartbeat file over HTTP (127.0.0.1:9100). The fleet
@@ -382,7 +423,7 @@ What to do:
 
 # --- Save state ---
 {
-    for svc in COMFY_HTTP COMFY_SCAN METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
+    for svc in COMFY_HTTP COMFY_SCAN WALL_PHOTO METRICS_SERVER HEARTBEAT_WRITER SEARCH_ADV SEARCH_SHOWS TMDB TRAVEL_HTTP; do
         for k in MISSING_${svc}_LAST_ALERT MISSING_${svc}_ACTIVE MISSING_${svc}_STREAK \
                  DOWN_${svc}_LAST_ALERT DOWN_${svc}_ACTIVE DOWN_${svc}_STREAK; do
             echo "$k=$(eval echo \$$k)"
