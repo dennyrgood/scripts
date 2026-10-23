@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Created: 2026-10-23 12:30 UTC. Monthly off-site restic integrity check on mgc
+     (port of s3g's Task Scheduler job). Day 15 keeps it well clear of wbu's
+     prune on day 01, which rewrites packs that Syncthing then re-sends here. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dennis.mgc-restic-verify</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/dennishmathes/repos/scripts/MacMiniGC/verify-restic-integrity-scheduled.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dennishmathes/repos/scripts/MacMiniGC</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>15</integer>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>17</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Same throttling fix as the other com.dennis scheduled agents. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <!-- Full read of ~90 GiB: stay out of Plex's way. -->
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dennishmathes/Library/Logs/mgc_restic_verify.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dennishmathes/Library/Logs/mgc_restic_verify.log</string>
+</dict>
+</plist>

@@ -66,6 +66,10 @@ MB_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.trav
 # "Deployment"), not in this folder. fleet-digest is loaded on mb and FleetDev both, as today; which one keeps it is
 # migrate_mb_mm_m4.md's open question.
 FLEETDEV_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $FLEET_ONLY com.dennis.tmdb-explorer com.dennis.fleetdev-health-monitor com.dennis.fleetdev-nightly-summary com.dennis.fleet-digest $MONEY_AGENTS com.dennis.money-take-copies com.dennis.money-copy-to-nas"
+# MacMiniGC / mgc (2026-10-23 12:40 UTC): s3g's replacement in Gran Canaria. Fleet agents plus the monthly off-site
+# restic integrity check (port of Surface3GC/verify-restic-integrity-scheduled.ps1). Plex and Syncthing are not
+# LaunchAgents in this folder. Add com.dennis.mgc-health-monitor / mgc-nightly-summary here once those plists exist.
+MGC_AGENTS="$FLEET_ONLY com.dennis.mgc-restic-verify"
 
 RAW_HOST="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
 # Normalize: strip apostrophes (straight ' and curly macOS default '),
@@ -85,6 +89,8 @@ case "$HOST" in
         LABELS="$MMM_ONLY" ;;
     fleetdev)
         LABELS="$FLEETDEV_AGENTS" ;;
+    macminigc)
+        LABELS="$MGC_AGENTS" ;;
     *)
         if [[ "${1:-}" == "--all" ]]; then
             LABELS="$ALL_AGENTS"
