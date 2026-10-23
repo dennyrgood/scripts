@@ -16,6 +16,7 @@ launchctl list | grep -i com.dennis          > "$DEST/launchctl-com-dennis.txt" 
 ls -1 ~/Library/LaunchAgents/com.dennis.*.plist > "$DEST/installed-launchagents.txt" 2>/dev/null || true
 command -v brew >/dev/null 2>&1 && brew leaves > "$DEST/brew-leaves.txt" || true
 sw_vers                                        > "$DEST/sw_vers.txt"
+[ -f ~/.hammerspoon/init.lua ] && cp ~/.hammerspoon/init.lua "$DEST/init.lua" || true
 
 # README.md is hand-maintained in fleet-configs — this only seeds it on a new box.
 # Edit the README there, not this template (which is not kept in sync).
@@ -51,7 +52,8 @@ Rebuild:
    the live `heartbeat_*.txt` filename under `~/fleet_monitor/` rather than
    trusting `hostname`/`scutil` alone before wiring a new box's scripts to it.
 
-Captured here: live `launchctl` state, installed agent list, `brew leaves`, `sw_vers`.
+Captured here: live `launchctl` state, installed agent list, `brew leaves`, `sw_vers`,
+and the Hammerspoon config (`init.lua` — restore to `~/.hammerspoon/init.lua`).
 EOF
 
 echo "Snapshot complete. Review: cd $DEST && git status"

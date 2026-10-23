@@ -29,6 +29,7 @@ launchctl list | grep -i com.dennis             > "$DEST/launchctl-com-dennis.tx
 ls -1 ~/Library/LaunchAgents/com.dennis.*.plist > "$DEST/installed-launchagents.txt" 2>/dev/null || true
 command -v brew >/dev/null 2>&1 && brew leaves  > "$DEST/brew-leaves.txt" || true
 sw_vers                                         > "$DEST/sw_vers.txt"
+[ -f ~/.hammerspoon/init.lua ] && cp ~/.hammerspoon/init.lua "$DEST/init.lua" || true
 
 # System-domain (root) LaunchDaemons don't show up in a plain `launchctl list` the way
 # gui-domain LaunchAgents do above - that only lists the caller's own domain. `sudo`
@@ -65,7 +66,8 @@ Rebuild:
 
 Captured here: live `launchctl` state (gui + system domains), installed
 LaunchAgent/LaunchDaemon lists, `brew leaves`, `sw_vers`, and the live NUT
-upsmon.conf (credential included - this dir is private, do not move it).
+upsmon.conf (credential included - this dir is private, do not move it), and the
+Hammerspoon config (`init.lua` — restore to `~/.hammerspoon/init.lua`).
 EOF
 
 echo "Snapshot complete. Review: cd $DEST && git status"
