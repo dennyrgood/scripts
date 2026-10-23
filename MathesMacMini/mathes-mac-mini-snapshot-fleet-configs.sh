@@ -44,7 +44,9 @@ else
     echo "(could not read /opt/homebrew/etc/nut/upsmon.conf - run this snapshot as a user who can sudo)" > "$DEST/nut-upsmon.conf"
 fi
 
-cat > "$DEST/README.md" <<'EOF'
+# README.md is hand-maintained in fleet-configs — this only seeds it on a new box.
+# Edit the README there, not this template (which is not kept in sync).
+[ -f "$DEST/README.md" ] || cat > "$DEST/README.md" <<'EOF'
 # MathesMacMini — rebuild notes
 
 Fleet-status role: Mac writer + metrics server ONLY (fleet-only box - no

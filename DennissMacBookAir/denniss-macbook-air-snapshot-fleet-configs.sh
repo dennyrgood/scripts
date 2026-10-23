@@ -17,7 +17,9 @@ command -v brew >/dev/null 2>&1 && brew leaves > "$DEST/brew-leaves.txt" || true
 sw_vers                                        > "$DEST/sw_vers.txt"
 [ -f ~/.hammerspoon/init.lua ] && cp ~/.hammerspoon/init.lua "$DEST/init.lua" || true
 
-cat > "$DEST/README.md" <<'EOF'
+# README.md is hand-maintained in fleet-configs — this only seeds it on a new box.
+# Edit the README there, not this template (which is not kept in sync).
+[ -f "$DEST/README.md" ] || cat > "$DEST/README.md" <<'EOF'
 # DennissMacBookAir — rebuild notes
 
 Fleet-status role: Mac writer + metrics server (both version-controlled).

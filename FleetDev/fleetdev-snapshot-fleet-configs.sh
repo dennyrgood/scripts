@@ -17,7 +17,9 @@ ls -1 ~/Library/LaunchAgents/com.dennis.*.plist > "$DEST/installed-launchagents.
 command -v brew >/dev/null 2>&1 && brew leaves > "$DEST/brew-leaves.txt" || true
 sw_vers                                        > "$DEST/sw_vers.txt"
 
-cat > "$DEST/README.md" <<'EOF'
+# README.md is hand-maintained in fleet-configs — this only seeds it on a new box.
+# Edit the README there, not this template (which is not kept in sync).
+[ -f "$DEST/README.md" ] || cat > "$DEST/README.md" <<'EOF'
 # FleetDev — rebuild notes
 
 FleetDev is a MigrationAssistant clone of DennissMacBookAir (mb), Tailscale identity
