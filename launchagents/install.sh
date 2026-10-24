@@ -60,12 +60,13 @@ ALL_AGENTS="$(cd "$HERE" && ls com.dennis.*.plist | sed 's/\.plist$//' | tr '\n'
 MB_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http $FLEET_ONLY com.dennis.tmdb-explorer $MONEY_AGENTS com.dennis.money-copy-off com.dennis.mb-health-monitor com.dennis.mb-nightly-summary com.dennis.fleet-digest"
 # FleetDev (2026-10-20 19:24 UTC): money only at first. money-take-copies: FleetDev is money's read-only standby until cutover (money PLAN M9 item 4);
 # it refuses once FleetDev is the primary, so it comes out at cutover. money-copy-to-nas: FleetDev's copy to FleetNAS.
+# notes-to-self (2026-10-24): FleetDev only -- it reads this Mac's Messages chat.db (see the README row for the FDA grant).
 # 2026-10-21 09:59 UTC: FleetDev's full list, as loaded there today: its GUIs, comfy-fleet-http/scan, the fleet agents,
 # tmdb-explorer, its own health monitor and nightly summary, fleet-digest, and money. So --uninstall now removes all of
 # these, as on mb. Not the wall-* agents: their plists live only in FleetDev's ~/Library/LaunchAgents (wall-image/README.md
 # "Deployment"), not in this folder. fleet-digest is loaded on mb and FleetDev both, as today; which one keeps it is
 # migrate_mb_mm_m4.md's open question.
-FLEETDEV_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $FLEET_ONLY com.dennis.tmdb-explorer com.dennis.fleetdev-health-monitor com.dennis.fleetdev-nightly-summary com.dennis.fleet-digest $MONEY_AGENTS com.dennis.money-take-copies com.dennis.money-copy-to-nas"
+FLEETDEV_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.dennis.travel-http com.dennis.comfy-fleet-http com.dennis.comfy-fleet-scan $FLEET_ONLY com.dennis.tmdb-explorer com.dennis.fleetdev-health-monitor com.dennis.fleetdev-nightly-summary com.dennis.fleet-digest $MONEY_AGENTS com.dennis.money-take-copies com.dennis.money-copy-to-nas com.dennis.notes-to-self"
 # MacMiniGC / mgc (2026-10-23 12:40 UTC): s3g's replacement in Gran Canaria. Fleet agents plus the monthly off-site
 # restic integrity check (port of Surface3GC/verify-restic-integrity-scheduled.ps1). Plex and Syncthing are not
 # LaunchAgents in this folder. Add com.dennis.mgc-health-monitor / mgc-nightly-summary here once those plists exist.

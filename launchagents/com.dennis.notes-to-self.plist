@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dennis.notes-to-self</string>
+
+    <!-- /usr/bin/python3, not Homebrew's: it already holds Full Disk Access on
+         FleetDev (com.dennis.heartbeat-writer), and Homebrew's resolves to a
+         versioned Cellar path that a brew upgrade would orphan from its grant.
+         chat.db is read by this process; msmtp is a child and needs no grant. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/dennishmathes/repos/scripts/FleetDev/notes_to_self_to_email.py</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Same as fleetdev-health-monitor.plist: avoids launchd throttling a
+         background agent's network I/O (msmtp talks to iCloud SMTP). -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dennishmathes/Library/Logs/notes_to_self.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dennishmathes/Library/Logs/notes_to_self.log</string>
+</dict>
+</plist>
