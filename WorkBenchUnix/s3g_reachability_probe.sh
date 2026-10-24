@@ -40,6 +40,7 @@ exec 9>/run/s3g-reachability.lock
 flock -n 9 || exit 0
 
 TEST=""; [ "${1:-}" = "--test" ] && TEST=1
+IP_CHANGED=""; ROUTER="(not probed)"
 
 NOW=$(date -u +%s)
 NOW_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -62,7 +63,12 @@ send_back_mail() {
     R_YES=$(printf '%s\n' "$OUTAGE" | grep -c 'ping=yes')
     R_NO=$(printf '%s\n' "$OUTAGE" | grep -c 'ping=no')
     if   [ "$R_YES" -gt 0 ] && [ "$R_NO" -eq 0 ]; then VERDICT="router answered throughout -> link was up; points at the BOX (asleep/off)"
-    elif [ "$R_YES" -eq 0 ]; then VERDICT="router silent throughout -> the LINK, or the router drops ping (compare: does it answer while s3g is up?)"
+    # Silence during the outage only means something if the router answers
+    # when s3g is up -- many ISP routers drop WAN ping by design. $ROUTER is
+    # this run's ping, taken with s3g just back.
+    elif [ "$ROUTER" = "yes" ]; then VERDICT="router silent throughout, but answers now that s3g is back -> the LINK (or power at the house) was down"
+    elif [ "$ROUTER" = "no" ]; then VERDICT="router silent throughout AND silent now with s3g up -> it drops ping by design; tells nothing -- the s3g event log is the only answer"
+    elif [ "$R_YES" -eq 0 ]; then VERDICT="router silent throughout; not probed now (--test), so no baseline"
     else VERDICT="router answered $R_YES of $((R_YES + R_NO)) probes -- mixed; see the log"
     fi
     H=$(( DOWN_MIN / 60 )); M=$(( DOWN_MIN % 60 ))
@@ -74,6 +80,8 @@ send_back_mail() {
         echo "Down since $DOWN_SINCE (${H}h${M}m)."
         echo ""
         echo "GC router $ROUTER_IP during the outage: $VERDICT"
+        echo "GC router right now, with s3g up: answers ping=$ROUTER"
+        [ -n "$IP_CHANGED" ] && echo "GC public IP changed on return ($IP_CHANGED): the router restarted or reconnected -> points at the LINK/power, not the Surface"
         echo ""
         cat <<'STEPS'
 WHAT TO DO ON s3g -- now; recent sessions often last only ~1h
@@ -140,7 +148,10 @@ if [ "$S3G" = "up" ]; then
                NEW_IP=${VIA%:*}
                if printf '%s' "$NEW_IP" | grep -qP '^\d+\.\d+\.\d+\.\d+$' \
                   && ! printf '%s' "$NEW_IP" | grep -qP '^(10|127|192\.168|172\.(1[6-9]|2\d|3[01])|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.'; then
-                   [ "$NEW_IP" != "$ROUTER_IP" ] && echo "[$NOW_ISO] router public IP changed: $ROUTER_IP -> $NEW_IP" >> "$LOG"
+                   if [ "$NEW_IP" != "$ROUTER_IP" ]; then
+                       echo "[$NOW_ISO] router public IP changed: $ROUTER_IP -> $NEW_IP" >> "$LOG"
+                       IP_CHANGED="$ROUTER_IP -> $NEW_IP"
+                   fi
                    ROUTER_IP="$NEW_IP"
                fi ;;
     esac
