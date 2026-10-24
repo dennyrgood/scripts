@@ -1,24 +1,26 @@
 #!/bin/bash
-# notify-me -- send yourself an iMessage (and optionally an email) from FleetDev.
-# Created: 2026-10-24.
+# notify-me -- send yourself an iMessage (and optionally an email) via FleetDev.
+# Created: 2026-10-24. On any box with the `notify` function (add-notify-alias.sh):
 #
-# FleetDev's Messages.app is signed into your Apple ID, so anything it sends
-# lands on your phone over iMessage -- works on Wi-Fi only (e.g. cruise Wi-Fi),
-# no SMS needed. Generalises what s3g_reachability_probe.sh does on wbu.
-#
-# On FleetDev:
-#   notify-me "backup finished"
-#   long-job; notify-me "long-job done (rc=$?)"
-#   notify-me --email "also send this to Yahoo"
-# From any fleet box (text on stdin, so no ssh quoting trouble):
-#   echo "nas disk 90% full" | ssh dennishmathes@fleetdev repos/scripts/FleetDev/notify-me
+#   notify backup done
+#   notify --email also to yahoo
+#   long-job; notify "done rc=$?"
+#   some-cmd | notify
+#   notify --help
 #
 # Options:
+#   --email     also email the text to the dennyrgood@yahoo.com mailbox
+#               (subject "notify-me: <first 70 chars>", from dennis.mathes@icloud.com)
 #   --to ADDR   iMessage address (default: dennyrgood@yahoo.com)
-#   --email     also email it to dennyrgood@yahoo.com (FleetDev's msmtp, account icloud)
 #
+# Where it lands: an iMessage to dennyrgood@yahoo.com, i.e. your phone's
+# Messages thread with that address (not the +1717 one). Starts "[notify]" --
+# "[notify <box>]" when sent from another box -- so the notes-to-self
+# forwarder skips it. Works on Wi-Fi only (cruise Wi-Fi), no SMS needed.
+#
+# Without the function: echo "text" | ssh dennishmathes@fleetdev repos/scripts/FleetDev/notify-me
 # First use from a new parent app (Terminal, sshd, launchd) triggers a macOS
-# "wants to control Messages" prompt -- click Allow once on FleetDev.
+# "wants to control Messages" prompt on FleetDev -- click Allow once.
 
 set -u
 
@@ -32,7 +34,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --to)    TO="$2"; shift 2 ;;
         --email) EMAIL=1; shift ;;
-        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+        -h|--help) awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/,""); print}' "$0"; exit 0 ;;
         --)      shift; break ;;
         *)       break ;;
     esac

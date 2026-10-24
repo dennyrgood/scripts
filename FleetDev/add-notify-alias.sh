@@ -6,11 +6,15 @@
 # On FleetDev it calls notify-me directly; elsewhere it goes over ssh.
 set -u
 case "$SHELL" in */zsh) RC=~/.zshrc ;; *) RC=~/.bashrc ;; esac
-if grep -q '^notify()' "$RC" 2>/dev/null; then echo "already in $RC"; exit 0; fi
 if [ -x ~/repos/scripts/FleetDev/notify-me ] && [ "$(hostname -s)" = FleetDev ]; then
     FN='notify() { ~/repos/scripts/FleetDev/notify-me "$@"; }'
 else
-    FN='notify() { local e=; [ "${1:-}" = --email ] && { e=--email; shift; }; if [ $# -gt 0 ]; then printf "%s\n" "$*"; else cat; fi | ssh -o ConnectTimeout=10 dennishmathes@fleetdev repos/scripts/FleetDev/notify-me $e; }'
+    FN='notify() { local e=; case "${1:-}" in -h|--help) ssh -o ConnectTimeout=10 dennishmathes@fleetdev repos/scripts/FleetDev/notify-me --help </dev/null; return;; --email) e=--email; shift;; esac; if [ $# -gt 0 ]; then printf "%s\n" "$*"; else cat; fi | ssh -o ConnectTimeout=10 dennishmathes@fleetdev repos/scripts/FleetDev/notify-me $e; }'
+fi
+# Re-running replaces an older version of the function.
+if grep -q '^notify()' "$RC" 2>/dev/null; then
+    cp -p "$RC" "$RC.bak.notify" || exit 1
+    grep -v -e '^notify()' -e '^# notify: iMessage yourself' "$RC.bak.notify" > "$RC" || { cp -p "$RC.bak.notify" "$RC"; echo "FAILED, $RC restored"; exit 1; }
 fi
 printf '\n# notify: iMessage yourself via FleetDev (scripts/FleetDev/add-notify-alias.sh)\n%s\n' "$FN" >> "$RC"
-echo "added to $RC -- open a new shell (or: source $RC), then: notify hello"
+echo "installed in $RC -- open a new shell (or: source $RC), then: notify hello"
