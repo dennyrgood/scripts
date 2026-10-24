@@ -1,5 +1,5 @@
 #!/bin/bash
-# s3g_reachability_probe.sh -- every 5 min: is s3g up, and does the Gran
+# s3g_reachability_probe.sh -- every minute: is s3g up, and does the Gran
 # Canaria router answer? Emails when s3g comes back after an outage.
 # Created: 2026-10-24.
 #
@@ -29,10 +29,15 @@ STATE="/var/lib/s3g-reachability.state"
 FORENSICS_URL="http://$S3G_TS_IP:9100/watchdog_s3g-why-offline_surface3-gc.txt"
 FORENSICS_DIR="/var/log/s3g-why-offline"
 TO="dennyrgood@yahoo.com"
-# A single missed probe is not an outage worth a mail; two in a row (>=10 min) is.
+# A blip is not an outage worth a mail; 10 minutes of misses is.
 NOTIFY_MIN_DOWN_MIN=10
 
 [ "$(id -u)" -eq 0 ] || { echo "FAILED: run as root (msmtp config is root-only)"; exit 1; }
+
+# Every minute, and a run with s3g down takes ~15s (up to ~40s fetching the
+# report): the lock makes a slow run skip the next one rather than overlap it.
+exec 9>/run/s3g-reachability.lock
+flock -n 9 || exit 0
 
 TEST=""; [ "${1:-}" = "--test" ] && TEST=1
 
@@ -95,7 +100,7 @@ event log and writes one report file.
 
 5. That's it. It writes
    C:\fleet_monitor\watchdog_s3g-why-offline_surface3-gc.txt
-   and wbu's probe copies it within 5 minutes to /var/log/s3g-why-offline/
+   and wbu's probe copies it within a minute or two to /var/log/s3g-why-offline/
    on wbu. Optional while you're there: open
    C:\fleet_monitor\battery-report.html
    and look at "Recent usage" (AC vs Battery, Active vs Suspended).
