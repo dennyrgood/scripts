@@ -53,7 +53,8 @@ SELF_HANDLES = ["dennyrgood@yahoo.com", "dennis.mathes@icloud.com", "+1717377692
 TO = "dennyrgood@yahoo.com"
 STATE = f"{HOME}/.local/state/notes-to-self.state"
 # Our own alerts, not notes. Matched on the start of the text.
-SKIP_PREFIXES = ("s3g is back online", "[TEST] s3g is back online")
+# "[notify" = FleetDev/notify-me (which has its own --email).
+SKIP_PREFIXES = ("s3g is back online", "[TEST] s3g is back online", "[notify")
 
 MAX_ATTACH_BYTES = 20 * 1024 * 1024
 
@@ -210,7 +211,7 @@ def main():
         if not from_me and now_ns - date_ns < ECHO_WAIT * 1e9:
             return   # received copy: wait for its sent twin; state stays put, retried next minute
         if body.startswith(SKIP_PREFIXES):
-            log(f"ROWID {rowid}: s3g alert -- skipped")
+            log(f"ROWID {rowid}: alert (s3g/notify-me) -- skipped")
         elif not from_me and is_echo(adb, rowid, date_ns, body, sum_bytes(adb, rowid)):
             log(f"ROWID {rowid}: received copy of a note already handled as sent -- skipped")
         else:

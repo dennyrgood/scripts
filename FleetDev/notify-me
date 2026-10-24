@@ -48,11 +48,14 @@ else
 fi
 [ -n "${TEXT//[[:space:]]/}" ] || { echo "notify-me: empty message" >&2; exit 2; }
 
-# Say where it came from when it arrived over ssh.
+# Every message starts "[notify" so notes_to_self_to_email.py (same thread)
+# knows it is not a note. Over ssh, also say which box sent it.
 if [ -n "${SSH_CLIENT:-}" ]; then
     FROM_IP=${SSH_CLIENT%% *}
     FROM=$(/Applications/Tailscale.app/Contents/MacOS/Tailscale status 2>/dev/null | awk -v ip="$FROM_IP" '$1==ip{print $2}')
-    TEXT="[${FROM:-$FROM_IP}] $TEXT"
+    TEXT="[notify ${FROM:-$FROM_IP}] $TEXT"
+else
+    TEXT="[notify] $TEXT"
 fi
 
 rc=0
