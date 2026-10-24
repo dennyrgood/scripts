@@ -107,7 +107,7 @@ Quick things to eyeball while connected:
 STEPS
         echo ""
         echo "Last 12 probes ($LOG):"
-        tail -12 "$LOG"
+        tail -12 "$LOG" 2>/dev/null
     } | msmtp --account=icloud "$TO"
 }
 
