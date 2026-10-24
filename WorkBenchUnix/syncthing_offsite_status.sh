@@ -215,11 +215,75 @@ GC_TXT=""
 # report "stopped reporting" while the file sat there unchanged. Three misses
 # a minute apart is a real outage; one is a slow wake on a Surface 3.
 GC_JSON=""
+GC_CURL_RC=0
 for _try in 1 2 3; do
     GC_JSON=$(curl -sf --max-time 15 "$GC_VERIFY_URL" 2>/dev/null) && break
+    GC_CURL_RC=$?
     GC_JSON=""
     [ "$_try" -lt 3 ] && sleep 60
 done
+
+# A failure in this block is recorded in GC_FAIL and raised only AFTER the
+# state file is written. Dying here skipped the write, so on every night s3g
+# was unreachable NEED/AT/BACKLOG_SINCE froze at their last good values and
+# the stall and backlog-age checks were comparing against stale data.
+GC_FAIL=""
+
+# Why the fetch failed, in words. s3g is meant to be up 24x7, but it sits in
+# Gran Canaria on a link that drops for hours at a time. "Stopped reporting"
+# alone read like a broken scheduled task when the box was simply off the
+# network (2026-10-21..24). Tailscale and Syncthing each have their own view
+# of whether it is reachable; showing both separates "link/box down" from
+# "box up, metrics server or file gone".
+explain_gc_fetch_failure() {
+    local ip ts ts_online ts_seen ping_ok curl_why where
+    ip=$(printf '%s' "$GC_VERIFY_URL" | grep -oP '(?<=//)[^:/]+')
+    ts=$(tailscale status --json 2>/dev/null | python3 -c "
+import sys,json,datetime
+p=[v for v in json.load(sys.stdin).get('Peer',{}).values() if '$ip' in (v.get('TailscaleIPs') or [])]
+if not p: print('unknown'); print('-'); sys.exit()
+p=p[0]
+print('online' if p.get('Online') else 'offline')
+ls=p.get('LastSeen') or ''
+try:
+    t=datetime.datetime.fromisoformat(ls.replace('Z','+00:00'))
+    if t.year < 2000: raise ValueError
+    print(round((datetime.datetime.now(datetime.timezone.utc)-t).total_seconds()/3600,1))
+except Exception: print('-')
+" 2>/dev/null)
+    ts_online=$(echo "$ts" | sed -n 1p); ts_seen=$(echo "$ts" | sed -n 2p)
+    tailscale ping -c 3 --timeout 5s "$ip" >/dev/null 2>&1 && ping_ok=yes || ping_ok=no
+
+    case "$GC_CURL_RC" in
+        28) curl_why="timed out" ;;
+        7)  curl_why="connection refused" ;;
+        22) curl_why="HTTP error (file not served)" ;;
+        *)  curl_why="curl exit $GC_CURL_RC" ;;
+    esac
+
+    if [ "$ping_ok" = "yes" ]; then
+        case "$GC_CURL_RC" in
+            7)  where="s3g is up (answers Tailscale ping) but nothing listens on :9100 -- fleet_metrics_server.py is down on s3g" ;;
+            22) where="s3g is up and its metrics server answers, but no longer serves the watchdog file -- the self-check task or its output changed on s3g" ;;
+            *)  where="s3g answers Tailscale ping but :9100 ${curl_why} 3x -- box overloaded or the link too lossy to finish a request" ;;
+        esac
+    else
+        where="s3g is unreachable -- the Gran Canaria link is down or the box is off/asleep (it should be up 24x7)"
+    fi
+
+    # Tailscale's LastSeen is only meaningful while the peer is offline.
+    local ts_txt="tailscale ${ts_online}"
+    [ "$ts_online" = "offline" ] && [ "$ts_seen" != "-" ] && ts_txt+=" (last seen ${ts_seen}h ago)"
+    local st_txt="syncthing connected"
+    [ "$IS_CONN" = "yes" ] || st_txt="syncthing disconnected (last seen ${LAST_SEEN_H}h ago)"
+
+    log "s3g self-check fetch: 3 attempts over ~2m, last ${curl_why} ($GC_VERIFY_URL)"
+    log "s3g reachability: ${ts_txt}, tailscale ping ${ping_ok}, ${st_txt}"
+
+    local bl=""
+    [ "$NEED" -gt 0 ] && bl="; ${NEED_GB}GiB waiting to go off-site${BACKLOG_SINCE:+ since $BACKLOG_SINCE}"
+    GC_FAIL="${where}. Self-check fetch ${curl_why}; ${ts_txt}, ping ${ping_ok}; ${st_txt}${bl}"
+}
 
 if [ -n "$GC_JSON" ]; then
     GC_PARSED=$(printf '%s' "$GC_JSON" | python3 -c "
@@ -252,9 +316,10 @@ else:
         GC_SEEN="yes"
         GC_TXT=", GC verify ${GC_N} files/${GC_BAD} bad [${GC_AGE}d]"
 
-        [ "$GC_OK" = "true" ] || die "s3g reports its copy of the repo is damaged: $GC_BAD corrupt, $GC_UNRD unreadable"
-        if awk -v a="$GC_AGE" -v m="$GC_VERIFY_MAX_DAYS" 'BEGIN{exit !(a>m)}'; then
-            die "s3g self-check is ${GC_AGE} days old (threshold ${GC_VERIFY_MAX_DAYS}) -- has the scheduled task stopped?"
+        if [ "$GC_OK" != "true" ]; then
+            GC_FAIL="s3g reports its copy of the repo is damaged: $GC_BAD corrupt, $GC_UNRD unreadable"
+        elif awk -v a="$GC_AGE" -v m="$GC_VERIFY_MAX_DAYS" 'BEGIN{exit !(a>m)}'; then
+            GC_FAIL="s3g self-check is ${GC_AGE} days old (threshold ${GC_VERIFY_MAX_DAYS}) -- has the scheduled task stopped?"
         fi
     else
         log "WARNING: s3g published a self-check that could not be parsed"
@@ -263,7 +328,7 @@ elif [ "${GC_SEEN:-}" = "yes" ]; then
     # It reported before and now does not. That is a regression, not an
     # absence: the task was removed, the metrics server is down, or the box is
     # unreachable -- all worth knowing.
-    die "s3g self-check has stopped reporting (was previously present at $GC_VERIFY_URL)"
+    explain_gc_fetch_failure
 else
     log "s3g self-check: not reporting yet (verify-restic-integrity-scheduled.ps1 not deployed)"
 fi
@@ -278,6 +343,7 @@ printf 'NEED=%s\nAT=%s\nBACKLOG_SINCE=%s\nFIRST_COMPLETE=%s\nLAST_COMPLETE=%s\nG
     "$FIRST_COMPLETE" "$LAST_COMPLETE" "${GC_SEEN:-}" > "$STATE"
 
 # --- verdict -----------------------------------------------------------------
+[ -z "$GC_FAIL" ] || die "$GC_FAIL"
 [ "$FERRORS" -eq 0 ] 2>/dev/null || die "folder reports $FERRORS error(s)"
 
 if [ "$LAST_SEEN_H" = "-1" ]; then
