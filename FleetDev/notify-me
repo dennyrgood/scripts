@@ -1,0 +1,75 @@
+#!/bin/bash
+# notify-me -- send yourself an iMessage (and optionally an email) from FleetDev.
+# Created: 2026-10-24.
+#
+# FleetDev's Messages.app is signed into your Apple ID, so anything it sends
+# lands on your phone over iMessage -- works on Wi-Fi only (e.g. cruise Wi-Fi),
+# no SMS needed. Generalises what s3g_reachability_probe.sh does on wbu.
+#
+# On FleetDev:
+#   notify-me "backup finished"
+#   long-job; notify-me "long-job done (rc=$?)"
+#   notify-me --email "also send this to Yahoo"
+# From any fleet box (text on stdin, so no ssh quoting trouble):
+#   echo "nas disk 90% full" | ssh dennishmathes@fleetdev repos/scripts/FleetDev/notify-me
+#
+# Options:
+#   --to ADDR   iMessage address (default: dennyrgood@yahoo.com)
+#   --email     also email it to dennyrgood@yahoo.com (FleetDev's msmtp, account icloud)
+#
+# First use from a new parent app (Terminal, sshd, launchd) triggers a macOS
+# "wants to control Messages" prompt -- click Allow once on FleetDev.
+
+set -u
+
+TO="dennyrgood@yahoo.com"
+MAIL_TO="dennyrgood@yahoo.com"
+ACCOUNT="66EA877A-3C36-4C47-B8F3-351954AB6DB9"   # Messages iMessage account (E:dennyrgood@yahoo.com)
+MSMTP=/opt/homebrew/bin/msmtp
+EMAIL=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --to)    TO="$2"; shift 2 ;;
+        --email) EMAIL=1; shift ;;
+        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+        --)      shift; break ;;
+        *)       break ;;
+    esac
+done
+
+if [ $# -gt 0 ]; then
+    TEXT="$*"
+elif [ ! -t 0 ]; then
+    TEXT=$(cat)
+else
+    echo "usage: notify-me [--to ADDR] [--email] message...   (or text on stdin)" >&2
+    exit 2
+fi
+[ -n "${TEXT//[[:space:]]/}" ] || { echo "notify-me: empty message" >&2; exit 2; }
+
+# Say where it came from when it arrived over ssh.
+if [ -n "${SSH_CLIENT:-}" ]; then
+    FROM_IP=${SSH_CLIENT%% *}
+    FROM=$(/Applications/Tailscale.app/Contents/MacOS/Tailscale status 2>/dev/null | awk -v ip="$FROM_IP" '$1==ip{print $2}')
+    TEXT="[${FROM:-$FROM_IP}] $TEXT"
+fi
+
+rc=0
+timeout_cmd=""
+command -v gtimeout >/dev/null && timeout_cmd="gtimeout 30"
+$timeout_cmd osascript - "$TO" "$TEXT" <<APPLESCRIPT >/dev/null || rc=$?
+on run argv
+    tell application "Messages"
+        send (item 2 of argv) to participant (item 1 of argv) of account id "$ACCOUNT"
+    end tell
+end run
+APPLESCRIPT
+[ $rc -eq 0 ] || echo "notify-me: iMessage failed (rc=$rc)" >&2
+
+if [ -n "$EMAIL" ]; then
+    first=$(printf '%s' "$TEXT" | tr '\n' ' ' | cut -c1-70)
+    printf 'To: %s\nSubject: notify-me: %s\n\n%s\n' "$MAIL_TO" "$first" "$TEXT" \
+        | "$MSMTP" --account=icloud "$MAIL_TO" || { echo "notify-me: email failed" >&2; rc=1; }
+fi
+exit $rc
