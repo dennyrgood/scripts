@@ -16,7 +16,7 @@
 # Where it lands: an iMessage to dennyrgood@yahoo.com, i.e. your phone's
 # Messages thread with that address (not the +1717 one). Starts "[notify]" --
 # "[notify <box>]" when sent from another box -- so the notes-to-self
-# forwarder skips it. Works on Wi-Fi only (cruise Wi-Fi), no SMS needed.
+# forwarder skips it. Needs only Wi-Fi or data on the phone, no SMS.
 #
 # Without the function: echo "text" | ssh dennishmathes@fleetdev repos/scripts/FleetDev/notify-me
 # First use from a new parent app (Terminal, sshd, launchd) triggers a macOS
