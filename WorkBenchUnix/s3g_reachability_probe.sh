@@ -32,6 +32,16 @@ TO="dennyrgood@yahoo.com"
 # A blip is not an outage worth a mail; 10 minutes of misses is.
 NOTIFY_MIN_DOWN_MIN=10
 
+# iMessage alongside the mail: sessions can be minutes long, and a mail read
+# 25 min later misses them (2026-10-24 12:51Z: up <2 min). wbu cannot send
+# iMessage itself, so FleetDev's Messages.app does it over ssh as dhm (root
+# has no key there). Messages is signed in as the same Apple ID as the
+# phone, so this is a note-to-self; tests to both dennyrgood@yahoo.com and
+# dennis.mathes@icloud.com arrived (2026-10-24). The mail stays the fallback.
+IMSG_HOST="dennishmathes@fleetdev"
+IMSG_TO="dennyrgood@yahoo.com"
+IMSG_ACCOUNT="66EA877A-3C36-4C47-B8F3-351954AB6DB9"   # FleetDev Messages, E:dennyrgood@yahoo.com
+
 [ "$(id -u)" -eq 0 ] || { echo "FAILED: run as root (msmtp config is root-only)"; exit 1; }
 
 # Every minute, and a run with s3g down takes ~15s (up to ~40s fetching the
@@ -57,6 +67,23 @@ fi
 
 # The comeback mail. A function so --test can send exactly what a real
 # return would, without probing or touching the log/state.
+# Never allowed to delay or block the mail: short timeout, errors logged only.
+# The AppleScript goes over ssh stdin, so nothing has to be installed on FleetDev.
+send_back_imessage() {
+    local text="${1//\'/}"
+    timeout 30 sudo -u dhm ssh -o BatchMode=yes -o ConnectTimeout=10 "$IMSG_HOST" \
+        osascript - "$IMSG_TO" "'$text'" >/dev/null 2>&1 <<APPLESCRIPT
+on run argv
+    tell application "Messages"
+        send (item 2 of argv) to participant (item 1 of argv) of account id "$IMSG_ACCOUNT"
+    end tell
+end run
+APPLESCRIPT
+    local rc=$?
+    [ "$rc" -eq 0 ] || echo "[$NOW_ISO] iMessage via $IMSG_HOST failed (rc=$rc)" >> "$LOG"
+    return "$rc"
+}
+
 send_back_mail() {
     # What the router did while s3g was away -- the whole point of the probe.
     OUTAGE=$(awk -v s="[$DOWN_SINCE]" '$1 >= s && /s3g=down/' "$LOG" 2>/dev/null)
@@ -130,6 +157,8 @@ if [ -n "$TEST" ]; then
     S3G=up; PATH_TXT="(test -- not probed)"
     [ -n "$DOWN_SINCE" ] || DOWN_SINCE=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
     DOWN_MIN=$(( (NOW - $(date -u -d "$DOWN_SINCE" +%s)) / 60 ))
+    send_back_imessage "[TEST] s3g is back online (was down $((DOWN_MIN / 60))h$((DOWN_MIN % 60))m). Jump Desktop in now; steps in the email." \
+        && echo "test iMessage sent to $IMSG_TO via $IMSG_HOST" || echo "FAILED: iMessage via $IMSG_HOST (see $LOG)"
     send_back_mail && echo "test mail sent to $TO" || echo "FAILED: msmtp returned an error"
     exit 0
 fi
@@ -180,6 +209,8 @@ for v in json.load(sys.stdin).get('Peer',{}).values():
 elif [ "$PREV" = "down" ] && [ -n "$DOWN_SINCE" ]; then
     DOWN_MIN=$(( (NOW - $(date -u -d "$DOWN_SINCE" +%s)) / 60 ))
     if [ "$DOWN_MIN" -ge "$NOTIFY_MIN_DOWN_MIN" ]; then
+        # iMessage first: it is the one meant to be seen within the minute.
+        send_back_imessage "s3g is back online (was down $((DOWN_MIN / 60))h$((DOWN_MIN % 60))m). Jump Desktop in now; steps in the email."
         send_back_mail
     fi
     DOWN_SINCE=""
