@@ -13,11 +13,16 @@ HOW
   seconds. Every minute (LaunchAgent com.dennis.notes-to-self) this:
     1. reads chat.db for messages newer than the last one handled, ONLY in the
        notes-to-self conversation (chat identifier is one of SELF_HANDLES) and
-       sent by you -- other conversations are never selected;
+       sent by you -- other conversations are never selected. A note can be
+       stored on this Mac as a *received* copy (is_from_me=0, from your own
+       other address) instead of a sent one, so both are accepted; a received
+       copy is held ECHO_WAIT seconds and skipped if a sent twin shows up;
     2. decodes the text (newer macOS leaves message.text NULL and stores it in
        attributedBody, an NSAttributedString typedstream);
     3. mails each one via msmtp (account "icloud" in ~/.msmtprc);
-    4. records the highest ROWID handled, so nothing is sent twice and a sleeping
+    4. attaches photos and PDFs sent with the note (HEIC is converted to JPEG with
+       sips); anything over MAX_ATTACH_BYTES is left off and named in the body;
+    5. records the highest ROWID handled, so nothing is sent twice and a sleeping
        Mac just delays delivery -- no note is lost.
 
   s3g_reachability_probe.sh on wbu sends its alerts into this same conversation
@@ -32,11 +37,13 @@ PERMISSION
 """
 
 import binascii
+import mimetypes
 import datetime
 import os
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from email.message import EmailMessage
 
 HOME = os.path.expanduser("~")
@@ -47,6 +54,10 @@ TO = "dennyrgood@yahoo.com"
 STATE = f"{HOME}/.local/state/notes-to-self.state"
 # Our own alerts, not notes. Matched on the start of the text.
 SKIP_PREFIXES = ("s3g is back online", "[TEST] s3g is back online")
+
+MAX_ATTACH_BYTES = 20 * 1024 * 1024
+
+ECHO_WAIT = 75  # seconds a received-only copy waits for its sent twin
 
 APPLE_EPOCH = 978307200  # 2001-01-01, Messages' date origin (date is in ns)
 
@@ -75,15 +86,79 @@ def decode_body(blob):
     return b[k:k + n].decode("utf-8", "replace")
 
 
-def send(text, when_utc):
+def get_attachments(db, rowid, tmp):
+    """Photos/PDFs on one message -> ([(filename, mime, bytes)], [skipped notes]).
+    Link-preview payloads have no mime type, so they never match."""
+    rows = db.execute("""
+        select a.filename, a.mime_type, a.transfer_name
+        from attachment a join message_attachment_join j on j.attachment_id = a.ROWID
+        where j.message_id = ? and (a.mime_type like 'image/%' or a.mime_type = 'application/pdf')
+        order by a.ROWID""", (rowid,)).fetchall()
+    out, skipped = [], []
+    for path, mime, name in rows:
+        name = name or os.path.basename(path or "") or "attachment"
+        path = os.path.expanduser(path or "")
+        if not os.path.isfile(path):
+            skipped.append(f"{name} (file not found on this Mac)")
+            continue
+        if mime in ("image/heic", "image/heif"):
+            jpg = os.path.join(tmp, os.path.splitext(os.path.basename(name))[0] + ".jpg")
+            r = subprocess.run(["/usr/bin/sips", "-s", "format", "jpeg", path, "--out", jpg],
+                               capture_output=True, timeout=60)
+            if r.returncode != 0 or not os.path.isfile(jpg):
+                skipped.append(f"{name} (HEIC conversion failed)")
+                continue
+            path, mime, name = jpg, "image/jpeg", os.path.basename(jpg)
+        size = os.path.getsize(path)
+        if size > MAX_ATTACH_BYTES:
+            skipped.append(f"{name} ({size / 1048576:.0f} MB, over the {MAX_ATTACH_BYTES >> 20} MB limit)")
+            continue
+        with open(path, "rb") as f:
+            out.append((name, mime, f.read()))
+    return out, skipped
+
+
+def sum_bytes(db, rowid):
+    return db.execute("""select ifnull(sum(a.total_bytes),0) from message_attachment_join j
+                          join attachment a on a.ROWID = j.attachment_id where j.message_id = ?""",
+                      (rowid,)).fetchone()[0]
+
+
+def is_echo(db, rowid, date_ns, body, nbytes):
+    """True if a sent (is_from_me=1) twin of this received copy exists: same text
+    and attachment size, within two minutes, in the self conversation."""
+    marks = ",".join("?" * len(SELF_HANDLES))
+    for text, blob, tb in db.execute(f"""
+            select ifnull(m.text,''), m.attributedBody,
+                   (select ifnull(sum(a.total_bytes),0) from message_attachment_join j
+                      join attachment a on a.ROWID = j.attachment_id where j.message_id = m.ROWID)
+            from message m
+            join chat_message_join cj on cj.message_id = m.ROWID
+            join chat c on c.ROWID = cj.chat_id
+            where m.is_from_me = 1 and m.ROWID <> ? and abs(m.date - ?) < 120000000000
+              and c.chat_identifier in ({marks})""", [rowid, date_ns] + SELF_HANDLES):
+        twin = (text or decode_body(blob) or "").replace("\ufffc", "").strip()
+        if twin == body and tb == nbytes:
+            return True
+    return False
+
+
+def send(text, when_utc, attachments=(), skipped=()):
     first = " ".join(text.split())
+    if not first:
+        first = "[PDF]" if attachments and all(a[1] == "application/pdf" for a in attachments) else "[photo]"
     subject = "Note: " + (first[:70] + "..." if len(first) > 70 else first)
     m = EmailMessage()
     m["To"] = TO
     m["Subject"] = subject
     local = when_utc.astimezone()
+    if skipped:
+        text = (text + "\n\n" if text else "") + "[not attached: " + "; ".join(skipped) + "]"
     m.set_content(f"{text}\n\n--\ntexted to yourself {local:%a %d %b %Y %H:%M %Z}\n"
                   f"(notes_to_self_to_email.py on FleetDev, from Messages)\n")
+    for name, mime, data in attachments:
+        mt, st = (mime or mimetypes.guess_type(name)[0] or "application/octet-stream").split("/", 1)
+        m.add_attachment(data, maintype=mt, subtype=st, filename=name)
     r = subprocess.run([MSMTP, "--account=icloud", TO], input=m.as_bytes(),
                        capture_output=True, timeout=60)
     if r.returncode != 0:
@@ -114,11 +189,11 @@ def main():
 
         marks = ",".join("?" * len(SELF_HANDLES))
         rows = db.execute(f"""
-            select m.ROWID, m.date, ifnull(m.text,''), m.attributedBody
+            select m.ROWID, m.date, ifnull(m.text,''), m.attributedBody, m.is_from_me
             from message m
             join chat_message_join cmj on cmj.message_id = m.ROWID
             join chat c on c.ROWID = cmj.chat_id
-            where m.ROWID > ? and m.is_from_me = 1
+            where m.ROWID > ?
               and c.chat_identifier in ({marks})
             group by m.ROWID
             order by m.ROWID
@@ -126,16 +201,26 @@ def main():
     finally:
         db.close()
 
-    for rowid, date_ns, text, blob in rows:
-        body = text or decode_body(blob)
+    adb = sqlite3.connect(f"file:{CHAT_DB}?mode=ro", uri=True, timeout=10)
+    now_ns = (datetime.datetime.now(datetime.timezone.utc).timestamp() - APPLE_EPOCH) * 1e9
+    for rowid, date_ns, text, blob, from_me in rows:
+        # Attachment-only messages carry just U+FFFC (object replacement char) as text.
+        body = (text or decode_body(blob) or "").replace("\ufffc", "").strip()
         when = datetime.datetime.fromtimestamp(date_ns / 1e9 + APPLE_EPOCH, datetime.timezone.utc)
-        if not body or not body.strip():
-            log(f"ROWID {rowid}: no text (photo/attachment?) -- skipped")
-        elif body.startswith(SKIP_PREFIXES):
+        if not from_me and now_ns - date_ns < ECHO_WAIT * 1e9:
+            return   # received copy: wait for its sent twin; state stays put, retried next minute
+        if body.startswith(SKIP_PREFIXES):
             log(f"ROWID {rowid}: s3g alert -- skipped")
+        elif not from_me and is_echo(adb, rowid, date_ns, body, sum_bytes(adb, rowid)):
+            log(f"ROWID {rowid}: received copy of a note already handled as sent -- skipped")
         else:
-            send(body, when)   # raises -> state not advanced -> retried next minute
-            log(f"ROWID {rowid}: mailed ({len(body)} chars)")
+            with tempfile.TemporaryDirectory() as tmp:
+                atts, skipped = get_attachments(adb, rowid, tmp)
+                if not body and not atts and not skipped:
+                    log(f"ROWID {rowid}: no text or photo/PDF (other attachment type?) -- skipped")
+                else:
+                    send(body, when, atts, skipped)   # raises -> state not advanced -> retried next minute
+                    log(f"ROWID {rowid}: mailed ({len(body)} chars, {len(atts)} attached, {len(skipped)} skipped)")
         write_state(rowid)
 
 
