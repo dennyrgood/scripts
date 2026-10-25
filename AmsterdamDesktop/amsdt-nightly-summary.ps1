@@ -75,7 +75,7 @@ if (Test-Path $AllStatusFile) {
                 if ($namedDown.Count -gt 0 -and $namedDown.Count -le 4) {
                     $Reason = "down: $($namedDown -join ', ')"
                 } else {
-                    $Reason = "fleet checker sees $($s.machines_down) machine(s)/$($s.services_down) service(s) down"
+                    $Reason = "fleet checker sees $($downMachines.Count) machine(s) down/$($downServices.Count) service(s) not up"
                 }
             }
         } else {
