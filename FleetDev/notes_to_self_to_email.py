@@ -58,6 +58,7 @@ SKIP_PREFIXES = ("s3g is back online", "[TEST] s3g is back online", "[notify")
 
 MAX_ATTACH_BYTES = 20 * 1024 * 1024
 
+BACKFILL_SLACK = 600  # seconds older than the newest handled note before a 'new' row counts as an old one re-synced
 ECHO_WAIT = 75  # seconds a received-only copy waits for its sent twin
 
 APPLE_EPOCH = 978307200  # 2001-01-01, Messages' date origin (date is in ns)
@@ -166,28 +167,33 @@ def send(text, when_utc, attachments=(), skipped=()):
         raise RuntimeError(f"msmtp rc={r.returncode}: {r.stderr.decode(errors='replace').strip()[:200]}")
 
 
-def write_state(rowid):
+def write_state(rowid, date_ns):
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     tmp = STATE + ".tmp"
     with open(tmp, "w") as f:
-        f.write(f"{rowid}\n")
+        f.write(f"{rowid} {int(date_ns)}\n")
     os.replace(tmp, STATE)
 
 
 def main():
-    last = None
+    last = last_date = None
     if os.path.exists(STATE):
         with open(STATE) as f:
-            last = int(f.read().strip() or 0)
+            parts = f.read().split()
+        last = int(parts[0]) if parts else 0
+        last_date = int(parts[1]) if len(parts) > 1 else None   # old one-number state: filled in below
 
     db = sqlite3.connect(f"file:{CHAT_DB}?mode=ro", uri=True, timeout=10)
     try:
         if last is None:
             newest = db.execute("select ifnull(max(ROWID),0) from message").fetchone()[0]
-            write_state(newest)
+            nd = db.execute("select ifnull(max(date),0) from message where ROWID = ?", (newest,)).fetchone()[0]
+            write_state(newest, nd)
             log(f"initialised at ROWID {newest}; only notes after this are mailed")
             return
 
+        if last_date is None:
+            last_date = db.execute("select ifnull(max(date),0) from message where ROWID <= ?", (last,)).fetchone()[0]
         marks = ",".join("?" * len(SELF_HANDLES))
         rows = db.execute(f"""
             select m.ROWID, m.date, ifnull(m.text,''), m.attributedBody, m.is_from_me
@@ -210,7 +216,10 @@ def main():
         when = datetime.datetime.fromtimestamp(date_ns / 1e9 + APPLE_EPOCH, datetime.timezone.utc)
         if not from_me and now_ns - date_ns < ECHO_WAIT * 1e9:
             return   # received copy: wait for its sent twin; state stays put, retried next minute
-        if body.startswith(SKIP_PREFIXES):
+        if date_ns < last_date - BACKFILL_SLACK * 1e9:
+            # Messages can re-sync old history in under fresh ROWIDs (25 did on 2026-10-25): not new notes.
+            log(f"ROWID {rowid}: dated {when:%Y-%m-%d %H:%M}Z, older than the newest handled note -- old message re-synced, skipped")
+        elif body.startswith(SKIP_PREFIXES):
             log(f"ROWID {rowid}: alert (s3g/notify-me) -- skipped")
         elif not from_me and is_echo(adb, rowid, date_ns, body, sum_bytes(adb, rowid)):
             log(f"ROWID {rowid}: received copy of a note already handled as sent -- skipped")
@@ -222,7 +231,8 @@ def main():
                 else:
                     send(body, when, atts, skipped)   # raises -> state not advanced -> retried next minute
                     log(f"ROWID {rowid}: mailed ({len(body)} chars, {len(atts)} attached, {len(skipped)} skipped)")
-        write_state(rowid)
+        last_date = max(last_date, date_ns)
+        write_state(rowid, last_date)
 
 
 if __name__ == "__main__":
