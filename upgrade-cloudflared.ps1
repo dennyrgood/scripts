@@ -12,6 +12,8 @@ $ErrorActionPreference = "Stop"
 $proc = Get-CimInstance Win32_Process | Where-Object { $_.Name -match "cloudflared" } | Select-Object -First 1
 if (-not $proc) { throw "no running cloudflared process found" }
 $exe = $proc.ExecutablePath
+if (-not $exe -and $proc.CommandLine -match '^"([^"]+)"') { $exe = $Matches[1] }
+if (-not $exe) { throw "cannot read cloudflared path (not running as Administrator?)" }
 "current exe: $exe"
 "current version: " + (& $exe --version | Select-Object -First 1)
 
