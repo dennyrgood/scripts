@@ -39,6 +39,7 @@ import email.header
 import imaplib
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import time
@@ -84,8 +85,10 @@ def get_credential():
     block = re.search(r"account\s+icloud\b(.*?)(?=\naccount\s|\Z)", text, re.S).group(1)
     user = re.search(r"^\s*user\s+(\S+)", block, re.M).group(1)
     passwordeval = re.search(r'^\s*passwordeval\s+"(.+)"', block, re.M).group(1)
+    # msmtp runs passwordeval through a shell, so it may use ~ / || / 2>/dev/null
+    # (fd's does: file first, Keychain fallback) -- do the same, don't shlex.split it.
     password = subprocess.run(
-        shlex.split(passwordeval), capture_output=True, text=True, check=True
+        passwordeval, shell=True, capture_output=True, text=True, check=True
     ).stdout.strip()
     return user, password
 
@@ -197,7 +200,11 @@ def send_report(user, password, to_addr, subject, body):
 
     # Self-CC, same as every nightly-summary already does -- gives the digest its
     # own copy/record in the icloud account too, not just the Yahoo inbox.
-    msg = MIMEText(body, "plain", "utf-8")
+    # Stamp the sending host: the SMTP EHLO name in the Received headers is unreliable
+    # (can be an ip6.arpa placeholder), so it can't tell which box sent the digest.
+    host = socket.gethostname()
+    msg = MIMEText(f"{body}\n\nSent from: {host}\n", "plain", "utf-8")
+    msg["X-Fleet-Digest-Host"] = host
     msg["Subject"] = subject
     msg["From"] = user
     msg["To"] = to_addr
