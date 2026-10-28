@@ -32,7 +32,10 @@ MONITOR_STALE_SECS=1800   # 30 min (6x the 5-min run interval)
 # `money health` follows the role: after cutover it reports FleetDev's fetches, backups and its copy-off to mb instead.
 # The NAS check runs only while com.dennis.money-copy-to-nas is loaded: at cutover FleetDev's own copy-off
 # ([copy.fleetnas]) replaces it, and `money health` reports that copy.
+# 2026-10-28 04:28 UTC: rows waiting to import in money (a TODO line from `money health`, which doesn't fail the check) put
+# 📥 in the subject, "money: N rows to import", when nothing is wrong; ⚠️ still wins (Dennis).
 MONEY_REPO="$HOME/repos/money"
+TODO_REASON=""
 NAS_LOG="$HOME/Library/Logs/money_copy_to_nas.log"
 NAS_STALE_SECS=93600     # 26h: a daily 06:30 job
 # 2026-10-20 20:07 UTC: the send is tried again every 10 minutes for an hour (msmtp gives up at once when offline, exit 75).
@@ -138,6 +141,8 @@ if [ -x "$MONEY_REPO/.venv/bin/money" ]; then
     MONEY_OUT=$("$MONEY_REPO/.venv/bin/money" --config "$MONEY_REPO/config.toml" health 2>&1)
     MONEY_RC=$?
     TLDR+="  money:\n$(printf '%s\n' "$MONEY_OUT" | sed 's/^/    /')\n"
+    TODO_LINE=$(printf '%s\n' "$MONEY_OUT" | grep -m1 -E '^TODO' || true)
+    [ -n "$TODO_LINE" ] && TODO_REASON="money: $(printf '%s\n' "$TODO_LINE" | sed -E 's/^TODO +[^:]+: //; s/:.*//')"
     if [ "$MONEY_RC" -ne 0 ] && [ "$OK" -eq 1 ]; then
         OK=0
         REASON="money: $(printf '%s\n' "$MONEY_OUT" | grep -m1 -E '^(FAIL|WARN)' | sed -E 's/^(FAIL|WARN) +//; s/:.*//')"
@@ -182,7 +187,8 @@ else
     BODY+="⚠️ WARNING: state file not found — health monitor has not run\n"
 fi
 
-if [ "$OK" -eq 1 ]; then EMOJI="✅"; else EMOJI="⚠️"; fi
+if [ "$OK" -eq 1 ] && [ -n "$TODO_REASON" ]; then EMOJI="📥"; REASON="$TODO_REASON"
+elif [ "$OK" -eq 1 ]; then EMOJI="✅"; else EMOJI="⚠️"; fi
 SUBJECT="${EMOJI} FleetDev nightly $(date '+%Y-%m-%d') — ${REASON}"
 
 MESSAGE=$({

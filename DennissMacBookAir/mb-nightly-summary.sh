@@ -38,7 +38,10 @@ MONITOR_WAIT_SECS=360
 MONITOR_POLL_SECS=15
 # 2026-10-20 20:03 UTC: money's own health in the TLDR (`money health`: web app, books, backups, both bank fetches ran
 # without errors and new rows keep arriving, bank approvals, the nightly copy to FleetDev sent and hash-checked).
+# 2026-10-28 04:28 UTC: rows waiting to import in money (a TODO line from `money health`, which doesn't fail the check) put
+# 📥 in the subject, "money: N rows to import", when nothing is wrong; ⚠️ still wins (Dennis).
 MONEY_REPO="$HOME/repos/money"
+TODO_REASON=""
 # 2026-10-20 20:03 UTC: away from home (ship, hotel) mb is often offline at 07:00, and msmtp gave up at once (exit 75,
 # EX_TEMPFAIL). Now the send is tried again every 10 minutes for an hour before giving up.
 SEND_TRIES=7
@@ -119,6 +122,8 @@ if [ -x "$MONEY_REPO/.venv/bin/money" ]; then
     MONEY_OUT=$("$MONEY_REPO/.venv/bin/money" --config "$MONEY_REPO/config.toml" health 2>&1)
     MONEY_RC=$?
     TLDR+="  money:\n$(printf '%s\n' "$MONEY_OUT" | sed 's/^/    /')\n"
+    TODO_LINE=$(printf '%s\n' "$MONEY_OUT" | grep -m1 -E '^TODO' || true)
+    [ -n "$TODO_LINE" ] && TODO_REASON="money: $(printf '%s\n' "$TODO_LINE" | sed -E 's/^TODO +[^:]+: //; s/:.*//')"
     if [ "$MONEY_RC" -ne 0 ] && [ "$OK" -eq 1 ]; then
         OK=0
         REASON="money: $(printf '%s\n' "$MONEY_OUT" | grep -m1 -E '^(FAIL|WARN)' | sed -E 's/^(FAIL|WARN) +//; s/:.*//')"
@@ -145,7 +150,8 @@ else
     BODY+="⚠️ WARNING: state file not found — health monitor has not run\n"
 fi
 
-if [ "$OK" -eq 1 ]; then EMOJI="✅"; else EMOJI="⚠️"; fi
+if [ "$OK" -eq 1 ] && [ -n "$TODO_REASON" ]; then EMOJI="📥"; REASON="$TODO_REASON"
+elif [ "$OK" -eq 1 ]; then EMOJI="✅"; else EMOJI="⚠️"; fi
 SUBJECT="${EMOJI} MacBook Air nightly $(date '+%Y-%m-%d') — ${REASON}"
 
 MESSAGE=$({

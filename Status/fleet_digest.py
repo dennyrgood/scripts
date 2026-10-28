@@ -27,6 +27,9 @@ crashed with a traceback (OSError: Network is unreachable). The fetch and the se
 tried again every 10 minutes for an hour; if the network never comes, one line says so and
 the exit status is 75 (EX_TEMPFAIL), as msmtp's is in the nightly summaries.
 
+2026-10-28 04:28 UTC: a third subject symbol, the inbox tray: nothing wrong, but something waits for Dennis
+(money: rows to import). Counted OK, listed with its reason.
+
 Usage:
   python3 fleet_digest.py            # print only
   python3 fleet_digest.py --send     # print AND email the report
@@ -72,10 +75,11 @@ EXPECTED_HOSTS = [
 
 CHECK = "✅"
 WARN = "⚠️"
+TODO = "📥"                     # OK, with something to do (mb/FleetDev: money rows to import)
 # Handles both the ASCII "--" (Windows scripts, CLAUDE.md ASCII-only rule) and
 # the real em-dash "—" (Mac/Ubuntu bash scripts) as the separator.
 SUBJECT_RE = re.compile(
-    r"^(?P<emoji>✅|⚠️)\s+(?P<host>.+?)\s+nightly\s+"
+    r"^(?P<emoji>✅|⚠️|📥)\s+(?P<host>.+?)\s+nightly\s+"
     r"(?P<date>\d{4}-\d{2}-\d{2})\s+(?:--|—)\s+(?P<reason>.+)$"
 )
 
@@ -161,12 +165,12 @@ def build_report(subjects, target_date):
             unmatched.append(s)
             continue
         host = m.group("host")
-        ok = m.group("emoji") == CHECK
+        ok = m.group("emoji") in (CHECK, TODO)
         if host not in found or seq > found[host][2]:
-            found[host] = (ok, m.group("reason"), seq)
+            found[host] = (ok, m.group("reason"), seq, m.group("emoji") == TODO)
 
-    ok_hosts = [h for h, (ok, _, _) in found.items() if ok]
-    notok_hosts = [(h, r) for h, (ok, r, _) in found.items() if not ok]
+    ok_hosts = [h for h, (ok, _, _, _) in found.items() if ok]
+    notok_hosts = [(h, r) for h, (ok, r, _, _) in found.items() if not ok]
     missing_hosts = [h for h in EXPECTED_HOSTS if h not in found]
 
     lines = []
@@ -175,7 +179,8 @@ def build_report(subjects, target_date):
     lines.append("")
     lines.append(f"OK ({len(ok_hosts)}):")
     for h in sorted(ok_hosts):
-        lines.append(f"  {CHECK} {h}")
+        todo, reason = found[h][3], found[h][1]
+        lines.append(f"  {TODO} {h} -- {reason}" if todo else f"  {CHECK} {h}")
     lines.append("")
     lines.append(f"NOT-OK ({len(notok_hosts)}):")
     for h, r in sorted(notok_hosts):
