@@ -33,7 +33,7 @@ for arg in "$@"; do
 done
 
 # Used only if ~/.zshrc is missing or has no ssh aliases.
-FALLBACK_MACHINES="mb mathes-mac-mini denniss-2nd-macbook-air workbenchunix chatworkhorseunix fleetnas amsterdamdesktop chatworkhorse imagebeast travelbeast remotews surface3-gc surfacegolaptopgc"
+FALLBACK_MACHINES="mb mathes-mac-mini denniss-2nd-macbook-air workbenchunix chatworkhorseunix fleetnas amsterdamdesktop chatworkhorse imagebeast travelbeast remotews surface3-gc"
 
 # Hosts from `alias x='ssh [opts] HOST'` lines in ~/.zshrc, de-duplicated, minus this box.
 # `denniss-macbook-air` is stored as `mb`: that is the label its existing index uses

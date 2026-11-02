@@ -37,7 +37,6 @@ WINDOWS_HOSTS=(
   travelbeast
   remotews
   surface3-gc
-  surfacegolaptopgc
 )
 
 echo "Cleaning up any previous fleet session..."

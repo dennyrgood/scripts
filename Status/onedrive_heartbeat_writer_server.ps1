@@ -11,7 +11,6 @@
 
 $hostnameMap = @{
     "amsterdamdeskto" = "amsterdamdesktop"
-    "surfacegolaptop" = "surfacegolaptopgc"
 }
 
 $rawHost     = $env:COMPUTERNAME.ToLower()

@@ -68,7 +68,7 @@ def with_retries(what, call):
 # display-name variable -- not guessed. See scripts repo, 2026-08-31.
 EXPECTED_HOSTS = [
     "AmsterdamDesktop", "ChatWorkhorse", "ImageBeast", "TravelBeast",
-    "RemoteWS", "Surface3GC", "SurfaceGoLaptopGC",
+    "RemoteWS", "Surface3GC",
     "WorkBenchUnix", "ChatWorkhorseUnix", "FleetNAS",
     "MacBook Air", "MacBook Air 2", "Mac Mini",
 ]

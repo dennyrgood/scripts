@@ -9,7 +9,6 @@ WINDOWS_HOSTS=(
   travelbeast
   remotews
   surface3-gc
-  surfacegolaptopgc
 )
 
 for host in "${WINDOWS_HOSTS[@]}"; do

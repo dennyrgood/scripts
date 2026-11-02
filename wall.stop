@@ -17,7 +17,6 @@ WINDOWS_HOSTS=(
   travelbeast
   remotews
   surface3-gc
-  surfacegolaptopgc
 )
 
 echo "Stopping fleet wall..."
