@@ -313,17 +313,9 @@ FLEET = [
         "display_name": "MacBook Air Prime",
         "tailscale_name": "denniss-macbook-air",
         "tailscale_ip": "100.72.187.19",
-        "primary_role": "Ollama",
-        "probe_port": 11434,  # Ollama port (ignored; Tailscale ping used instead)
-        "services": [
-            {
-                "name": "Ollama",
-                "port": 11434,
-                "priority": "P",
-                "check_type": "ollama",
-                "public_url": None,
-            },
-        ],
+        "primary_role": "LaptopDev",
+        "probe_port": 22,
+        "services": [],
     },
     {
         "display_name": "Plex Server GC",
