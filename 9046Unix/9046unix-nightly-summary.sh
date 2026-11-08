@@ -139,6 +139,42 @@ NV=$(find /mnt/archive02s/misc/.versions -mindepth 1 -maxdepth 1 -type d 2>/dev/
 [ "$NV" -gt 0 ] && TLDR+="  money versions kept: $NV day(s) in /mnt/archive02s/misc/.versions\n"
 BODY+="=== NAS PULLS (last 6 results, ~/nightly-pull.log) ===\n$(grep -E 'DONE|PAUSED|error|stopping|skipping|gave up|no .*marker|waiting' /home/dhm/nightly-pull.log /home/dhm/immich-pull.log 2>/dev/null | tail -6 | sed 's#^/home/dhm/##')\n\n"
 
+# --- Household latency, last 24 h (9046unix-latency-log.sh, every 5 min) ---
+# Is the NAS copy adding lag for the gamer / evening Netflix? Compares samples taken
+# with the copy running vs. with no copy traffic (paused for the sample, or idle),
+# split into evening (18-24 local) and the rest of the day. Informational only:
+# never changes the subject line.
+LAT=/var/lib/9046unix/latency.tsv
+if [ -s "$LAT" ]; then
+    LAT_TXT=$(awk -F'\t' -v since=$(( NOW - 86400 )) '
+        $1 >= since && $6 != "NA" {
+            band  = ($2 >= 18) ? "evening 18-24" : "rest of day  "
+            state = ($3 == "copy") ? "copy" : "nocopy"
+            k = band SUBSEP state
+            n[k]++; ravg[k] += $4; iavg[k] += $6
+            if ($7 > 100) spike[k]++
+            if ($7 > imax[k]) imax[k] = $7
+        }
+        function one(k) {
+            if (!n[k]) return "no samples"
+            return sprintf("%3.0f ms avg (router %2.0f), worst %3.0f, spikes %d/%d", iavg[k]/n[k], ravg[k]/n[k], imax[k], spike[k], n[k])
+        }
+        function line(b,   c, p) {
+            c = b SUBSEP "copy"; p = b SUBSEP "nocopy"
+            if (!n[c] && !n[p]) return
+            printf "    %s\n      copy on: %s\n      no copy: %s\n", b, one(c), one(p)
+        }
+        END { line("evening 18-24"); line("rest of day  ") }' "$LAT")
+    TLDR+="  latency 24h (explained in the body):\n"
+    BODY+="=== HOUSEHOLD LATENCY, last 24h (ping router + 1.1.1.1 every 5 min) ===\n"
+    BODY+="Each line: average internet ping (1.1.1.1), average router ping, worst single ping,\n"
+    BODY+="and spikes = samples whose worst ping was >100 ms, out of all samples.\n"
+    BODY+="'no copy' samples pause the copy for ~15 s (every other sample), so both are measured\n"
+    BODY+="at the same times of day. If 'copy on' is clearly worse in the evening, lower the\n"
+    BODY+="limit or skip evenings; if they look alike, the copy isn't the cause of any lag.\n"
+    TLDR+="${LAT_TXT}\n"
+fi
+
 # --- SMART (00p, 01p) ---
 BODY+="=== SMART ===\n"
 for a in archive00p archive01p; do
