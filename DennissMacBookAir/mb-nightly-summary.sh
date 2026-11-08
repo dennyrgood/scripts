@@ -90,6 +90,11 @@ if [ -f "$MONITOR_STATE" ]; then
         WAKE_EPOCH=$(sysctl -n kern.waketime 2>/dev/null | sed -n 's/.*sec = \([0-9]*\),.*/\1/p')
         WAKE_NOTE=""
         [ -n "$WAKE_EPOCH" ] && WAKE_NOTE=", last wake $(date -r "$WAKE_EPOCH" '+%H:%M')"
+        # 2026-11-08: a lid-closed DarkWake also sets kern.waketime; say so, since a monitor
+        # run in that ~45s window can't be trusted the way a real wake's run can.
+        if [ -n "$WAKE_NOTE" ] && pmset -g log 2>/dev/null | grep -E ' (Wake|DarkWake) +	' | tail -1 | grep -q DarkWake; then
+            WAKE_NOTE+=" (dark wake, lid closed)"
+        fi
         TLDR+="  (monitor was stale at start -- waited ${WAITED}s for a post-wake run${WAKE_NOTE})\n"
     fi
     if [ "$MONITOR_AGE" -gt "$MONITOR_STALE_SECS" ]; then

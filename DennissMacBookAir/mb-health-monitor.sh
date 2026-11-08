@@ -66,6 +66,11 @@ METRICS_SERVER_URL="http://127.0.0.1:9100/heartbeat_${HOST}.txt"
 HEARTBEAT_WRITER_PROC_PATTERN="onedrive_heartbeat_writer_all_macs.py"
 HEARTBEAT_FILE="$HOME/fleet_monitor/heartbeat_${HOST}.txt"
 HEARTBEAT_STALE_SECS=600   # writer heartbeats every 150s — 4x margin before alerting
+# 2026-11-08: launchd fires this job right after any wake, including a 45s lid-closed
+# DarkWake, when the heartbeat file is still as old as the sleep was and the writer's
+# time.sleep loop hasn't caught up yet -> false "NOT RESPONDING". kern.waketime is
+# updated on dark wakes too, so skip the freshness check this long after any wake.
+HEARTBEAT_WAKE_GRACE_SECS=300
 SEARCH_ADV_PROC_PATTERN="search_adv_web.py"
 SEARCH_ADV_URL="http://127.0.0.1:5025/"
 SEARCH_SHOWS_PROC_PATTERN="search_shows_web.py"
@@ -179,7 +184,9 @@ if [ "${MISSING_TRIGGERED[HEARTBEAT_WRITER]}" -eq 0 ]; then
         DOWN_DETAIL_HEARTBEAT_WRITER="${HEARTBEAT_FILE} does not exist yet.\n"
     else
         HB_AGE=$(( NOW - $(stat -f %m "$HEARTBEAT_FILE") ))
-        if [ "$HB_AGE" -gt "$HEARTBEAT_STALE_SECS" ]; then
+        WAKE_EPOCH=$(sysctl -n kern.waketime 2>/dev/null | sed -n 's/.*sec = \([0-9]*\),.*/\1/p')
+        SINCE_WAKE=$(( NOW - ${WAKE_EPOCH:-0} ))
+        if [ "$HB_AGE" -gt "$HEARTBEAT_STALE_SECS" ] && [ "$SINCE_WAKE" -ge "$HEARTBEAT_WAKE_GRACE_SECS" ]; then
             DOWN_TRIGGERED[HEARTBEAT_WRITER]=1
             DOWN_DETAIL_HEARTBEAT_WRITER="${HEARTBEAT_FILE} last written $((HB_AGE / 60))m ago (threshold $((HEARTBEAT_STALE_SECS / 60))m).\n"
         fi
