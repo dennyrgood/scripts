@@ -1,6 +1,14 @@
 #!/bin/bash
 # notify-me -- send yourself an iMessage (and optionally an email) via FleetDev.
-# Created: 2026-10-24. On any box with the `notify` function (add-notify-alias.sh):
+# Created: 2026-10-24.
+# Edit log:
+#   2026-11-08 17:45 UTC  added --attach FILE (iMessage file send).
+#   2026-11-08 18:35 UTC  --attach now EMAILS the files (MIME attachments via msmtp)
+#                         instead of sending them by iMessage: Messages here records the
+#                         file but fails the send (chat.db error=25) or sends an empty
+#                         message. The iMessage text is still sent. Exit 3 = text sent
+#                         but the attachment email failed.
+# On any box with the `notify` function (add-notify-alias.sh):
 #
 #   notify backup done
 #   notify --email also to yahoo
@@ -12,6 +20,11 @@
 #   --email     also email the text to the dennyrgood@yahoo.com mailbox
 #               (subject "notify-me: <first 70 chars>", from dennis.mathes@icloud.com)
 #   --to ADDR   iMessage address (default: dennyrgood@yahoo.com)
+#   --attach F  email file F as an attachment, with the text, to the same mailbox
+#               (repeatable; run directly on FleetDev only -- the path is read on
+#               the box where notify-me runs). The text is still iMessaged.
+#
+# Exit codes: 0 ok, 1 iMessage/email failed, 2 usage, 3 text sent but attachment email failed.
 #
 # Where it lands: an iMessage to dennyrgood@yahoo.com, i.e. your phone's
 # Messages thread with that address (not the +1717 one). Starts "[notify]" --
@@ -29,11 +42,13 @@ MAIL_TO="dennyrgood@yahoo.com"
 ACCOUNT="66EA877A-3C36-4C47-B8F3-351954AB6DB9"   # Messages iMessage account (E:dennyrgood@yahoo.com)
 MSMTP=/opt/homebrew/bin/msmtp
 EMAIL=""
+ATTACH=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --to)    TO="$2"; shift 2 ;;
         --email) EMAIL=1; shift ;;
+        --attach) ATTACH+=("$2"); shift 2 ;;
         -h|--help) awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/,""); print}' "$0"; exit 0 ;;
         --)      shift; break ;;
         *)       break ;;
@@ -45,7 +60,7 @@ if [ $# -gt 0 ]; then
 elif [ ! -t 0 ]; then
     TEXT=$(cat)
 else
-    echo "usage: notify-me [--to ADDR] [--email] message...   (or text on stdin)" >&2
+    echo "usage: notify-me [--to ADDR] [--email] [--attach FILE] message...   (or text on stdin)" >&2
     exit 2
 fi
 [ -n "${TEXT//[[:space:]]/}" ] || { echo "notify-me: empty message" >&2; exit 2; }
@@ -71,6 +86,40 @@ on run argv
 end run
 APPLESCRIPT
 [ $rc -eq 0 ] || echo "notify-me: iMessage failed (rc=$rc)" >&2
+
+# --attach: one MIME email with the text + each file attached (bash 3.2 safe).
+if [ ${#ATTACH[@]} -gt 0 ]; then
+    mrc=0
+    for f in ${ATTACH[@]+"${ATTACH[@]}"}; do
+        case "$f" in /*) ;; *) f="$PWD/$f" ;; esac
+        [ -f "$f" ] || { echo "notify-me: no such file: $f" >&2; mrc=1; }
+    done
+    B="notify-me-$$-$(date +%s)"
+    first=$(printf '%s' "$TEXT" | tr '\n' ' ' | cut -c1-70)
+    {
+        printf 'From: dennis.mathes@icloud.com\nTo: %s\nSubject: notify-me: %s\nMIME-Version: 1.0\nContent-Type: multipart/mixed; boundary="%s"\n\n' "$MAIL_TO" "$first" "$B"
+        printf -- '--%s\nContent-Type: text/plain; charset=UTF-8\n\n%s\n\n' "$B" "$TEXT"
+        for f in ${ATTACH[@]+"${ATTACH[@]}"}; do
+            case "$f" in /*) ;; *) f="$PWD/$f" ;; esac
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            case "$name" in
+                *.jpg|*.jpeg) ct=image/jpeg ;;
+                *.png)        ct=image/png ;;
+                *.mp4)        ct=video/mp4 ;;
+                *.mov)        ct=video/quicktime ;;
+                *.pdf)        ct=application/pdf ;;
+                *)            ct=application/octet-stream ;;
+            esac
+            printf -- '--%s\nContent-Type: %s; name="%s"\nContent-Transfer-Encoding: base64\nContent-Disposition: attachment; filename="%s"\n\n' "$B" "$ct" "$name" "$name"
+            base64 < "$f" | fold -w 76
+            printf '\n'
+        done
+        printf -- '--%s--\n' "$B"
+    } | "$MSMTP" --account=icloud "$MAIL_TO" || { echo "notify-me: attachment email failed" >&2; mrc=1; }
+    # Keep rc=1 if the iMessage itself failed; 3 means only the attachment mail failed.
+    [ $mrc -eq 0 ] || [ $rc -ne 0 ] || rc=3
+fi
 
 if [ -n "$EMAIL" ]; then
     first=$(printf '%s' "$TEXT" | tr '\n' ' ' | cut -c1-70)
