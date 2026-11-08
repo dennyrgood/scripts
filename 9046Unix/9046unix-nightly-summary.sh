@@ -75,54 +75,69 @@ for a in "${ARCHIVES[@]}"; do
 done
 BODY+="\n"
 
-# --- Immich backup to 01p (seed-pull.sh, dhm crontab @reboot + 03:00) ---
-# Progress = bytes under /mnt/archive01p/immich vs. the source on FleetNAS
-# (/volume1/immich over dhm's ssh key; the rsync path /immich/ maps to it).
-# One row per night in PROGRESS_TSV gives the 24h growth and a rough ETA.
-# "Copy in progress" is OK during the seed; once a run has completed, the warning
-# is: no completed run in 3 days.
-PULL_OK="/home/dhm/.seed-pull-immich.ok"
-PROGRESS_TSV="/var/lib/9046unix/immich-progress.tsv"
-SYNC_FILELOG="/home/dhm/sync-initial.log"
-mkdir -p "$(dirname "$PROGRESS_TSV")"
+# --- Backups pulled from FleetNAS (9046unix-nightly-pull.sh: @reboot + 03:00) ---
+# Per folder: bytes on the archive vs. the source on FleetNAS (ssh as dhm; rsync's
+# /<dir>/ is /volume1/<dir> in an ssh shell). Source size is cached (frozen
+# photo_legacy: weekly; others: daily) because du over ~838 GB on the NAS is slow.
+# One row per night in /var/lib/9046unix/progress-<key>.tsv gives growth and an ETA.
+# "Copying" is OK during a seed; after a first complete run, the warning is: no
+# complete run in 3 days. photo_legacy waits (no warning) until Immich has finished.
+STATE_DIR=/var/lib/9046unix
+mkdir -p "$STATE_DIR"
+[ -f "$STATE_DIR/immich-progress.tsv" ] && mv "$STATE_DIR/immich-progress.tsv" "$STATE_DIR/progress-immich.tsv"
 GB() { awk -v b="$1" 'BEGIN{printf "%.1f", b/1e9}'; }
-DST_B=$(du -sb /mnt/archive01p/immich 2>/dev/null | awk '{print $1}')
-SRC_B=$(timeout 300 sudo -u dhm ssh -o BatchMode=yes -o ConnectTimeout=20 dhm@192.168.178.123 \
-        "du -sb --exclude='#recycle' /volume1/immich" 2>/dev/null | awk '{print $1}')
-PREV_B=$(tail -1 "$PROGRESS_TSV" 2>/dev/null | awk '{print $2}')
-PREV_T=$(tail -1 "$PROGRESS_TSV" 2>/dev/null | awk '{print $1}')
-[ -n "$DST_B" ] && printf '%s\t%s\t%s\n' "$NOW" "$DST_B" "${SRC_B:-}" >> "$PROGRESS_TSV"
-
-SIZE="$(GB "${DST_B:-0}") GB"
-if [ -n "$SRC_B" ] && [ "$SRC_B" -gt 0 ]; then
-    PCT=$(awk -v d="${DST_B:-0}" -v s="$SRC_B" 'BEGIN{p=100*d/s; if(p>100)p=100; printf "%d", p}')
-    SIZE="$(GB "${DST_B:-0}") of $(GB "$SRC_B") GB (${PCT}%)"
-fi
-DELTA=""; ETA=""
-if [ -n "$PREV_B" ] && [ -n "$DST_B" ] && [ -n "$PREV_T" ] && [ $(( NOW - PREV_T )) -gt 3600 ]; then
-    D=$(( DST_B - PREV_B )); HRS=$(( (NOW - PREV_T) / 3600 ))
-    DELTA=", +$(GB $D) GB in ${HRS}h"
-    if [ -n "$SRC_B" ] && [ "$D" -gt 0 ] && [ "$SRC_B" -gt "$DST_B" ]; then
-        ETA=$(awk -v r="$(( SRC_B - DST_B ))" -v d="$D" -v h="$HRS" 'BEGIN{printf ", ~%.1f days to go", (r/d)*h/24}')
+pull_report() {   # <nas-dir> <archive-mount> <short label> <per-file log> <src-size max age, s>
+    local dir=$1 mnt=$2 label=$3 flog=$4 maxage=$5
+    local key=${dir//\//_}
+    local ok="/home/dhm/.seed-pull-$key.ok" tsv="$STATE_DIR/progress-$key.tsv" cache="$STATE_DIR/src-size-$key"
+    local dst_b src_b prev_b prev_t size pct delta="" eta="" d hrs newfiles line pa
+    dst_b=$(du -sb --exclude=.versions "$mnt/$dir" 2>/dev/null | awk '{print $1}')
+    if [ ! -s "$cache" ] || [ $(( NOW - $(stat -c %Y "$cache") )) -gt "$maxage" ]; then
+        src_b=$(timeout 900 sudo -u dhm ssh -o BatchMode=yes -o ConnectTimeout=20 dhm@192.168.178.123 \
+                "du -sb --exclude='#recycle' /volume1/$dir" 2>/dev/null | awk '{print $1}')
+        [ -n "$src_b" ] && echo "$src_b" > "$cache"
     fi
-fi
-NEWFILES=$(awk -v s="$(date -d '24 hours ago' '+%Y/%m/%d %H:%M:%S')" \
-    '($1" "$2) >= s && $4 ~ /^>f/' "$SYNC_FILELOG" 2>/dev/null | wc -l)
+    src_b=$(cat "$cache" 2>/dev/null)
+    prev_t=$(tail -1 "$tsv" 2>/dev/null | awk '{print $1}')
+    prev_b=$(tail -1 "$tsv" 2>/dev/null | awk '{print $2}')
+    [ -n "$dst_b" ] && printf '%s\t%s\t%s\n' "$NOW" "$dst_b" "${src_b:-}" >> "$tsv"
 
-if pgrep -f '^rsync .*192\.168\.178\.123:/immich/' >/dev/null; then
-    TLDR+="  immich -> 01p: copying, ${SIZE}${DELTA}${ETA} ✓\n"
-elif [ -f "$PULL_OK" ]; then
-    PA=$(( NOW - $(cat "$PULL_OK") ))
-    line="immich -> 01p: ${SIZE}, last complete run $(fmt_age $PA) ago, ${NEWFILES} files copied in 24h"
-    if [ "$PA" -gt 259200 ]; then   # 3 days
-        TLDR+="⚠️  ${line}\n"; fail "immich backup stale"
+    size="$(GB "${dst_b:-0}") GB"
+    if [ -n "$src_b" ] && [ "$src_b" -gt 0 ]; then
+        pct=$(awk -v d="${dst_b:-0}" -v s="$src_b" 'BEGIN{p=100*d/s; if(p>100)p=100; printf "%d", p}')
+        size="$(GB "${dst_b:-0}") of $(GB "$src_b") GB (${pct}%)"
+    fi
+    if [ -n "$prev_b" ] && [ -n "$dst_b" ] && [ -n "$prev_t" ] && [ $(( NOW - prev_t )) -gt 3600 ]; then
+        d=$(( dst_b - prev_b )); hrs=$(( (NOW - prev_t) / 3600 ))
+        delta=", +$(GB $d) GB in ${hrs}h"
+        if [ -n "$src_b" ] && [ "$d" -gt 0 ] && [ "$src_b" -gt "$dst_b" ]; then
+            eta=$(awk -v r="$(( src_b - dst_b ))" -v d="$d" -v h="$hrs" 'BEGIN{printf ", ~%.1f days to go", (r/d)*h/24}')
+        fi
+    fi
+    newfiles=$(awk -v s="$(date -d '24 hours ago' '+%Y/%m/%d %H:%M:%S')" \
+        '($1" "$2) >= s && $4 ~ /^>f/' "$flog" 2>/dev/null | wc -l)
+
+    if pgrep -f "^rsync .*192\.168\.178\.123:/${dir}/" >/dev/null; then
+        TLDR+="  ${label}: copying, ${size}${delta}${eta} ✓\n"
+    elif [ -f "$ok" ]; then
+        pa=$(( NOW - $(cat "$ok") ))
+        line="${label}: ${size}, last complete run $(fmt_age $pa) ago, ${newfiles} files copied in 24h"
+        if [ "$pa" -gt 259200 ]; then TLDR+="⚠️  ${line}\n"; fail "$dir backup stale"
+        else TLDR+="  ${line} ✓\n"; fi
+    elif [ "$dir" = "photo_legacy" ] && [ ! -f /home/dhm/.seed-pull-immich.ok ]; then
+        TLDR+="  ${label}: waiting for Immich to finish first (${size})\n"
+    elif [ "$dir" = "photo_legacy" ] && [ -n "$dst_b" ] && [ "${prev_b:-0}" -lt "$dst_b" ]; then
+        TLDR+="  ${label}: paused for the night, ${size}${delta}${eta} ✓\n"
     else
-        TLDR+="  ${line} ✓\n"
+        TLDR+="⚠️  ${label}: not running and never completed (${size})\n"; fail "$dir backup not running"
     fi
-else
-    TLDR+="⚠️  immich -> 01p: not running and never completed (${SIZE})\n"; fail "immich backup not running"
-fi
-BODY+="=== IMMICH -> 01p (last 3 runs, ~/immich-pull.log) ===\n$(grep -E 'DONE|error|stopping|skipping|gave up|no .*marker' /home/dhm/immich-pull.log 2>/dev/null | tail -3)\n\n"
+}
+pull_report immich       /mnt/archive01p "immich -> 01p"       /home/dhm/sync-initial.log  86400
+pull_report misc/money   /mnt/archive02s "money -> 02s"        /home/dhm/rsync-misc_money.log 86400
+pull_report photo_legacy /mnt/archive00p "photo_legacy -> 00p" /home/dhm/rsync-photo_legacy.log 604800
+NV=$(find /mnt/archive02s/misc/.versions -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+[ "$NV" -gt 0 ] && TLDR+="  money versions kept: $NV day(s) in /mnt/archive02s/misc/.versions\n"
+BODY+="=== NAS PULLS (last 6 results, ~/nightly-pull.log) ===\n$(grep -E 'DONE|PAUSED|error|stopping|skipping|gave up|no .*marker|waiting' /home/dhm/nightly-pull.log /home/dhm/immich-pull.log 2>/dev/null | tail -6 | sed 's#^/home/dhm/##')\n\n"
 
 # --- SMART (00p, 01p) ---
 BODY+="=== SMART ===\n"
