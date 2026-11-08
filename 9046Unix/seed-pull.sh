@@ -39,13 +39,16 @@ for i in $(seq 1 50); do
         sleep 300
         continue
     fi
-    rsync -a --partial --bwlimit=300 --info=progress2 \
+    # Live progress line only in a terminal; from cron it would just flood the log.
+    PROGRESS=""; [ -t 1 ] && PROGRESS="--info=progress2"
+    rsync -a --partial --bwlimit=300 $PROGRESS \
         --compress --compress-choice=zstd --exclude='#recycle' \
         --log-file="$HOME/sync-initial.log" \
         "dhm@192.168.178.123:/$SRC_DIR/" "$DEST/$SRC_DIR/"
     rc=$?
     case $rc in
         0|24) echo "DONE $SRC_DIR $(date)"
+              # 0 also means "nothing left to copy", so this is the seed's finish line too.
               date +%s > "$HOME/.seed-pull-${SRC_DIR//\//_}.ok"   # read by the nightly summary
               exit 0 ;;
         10|12|30|35|255) echo "network error $rc on $SRC_DIR, retry $i in 5 min $(date)"; sleep 300 ;;
