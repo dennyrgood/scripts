@@ -75,6 +75,22 @@ for a in "${ARCHIVES[@]}"; do
 done
 BODY+="\n"
 
+# --- Immich backup to 01p (seed-pull.sh; nightly at 03:00 once the seed is done) ---
+# During the multi-week seed there is no completed run yet, so "running" is OK.
+PULL_OK="/home/dhm/.seed-pull-immich.ok"
+if pgrep -f '^rsync .*192\.168\.178\.123:/immich/' >/dev/null; then
+    TLDR+="  immich -> 01p: copy in progress ($(df -h --output=used /mnt/archive01p | tail -1 | xargs) on 01p) ✓\n"
+elif [ -f "$PULL_OK" ]; then
+    PA=$(( NOW - $(cat "$PULL_OK") ))
+    if [ "$PA" -gt 259200 ]; then   # 3 days
+        TLDR+="⚠️  immich -> 01p: last complete $(fmt_age $PA) ago\n"; fail "immich backup stale"
+    else
+        TLDR+="  immich -> 01p: last complete $(fmt_age $PA) ago ✓\n"
+    fi
+else
+    TLDR+="⚠️  immich -> 01p: not running and never completed\n"; fail "immich backup not running"
+fi
+
 # --- SMART (00p, 01p) ---
 BODY+="=== SMART ===\n"
 for a in archive00p archive01p; do

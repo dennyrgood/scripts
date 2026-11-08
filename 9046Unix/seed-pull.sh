@@ -18,6 +18,21 @@ SRC_DIR="${1:?usage: seed-pull.sh <nas-dir> <archive-mount>}"
 DEST="${2:?usage: seed-pull.sh <nas-dir> <archive-mount>}"
 MARKER="$DEST/.archive-mounted"
 
+# Also the NIGHTLY job (dhm crontab, 03:00). No --delete, on purpose: 9046unix is a
+# backup of a backup of a backup, so nothing deleted at home (or purged from Immich's
+# trash) is ever removed here. Same 300 KB/s cap as the seed (shared connection).
+#
+# One copy at a time. flock covers runs of this script (incl. one sleeping between
+# retries); pgrep covers an rsync started some other way, e.g. the original `pull`
+# shell function in the `seed` tmux session.
+exec 9>"/tmp/seed-pull-${SRC_DIR//\//_}.lock"
+if ! flock -n 9; then
+    echo "$(date) already running (lock held), skipping"; exit 0
+fi
+if pgrep -f "^rsync .*192\.168\.178\.123:/${SRC_DIR}/" >/dev/null; then
+    echo "$(date) an rsync of /${SRC_DIR}/ is already running (seed?), skipping"; exit 0
+fi
+
 for i in $(seq 1 50); do
     if [ ! -f "$MARKER" ]; then
         echo "no $MARKER (drive not mounted?), retry $i in 5 min $(date)"
@@ -30,7 +45,9 @@ for i in $(seq 1 50); do
         "dhm@192.168.178.123:/$SRC_DIR/" "$DEST/$SRC_DIR/"
     rc=$?
     case $rc in
-        0|24) echo "DONE $SRC_DIR $(date)"; exit 0 ;;
+        0|24) echo "DONE $SRC_DIR $(date)"
+              date +%s > "$HOME/.seed-pull-${SRC_DIR//\//_}.ok"   # read by the nightly summary
+              exit 0 ;;
         10|12|30|35|255) echo "network error $rc on $SRC_DIR, retry $i in 5 min $(date)"; sleep 300 ;;
         *) echo "rsync exit $rc on $SRC_DIR - stopping $(date)"; exit $rc ;;
     esac
