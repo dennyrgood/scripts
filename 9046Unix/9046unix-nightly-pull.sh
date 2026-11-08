@@ -23,8 +23,31 @@ if ! flock -n 8; then
 fi
 echo "=== $(date) nightly pull start"
 
-# 1. Immich (keeps its old per-file log name for continuity)
-RSYNC_LOG="$HOME/sync-initial.log" "$PULL" immich /mnt/archive01p
+# 1. Immich (keeps its old per-file log name for continuity).
+#    images/backups/ is excluded (2026-11-08): Immich's own nightly DB backups, a
+#    duplicate of postgres-dumps/ that would add ~0.6 GB of new files every night.
+RSYNC_LOG="$HOME/sync-initial.log" RSYNC_EXTRA="--exclude=/images/backups/" \
+    "$PULL" immich /mnt/archive01p
+
+# 1b. Prune rotating database dumps on 01p (2026-11-08). The NAS writes a new,
+#     differently named dump every night and deletes old ones; with no --delete,
+#     9046unix would keep every one (~2.8 GB/day, ~1 TB/year). Keep 14 days, but
+#     ALWAYS the newest 3 per folder, so a stalled dump job at home never leaves
+#     this copy with none. Only these two folders, only *.sql / *.sql.gz files —
+#     photos are never touched. images/backups/ is no longer copied (see above),
+#     so what the seed already brought over ages out here down to the newest 3.
+if [ -f /mnt/archive01p/.archive-mounted ]; then
+    for d in /mnt/archive01p/immich/postgres-dumps /mnt/archive01p/immich/images/backups; do
+        [ -d "$d" ] || continue
+        find "$d" -maxdepth 1 -type f \( -name '*.sql' -o -name '*.sql.gz' \) -printf '%T@ %p\n' \
+            | sort -rn | tail -n +4 | cut -d' ' -f2- \
+            | while read -r f; do
+                if [ -n "$(find "$f" -mtime +14)" ]; then
+                    rm -f -- "$f" && echo "$(date) pruned old dump ${f#/mnt/archive01p/}"
+                fi
+            done
+    done
+fi
 
 # 2. Money, with dated versions of anything replaced
 RSYNC_EXTRA="--backup --backup-dir=/mnt/archive02s/misc/.versions/$(date +%F)" \
