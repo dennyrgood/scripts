@@ -72,15 +72,17 @@ EXPECTED_HOSTS = [
     "WorkBenchUnix", "ChatWorkhorseUnix", "FleetNAS",
     "MacBook Air", "MacBook Air 2", "Mac Mini",
     "9046unix",   # 2026-11-08, 9046Unix/9046unix-nightly-summary.sh
+    "FleetDev",   # 2026-11-08, was sending all along but never expected, so never flagged MISSING
 ]
 
 CHECK = "✅"
 WARN = "⚠️"
 TODO = "📥"                     # OK, with something to do (mb/FleetDev: money rows to import)
+INFO = "🔄"                     # OK, info only (FleetNAS: nas-nightly-summary.sh ISSUES_INFO)
 # Handles both the ASCII "--" (Windows scripts, CLAUDE.md ASCII-only rule) and
 # the real em-dash "—" (Mac/Ubuntu bash scripts) as the separator.
 SUBJECT_RE = re.compile(
-    r"^(?P<emoji>✅|⚠️|📥)\s+(?P<host>.+?)\s+nightly\s+"
+    r"^(?P<emoji>✅|⚠️|📥|🔄)\s+(?P<host>.+?)\s+nightly\s+"
     r"(?P<date>\d{4}-\d{2}-\d{2})\s+(?:--|—)\s+(?P<reason>.+)$"
 )
 
@@ -166,9 +168,9 @@ def build_report(subjects, target_date):
             unmatched.append(s)
             continue
         host = m.group("host")
-        ok = m.group("emoji") in (CHECK, TODO)
+        ok = m.group("emoji") in (CHECK, TODO, INFO)
         if host not in found or seq > found[host][2]:
-            found[host] = (ok, m.group("reason"), seq, m.group("emoji") == TODO)
+            found[host] = (ok, m.group("reason"), seq, m.group("emoji"))
 
     ok_hosts = [h for h, (ok, _, _, _) in found.items() if ok]
     notok_hosts = [(h, r) for h, (ok, r, _, _) in found.items() if not ok]
@@ -180,8 +182,8 @@ def build_report(subjects, target_date):
     lines.append("")
     lines.append(f"OK ({len(ok_hosts)}):")
     for h in sorted(ok_hosts):
-        todo, reason = found[h][3], found[h][1]
-        lines.append(f"  {TODO} {h} -- {reason}" if todo else f"  {CHECK} {h}")
+        emoji, reason = found[h][3], found[h][1]
+        lines.append(f"  {CHECK} {h}" if emoji == CHECK else f"  {emoji} {h} -- {reason}")
     lines.append("")
     lines.append(f"NOT-OK ({len(notok_hosts)}):")
     for h, r in sorted(notok_hosts):
