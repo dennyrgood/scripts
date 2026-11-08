@@ -71,6 +71,9 @@ PORTABLE_HOSTS = {
 # REMOTE_LINK_GRACE_SECONDS above if 5 min proves wrong either way.
 REMOTE_LINK_HOSTS = {
     "surface3-gc", "remotews",
+    # 9046unix (added 2026-11-08): archive server at a separate site (LAN 192.168.1.x,
+    # not the home 192.168.178.x), Wi-Fi only -- same short-grace treatment.
+    "9046unix",
 }
 
 # Servers (everything else in FLEET, incl. the two sets above by exception) stay
@@ -466,6 +469,28 @@ FLEET = [
                 "priority": "P",
                 "check_type": "immich",
                 "public_url": None,
+            },
+        ],
+    },
+    {
+        # Added 2026-11-08. Old laptop, Ubuntu 24.04, three 5 TB USB archive drives
+        # (00p/01p primary, 02s secondary). No network services of its own yet, so
+        # the writer-liveness Heartbeat is the primary service; machine_info (with
+        # the archive disks) is pulled from :9100 like every other host. Drive-level
+        # health is local: scripts/9046Unix/9046unix-health-monitor.sh.
+        "display_name": "9046unix",
+        "tailscale_name": "9046unix",
+        "tailscale_ip": "100.84.102.14",
+        "primary_role": "Archive Storage",
+        "probe_port": 22,
+        "services": [
+            {
+                "name": "Heartbeat",
+                "port": 0,  # Not applicable for heartbeat check
+                "priority": "P",
+                "check_type": "http_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "9046unix"},
             },
         ],
     },

@@ -71,6 +71,7 @@ EXPECTED_HOSTS = [
     "RemoteWS", "Surface3GC",
     "WorkBenchUnix", "ChatWorkhorseUnix", "FleetNAS",
     "MacBook Air", "MacBook Air 2", "Mac Mini",
+    "9046unix",   # 2026-11-08, 9046Unix/9046unix-nightly-summary.sh
 ]
 
 CHECK = "✅"
