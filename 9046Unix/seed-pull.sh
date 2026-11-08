@@ -1,0 +1,39 @@
+#!/bin/bash
+# /home/dhm/repos/scripts/9046Unix/seed-pull.sh
+# 2026-11-08 — the user's interactive `pull` function from the `seed` tmux session,
+# made into a script, plus one guard: check the archive marker before EVERY attempt.
+#
+# Why the guard: in a power cut the archive drive drops off USB and systemd unmounts
+# it, leaving an empty mount-point directory on the root SSD. The router usually goes
+# down too, so rsync fails with a network error and this loop retries in 5 min. If
+# Wi-Fi is back before the health monitor has remounted the drive (it checks every
+# 5 min), an unguarded retry recreates <dest>/<dir>/ on the SSD and starts copying
+# the whole tree onto the 455 GB system disk.
+#
+# Usage (inside tmux):  ~/repos/scripts/9046Unix/seed-pull.sh immich /mnt/archive01p
+#   $1 = directory on FleetNAS (pulled from dhm@192.168.178.123:/$1/)
+#   $2 = archive mount point (must contain .archive-mounted)
+
+SRC_DIR="${1:?usage: seed-pull.sh <nas-dir> <archive-mount>}"
+DEST="${2:?usage: seed-pull.sh <nas-dir> <archive-mount>}"
+MARKER="$DEST/.archive-mounted"
+
+for i in $(seq 1 50); do
+    if [ ! -f "$MARKER" ]; then
+        echo "no $MARKER (drive not mounted?), retry $i in 5 min $(date)"
+        sleep 300
+        continue
+    fi
+    rsync -a --partial --bwlimit=300 --info=progress2 \
+        --compress --compress-choice=zstd --exclude='#recycle' \
+        --log-file="$HOME/sync-initial.log" \
+        "dhm@192.168.178.123:/$SRC_DIR/" "$DEST/$SRC_DIR/"
+    rc=$?
+    case $rc in
+        0|24) echo "DONE $SRC_DIR $(date)"; exit 0 ;;
+        10|12|30|35|255) echo "network error $rc on $SRC_DIR, retry $i in 5 min $(date)"; sleep 300 ;;
+        *) echo "rsync exit $rc on $SRC_DIR - stopping $(date)"; exit $rc ;;
+    esac
+done
+echo "gave up after 50 attempts $(date)"
+exit 1
