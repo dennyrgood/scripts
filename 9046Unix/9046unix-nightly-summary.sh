@@ -91,10 +91,11 @@ pull_report() {   # <nas-dir> <archive-mount> <short label> <per-file log> <src-
     local key=${dir//\//_}
     local ok="/home/dhm/.seed-pull-$key.ok" tsv="$STATE_DIR/progress-$key.tsv" cache="$STATE_DIR/src-size-$key"
     local dst_b src_b prev_b prev_t size pct delta="" eta="" d hrs newfiles line pa
-    dst_b=$(du -sb --exclude=.versions "$mnt/$dir" 2>/dev/null | awk '{print $1}')
+    # images/backups is not copied (nightly-pull excludes it), so leave it out of both sides
+    dst_b=$(du -sb --exclude=.versions --exclude='*/immich/images/backups' "$mnt/$dir" 2>/dev/null | awk '{print $1}')
     if [ ! -s "$cache" ] || [ $(( NOW - $(stat -c %Y "$cache") )) -gt "$maxage" ]; then
         src_b=$(timeout 900 sudo -u dhm ssh -o BatchMode=yes -o ConnectTimeout=20 dhm@192.168.178.123 \
-                "du -sb --exclude='#recycle' /volume1/$dir" 2>/dev/null | awk '{print $1}')
+                "du -sb --exclude='#recycle' --exclude='*/immich/images/backups' /volume1/$dir" 2>/dev/null | awk '{print $1}')
         [ -n "$src_b" ] && echo "$src_b" > "$cache"
     fi
     src_b=$(cat "$cache" 2>/dev/null)
