@@ -1,6 +1,7 @@
 #!/bin/bash
 # /home/dhm/repos/scripts/9046Unix/9046unix-health-monitor.sh
 # 2026-11-08 — created, modelled on ChatWorkhorseUnix/cwhu-health-monitor.sh.
+# 2026-11-09 04:20 UTC — Check 6 ignores the boot-time Bluetooth disconnect on usb 1-1.6.
 #
 # 9046UNIX system health monitor. Runs every 5 minutes from ROOT's crontab
 # (needs root: msmtp config is root-only, journalctl -k, shutdown).
@@ -151,8 +152,13 @@ EXT4ERR_TRIGGERED=0
 [ -n "$EXT4ERR_TEXT" ] && EXT4ERR_TRIGGERED=1
 
 # --- Check 6: kernel disk I/O errors since the last run (reported once, no state) ---
+# Ignored (2026-11-09): "usb 1-1.6: USB disconnect" is the laptop's built-in Bluetooth
+# chip (0cf3:3004 Qualcomm Atheros AR3012). On EVERY boot it enumerates, gets its
+# firmware loaded, then disconnects and re-enumerates (bcdDevice 0.01 -> 0.02), ~10 s
+# after boot. Harmless; the archive drives are on buses 2 and 3, not 1-1.6.
 KERNEL_IO=$(journalctl -k --since "@$LAST_RUN" --no-pager -q 2>/dev/null | grep -iE \
     'I/O error|blk_update_request|Buffer I/O|critical medium error|EXT4-fs (error|warning)|uas_eh_|USB disconnect|reset (high|super)-speed USB' \
+    | grep -v 'usb 1-1\.6: USB disconnect' \
     | tail -20)
 
 # --- Check 7: AC power / battery ---
