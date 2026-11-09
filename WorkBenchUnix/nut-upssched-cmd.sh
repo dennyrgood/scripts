@@ -13,6 +13,13 @@ CASE_NAME="${1:-}"
 
 log() { logger -t upssched-cmd "$*"; }
 
+# Email via the root helper (nut-ups-mail.sh), which only exists on WBU — on CWHU
+# this is a silent no-op. Capped at 20s so a dead network can't hold up shutdown.
+mail_event() {
+    [ -x /etc/nut/ups-mail ] || return 0
+    timeout 20 sudo -n /etc/nut/ups-mail "$1" || log "WARNING: ups-mail '$1' failed (exit $?)"
+}
+
 case "$CASE_NAME" in
     onbatt-shutdown)
         # Duration deliberately NOT named: this script is shared between WBU (1200s)
@@ -21,6 +28,7 @@ case "$CASE_NAME" in
         # 5-minute mark and the log said 10 — costing an hour of investigation into a
         # timer that was never misconfigured. The real value lives in upssched.conf.
         log "On-battery timer expired — initiating shutdown (running as $(id -un))"
+        mail_event shutdown
         # `upsmon -c fsd` rather than calling clean.ubuntu.shutdown directly.
         #
         # This is the ending documented in `man 8 upssched`, and it matters for two
@@ -48,10 +56,12 @@ case "$CASE_NAME" in
         # CWHU with a 5-minute timer, and a hardcoded "10-minute" would be a lie
         # there. The real value lives in upssched.conf on each box.
         log "ONBATT — on-battery shutdown timer STARTED (running as $(id -un))"
+        mail_event onbatt
         ;;
 
     online-notice)
         log "ONLINE — shutdown timer CANCELLED, mains are back."
+        mail_event online
         ;;
 
     commok-selftest)

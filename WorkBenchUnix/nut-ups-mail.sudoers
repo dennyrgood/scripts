@@ -1,0 +1,4 @@
+# Installed to /etc/sudoers.d/nut-ups-mail (mode 440) by install-nut-ups-mail.sh.
+# Lets upssched-cmd (running as `nut`) send power-event mail through the root-only
+# msmtp config. Scoped to the one helper; see nut-ups-mail.sh.
+nut ALL=(root) NOPASSWD: /etc/nut/ups-mail
