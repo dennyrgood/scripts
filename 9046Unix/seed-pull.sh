@@ -4,6 +4,8 @@
 # made into a script, plus one guard: check the archive marker before EVERY attempt.
 # 2026-11-08 — generalised for several NAS folders: STOP_AT, RSYNC_EXTRA and a log
 # file per folder. Normally called by 9046unix-nightly-pull.sh, not directly.
+# 2026-11-09 02:59 UTC — added BatchMode/ConnectTimeout to rsync's ssh (never wait on a
+# password prompt; fail fast into the retry).
 #
 # Why the marker guard: in a power cut the archive drive drops off USB and systemd
 # unmounts it, leaving an empty mount-point directory on the root SSD. The router
@@ -64,6 +66,7 @@ for i in $(seq 1 50); do
     # shellcheck disable=SC2086  # RSYNC_EXTRA / STOP_ARG are deliberately word-split
     rsync -a --partial --bwlimit=300 $PROGRESS $STOP_ARG $RSYNC_EXTRA \
         --compress --compress-choice=zstd --exclude='#recycle' \
+        -e "ssh -o BatchMode=yes -o ConnectTimeout=30" \
         --log-file="$LOGF" \
         "dhm@192.168.178.123:/$SRC_DIR/" "$DEST/$SRC_DIR/"
     rc=$?
