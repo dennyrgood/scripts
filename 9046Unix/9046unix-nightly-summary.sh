@@ -1,6 +1,8 @@
 #!/bin/bash
 # /home/dhm/repos/scripts/9046Unix/9046unix-nightly-summary.sh
 # 2026-11-08 — created, same shape as ChatWorkhorseUnix/cwhu-nightly-summary.sh.
+# 2026-11-09 04:05 UTC — "files in 24h" also reads <log>.1, since the pull logs are now
+# rotated by size (/etc/logrotate.d/9046unix-pull-logs, delaycompress keeps .1 plain).
 #
 # Nightly health summary for the 9046unix archive server. Runs from ROOT's crontab
 # (msmtp config is root-only; smartctl needs root) at 01:00 America/New_York, which is
@@ -116,7 +118,7 @@ pull_report() {   # <nas-dir> <archive-mount> <short label> <per-file log> <src-
         fi
     fi
     newfiles=$(awk -v s="$(date -d '24 hours ago' '+%Y/%m/%d %H:%M:%S')" \
-        '($1" "$2) >= s && $4 ~ /^>f/' "$flog" 2>/dev/null | wc -l)
+        '($1" "$2) >= s && $4 ~ /^>f/' "$flog.1" "$flog" 2>/dev/null | wc -l)
 
     if pgrep -f "^rsync .*192\.168\.178\.123:/${dir}/" >/dev/null; then
         TLDR+="  ${label}: copying, ${size}${delta}${eta} ✓\n"

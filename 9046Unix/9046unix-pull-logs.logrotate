@@ -1,0 +1,13 @@
+# /etc/logrotate.d/9046unix-pull-logs  (source: scripts/9046Unix/9046unix-pull-logs.logrotate)
+# 2026-11-09 04:05 UTC - rotate the NAS pull logs by size. copytruncate because rsync keeps
+# its --log-file open for days; delaycompress so the nightly summary can still read <log>.1.
+/home/dhm/sync-initial.log /home/dhm/rsync-*.log /home/dhm/nightly-pull.log {
+    su dhm dhm
+    size 100M
+    rotate 3
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}

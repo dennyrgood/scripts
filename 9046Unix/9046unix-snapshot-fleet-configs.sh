@@ -10,6 +10,7 @@
 # its scripts are in this repo and its cron lines are in crontab-l-dhm.txt.
 # 2026-11-09 03:45 UTC — also copies ~/.bashrc as DOT-bashrc (PATH to 9046Unix/, si alias).
 # 2026-11-09 03:55 UTC — lightcam.sh moved into this repo, so only its unit is copied now.
+# 2026-11-09 04:05 UTC — also copies /etc/logrotate.d/9046unix-pull-logs.
 
 set -e
 DEST=~/repos/fleet-configs/9046unix
@@ -19,6 +20,7 @@ cp -p /etc/fstab "$DEST/fstab.txt"
 cp -p /etc/smartd.conf "$DEST/smartd.conf"
 cp -p /etc/aliases "$DEST/etc-aliases"
 cp -p /etc/logrotate.d/msmtp "$DEST/logrotate-msmtp"
+cp -p /etc/logrotate.d/9046unix-pull-logs "$DEST/logrotate-9046unix-pull-logs"
 cp -p /etc/systemd/system/fleet_metrics_server.service "$DEST/fleet_metrics_server.service"
 cp -p /etc/systemd/system/lightcam.service "$DEST/lightcam.service"
 cp -p ~/.bashrc "$DEST/DOT-bashrc"
