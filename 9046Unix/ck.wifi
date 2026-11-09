@@ -1,0 +1,6 @@
+#!/bin/bash
+# /home/dhm/repos/scripts/9046Unix/ck.wifi
+# 2026-11-09 03:40 UTC - moved into the repo from ~/ck.wifi (created 2026-11-03); Wi-Fi status.
+sudo wpa_cli -i wlp2s0 status
+
+networkctl status wlp2s0 | grep -iE 'state|access point|wi-fi'
