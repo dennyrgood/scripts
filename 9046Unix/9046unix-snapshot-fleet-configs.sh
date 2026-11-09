@@ -5,6 +5,9 @@
 # (calls sudo itself; this box has passwordless sudo).
 # Manual-run only: review `git status` / `git diff` and commit yourself afterwards.
 # README.md in that directory is hand-written and is NOT touched here.
+# 2026-11-09 03:14 UTC — also copies lightcam (~/lightcam.sh + its systemd unit) and
+# records lightcam.service in systemd-state.txt. The seed pull needs nothing extra:
+# its scripts are in this repo and its cron lines are in crontab-l-dhm.txt.
 
 set -e
 DEST=~/repos/fleet-configs/9046unix
@@ -15,6 +18,8 @@ cp -p /etc/smartd.conf "$DEST/smartd.conf"
 cp -p /etc/aliases "$DEST/etc-aliases"
 cp -p /etc/logrotate.d/msmtp "$DEST/logrotate-msmtp"
 cp -p /etc/systemd/system/fleet_metrics_server.service "$DEST/fleet_metrics_server.service"
+cp -p /etc/systemd/system/lightcam.service "$DEST/lightcam.service"
+cp -p ~/lightcam.sh "$DEST/lightcam.sh"
 
 # msmtprc WITHOUT its password line. Excludes lines rather than rewriting them
 # (a rewrite that fails to match would print the secret).
@@ -31,7 +36,7 @@ cp -p ~/.ssh/authorized_keys "$DEST/ssh-authorized_keys.txt"
              ModemManager.service avahi-daemon.service avahi-daemon.socket \
              multipathd.service multipathd.socket sleep.target suspend.target \
              hibernate.target hybrid-sleep.target fleet_metrics_server.service \
-             smartmontools.service; do
+             smartmontools.service lightcam.service; do
         echo "$s $(systemctl is-enabled "$s" 2>&1)"
     done
 } > "$DEST/systemd-state.txt"
