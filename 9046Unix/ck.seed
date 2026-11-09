@@ -1,0 +1,27 @@
+#!/bin/bash
+# /home/dhm/repos/scripts/9046Unix/ck.seed   (symlinked as ~/ck.seed)
+# 2026-11-09 03:30 UTC - read-only status of the FleetNAS seed pulls: what's copying now,
+# how far each folder is (vs the source size the nightly summary caches), last activity.
+
+S=/var/lib/9046unix
+echo "== $(date '+%F %T')  running rsync:"
+r=$(pgrep -a rsync | grep -o '192\.168\.178\.123:/[^ ]*' | sort -u)
+echo "   ${r:-none}"
+echo
+printf '%-13s %9s %9s %5s  %-9s %s\n' FOLDER COPIED SOURCE PCT DAYS-LEFT "LAST COMPLETE RUN"
+for job in "immich /mnt/archive01p" "misc/money /mnt/archive02s" "photo_legacy /mnt/archive00p"; do
+    set -- $job; dir=$1; mnt=$2; key=${dir//\//_}
+    have=$(du -sb "$mnt/$dir" 2>/dev/null | cut -f1); have=${have:-0}
+    src=$(cat "$S/src-size-$key" 2>/dev/null); src=${src:-0}
+    pct=-; left=-
+    if [ "$src" -gt 0 ]; then
+        pct="$((have * 100 / src))%"
+        rem=$((src - have)); [ "$rem" -lt 0 ] && rem=0
+        left=$(awk -v b="$rem" 'BEGIN{printf "%.1f", b/(300*1024)/86400}')   # at 300 KB/s
+    fi
+    ok=never; [ -f ~/.seed-pull-$key.ok ] && ok=$(date -d @"$(cat ~/.seed-pull-$key.ok)" '+%F %R')
+    printf '%-13s %8sG %8sG %5s  %-9s %s\n' "$dir" $((have/1000000000)) $((src/1000000000)) "$pct" "$left" "$ok"
+done
+echo
+echo "== last file copied (immich):  $(tail -1 ~/sync-initial.log | cut -c1-19)"
+echo "== nightly-pull.log:"; tail -4 ~/nightly-pull.log | sed 's/^/   /'
