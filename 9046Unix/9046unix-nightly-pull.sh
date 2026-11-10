@@ -14,8 +14,14 @@
 #
 # A run can last nearly a day; the lock makes an overlapping start (e.g. @reboot and
 # 03:00) skip. Each folder also has its own lock in seed-pull.sh.
+# 2026-11-10 — one shared GIVEUP_AT (next 02:50) for every folder: during a long
+# FleetNAS outage Immich retries until then, and money / photo_legacy each get one
+# try, so this run is over before the next 03:00 start.
 
 PULL=/home/dhm/repos/scripts/9046Unix/seed-pull.sh
+if [ $((10#$(date +%H%M))) -lt 250 ]; then gday=today; else gday=tomorrow; fi
+GIVEUP_AT=$(date -d "$gday 02:50" +%Y-%m-%dT%H:%M)
+export GIVEUP_AT
 
 exec 8>/tmp/9046unix-nightly-pull.lock
 if ! flock -n 8; then

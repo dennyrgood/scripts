@@ -131,16 +131,25 @@ pull_report() {   # <nas-dir> <archive-mount> <short label> <per-file log> <src-
         TLDR+="  ${label}: waiting for Immich to finish first (${size})\n"
     elif [ "$dir" = "photo_legacy" ] && [ -n "$dst_b" ] && [ "${prev_b:-0}" -lt "$dst_b" ]; then
         TLDR+="  ${label}: paused for the night, ${size}${delta}${eta} ✓\n"
+    elif [ -n "$NAS_DOWN" ]; then
+        TLDR+="⚠️  ${label}: waiting for FleetNAS (${size})\n"
     else
         TLDR+="⚠️  ${label}: not running and never completed (${size})\n"; fail "$dir backup not running"
     fi
 }
+# FleetNAS outage (seed-pull.sh keeps ~/.nas-unreachable-since while port 22 is down)
+NAS_DOWN=""
+if [ -f /home/dhm/.nas-unreachable-since ]; then
+    nd=$(cat /home/dhm/.nas-unreachable-since)
+    NAS_DOWN="FleetNAS unreachable since $(date -d "@$nd" '+%a %H:%M') ($(fmt_age $(( NOW - nd ))))"
+    TLDR+="⚠️  ${NAS_DOWN} — copies retry until 02:50\n"; fail "FleetNAS unreachable"
+fi
 pull_report immich       /mnt/archive01p "immich -> 01p"       /home/dhm/sync-initial.log  86400
 pull_report misc/money   /mnt/archive02s "money -> 02s"        /home/dhm/rsync-misc_money.log 86400
 pull_report photo_legacy /mnt/archive00p "photo_legacy -> 00p" /home/dhm/rsync-photo_legacy.log 604800
 NV=$(find /mnt/archive02s/misc/.versions -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
 [ "$NV" -gt 0 ] && TLDR+="  money versions kept: $NV day(s) in /mnt/archive02s/misc/.versions\n"
-BODY+="=== NAS PULLS (last 6 results, ~/nightly-pull.log) ===\n$(grep -E 'DONE|PAUSED|error|stopping|skipping|gave up|no .*marker|waiting' /home/dhm/nightly-pull.log /home/dhm/immich-pull.log 2>/dev/null | tail -6 | sed 's#^/home/dhm/##')\n\n"
+BODY+="=== NAS PULLS (last 6 results, ~/nightly-pull.log) ===\n$(grep -E 'DONE|PAUSED|error|stopping|skipping|gave up|no .*marker|waiting|unreachable' /home/dhm/nightly-pull.log /home/dhm/immich-pull.log 2>/dev/null | tail -6 | sed 's#^/home/dhm/##')\n\n"
 
 # --- Household latency, last 24 h (9046unix-latency-log.sh, every 5 min) ---
 # Is the NAS copy adding lag for the gamer / evening Netflix? Compares samples taken
