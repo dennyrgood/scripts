@@ -22,6 +22,7 @@ case "$EVENT" in
     onbatt)   SUBJECT="UPS ON BATTERY — shutdown timer started" ;;
     shutdown) SUBJECT="UPS SHUTTING DOWN — on-battery timer expired" ;;
     online)   SUBJECT="UPS power restored — shutdown cancelled" ;;
+    test)     SUBJECT="UPS mail TEST — no power event (installer check)" ;;
     *) logger -t ups-mail "Refusing unknown event '$EVENT'"; exit 2 ;;
 esac
 
