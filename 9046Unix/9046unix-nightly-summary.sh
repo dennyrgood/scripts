@@ -92,7 +92,7 @@ pull_report() {   # <nas-dir> <archive-mount> <short label> <per-file log> <src-
     local dir=$1 mnt=$2 label=$3 flog=$4 maxage=$5
     local key=${dir//\//_}
     local ok="/home/dhm/.seed-pull-$key.ok" tsv="$STATE_DIR/progress-$key.tsv" cache="$STATE_DIR/src-size-$key"
-    local dst_b src_b prev_b prev_t size pct delta="" eta="" d hrs newfiles line pa
+    local dst_b src_b prev_b prev_t size pct delta="" eta="" d hrs newfiles line pa busy
     # images/backups is not copied (nightly-pull excludes it), so leave it out of both sides
     dst_b=$(du -sb --exclude=.versions --exclude='*/immich/images/backups' "$mnt/$dir" 2>/dev/null | awk '{print $1}')
     if [ ! -s "$cache" ] || [ $(( NOW - $(stat -c %Y "$cache") )) -gt "$maxage" ]; then
@@ -125,7 +125,11 @@ pull_report() {   # <nas-dir> <archive-mount> <short label> <per-file log> <src-
     elif [ -f "$ok" ]; then
         pa=$(( NOW - $(cat "$ok") ))
         line="${label}: ${size}, last complete run $(fmt_age $pa) ago, ${newfiles} files copied in 24h"
-        if [ "$pa" -gt 259200 ]; then TLDR+="⚠️  ${line}\n"; fail "$dir backup stale"
+        # pulls run one at a time, so a job waiting behind another one's rsync is queued, not stale
+        busy=$(pgrep -a rsync | grep -o '192\.168\.178\.123:/[^/ ]*' | head -1 | sed 's/.*://; s/^\///')
+        if [ -n "$busy" ] && [ "$pa" -le 604800 ]; then
+            TLDR+="  ${label}: queued behind ${busy}, ${size}, last complete run $(fmt_age $pa) ago ✓\n"
+        elif [ "$pa" -gt 259200 ]; then TLDR+="⚠️  ${line}\n"; fail "$dir backup stale"
         else TLDR+="  ${line} ✓\n"; fi
     elif [ "$dir" = "photo_legacy" ] && [ ! -f /home/dhm/.seed-pull-immich.ok ]; then
         TLDR+="  ${label}: waiting for Immich to finish first (${size})\n"
