@@ -158,13 +158,15 @@ BODY+="=== NAS PULLS (last 6 results, ~/nightly-pull.log) ===\n$(grep -E 'DONE|P
 # --- Household latency, last 24 h (9046unix-latency-log.sh, every 5 min) ---
 # Is the NAS copy adding lag for the gamer / evening Netflix? Compares samples taken
 # with the copy running vs. with no copy traffic (paused for the sample, or idle),
-# split into evening (18-24 local) and the rest of the day. Informational only:
+# split into late afternoon (15-18 local, gaming), evening (18-24, gaming + Netflix)
+# and the rest of the day. Informational only:
 # never changes the subject line.
 LAT=/var/lib/9046unix/latency.tsv
 if [ -s "$LAT" ]; then
     LAT_TXT=$(awk -F'\t' -v since=$(( NOW - 86400 )) '
         $1 >= since && $6 != "NA" {
-            band  = ($2 >= 18) ? "evening 18-24" : "rest of day  "
+            h = $2 + 0
+            band  = (h >= 18) ? "evening 18-24" : (h >= 15) ? "afternoon 15-18" : "rest of day  "
             state = ($3 == "copy") ? "copy" : "nocopy"
             k = band SUBSEP state
             n[k]++; ravg[k] += $4; iavg[k] += $6
@@ -180,14 +182,14 @@ if [ -s "$LAT" ]; then
             if (!n[c] && !n[p]) return
             printf "    %s\n      copy on: %s\n      no copy: %s\n", b, one(c), one(p)
         }
-        END { line("evening 18-24"); line("rest of day  ") }' "$LAT")
+        END { line("afternoon 15-18"); line("evening 18-24"); line("rest of day  ") }' "$LAT")
     TLDR+="  latency 24h (explained in the body):\n"
     BODY+="=== HOUSEHOLD LATENCY, last 24h (ping router + 1.1.1.1 every 5 min) ===\n"
     BODY+="Each line: average internet ping (1.1.1.1), average router ping, worst single ping,\n"
     BODY+="and spikes = samples whose worst ping was >100 ms, out of all samples.\n"
     BODY+="'no copy' samples pause the copy for ~15 s (every other sample), so both are measured\n"
-    BODY+="at the same times of day. If 'copy on' is clearly worse in the evening, lower the\n"
-    BODY+="limit or skip evenings; if they look alike, the copy isn't the cause of any lag.\n"
+    BODY+="at the same times of day. If 'copy on' is clearly worse from 15-24, lower the\n"
+    BODY+="limit or skip those hours; if they look alike, the copy isn't the cause of any lag.\n"
     TLDR+="${LAT_TXT}\n"
 fi
 
