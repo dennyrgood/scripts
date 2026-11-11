@@ -267,7 +267,8 @@ BODY+="=== HEALTH MONITOR STATE ===\n$(cat "$MONITOR_STATE" 2>/dev/null)\n"
 
 if [ "$REASON" = "all healthy" ]; then EMOJI="✅"; else EMOJI="⚠️"; fi
 SUBJECT="${EMOJI} 9046unix nightly $(date '+%Y-%m-%d') — ${REASON}"
-{
+# Buffer the message so a send that dies on a Wi-Fi blip can be retried.
+MSG=$({
     echo "To: $TO"
     echo "Cc: $CC"
     echo "Subject: $SUBJECT"
@@ -277,4 +278,9 @@ SUBJECT="${EMOJI} 9046unix nightly $(date '+%Y-%m-%d') — ${REASON}"
     echo "=================================================================="
     echo ""
     echo -e "$BODY"
-} | msmtp "$TO" "$CC"
+})
+for attempt in 1 2 3; do
+    printf '%s\n' "$MSG" | timeout 120 msmtp "$TO" "$CC" && break
+    echo "$(date) msmtp attempt $attempt failed (rc=$?)"
+    [ "$attempt" -lt 3 ] && sleep 300
+done
