@@ -8,19 +8,21 @@ echo "== $(date '+%F %T')  running rsync:"
 r=$(pgrep -a rsync | grep -o '192\.168\.178\.123:/[^ ]*' | sort -u)
 echo "   ${r:-none}"
 echo
-printf '%-13s %9s %9s %5s  %-9s %s\n' FOLDER COPIED SOURCE PCT DAYS-LEFT "LAST COMPLETE RUN"
+printf '%-13s %10s %10s %6s  %-9s %s\n' FOLDER COPIED SOURCE PCT DAYS-LEFT "LAST COMPLETE RUN"
 for job in "immich /mnt/archive01p" "misc/money /mnt/archive02s" "photo_legacy /mnt/archive00p"; do
     set -- $job; dir=$1; mnt=$2; key=${dir//\//_}
-    have=$(du -sb "$mnt/$dir" 2>/dev/null | cut -f1); have=${have:-0}
+    # same excludes as the nightly summary, so both report the same figure
+    have=$(du -sb --exclude=.versions --exclude='*/immich/images/backups' "$mnt/$dir" 2>/dev/null | cut -f1); have=${have:-0}
     src=$(cat "$S/src-size-$key" 2>/dev/null); src=${src:-0}
     pct=-; left=-
     if [ "$src" -gt 0 ]; then
-        pct="$((have * 100 / src))%"
+        pct=$(awk -v h="$have" -v s="$src" 'BEGIN{printf "%.1f%%", h*100/s}')
         rem=$((src - have)); [ "$rem" -lt 0 ] && rem=0
-        left=$(awk -v b="$rem" 'BEGIN{printf "%.1f", b/(300*1024)/86400}')   # at 300 KB/s
+        left=$(awk -v b="$rem" 'BEGIN{printf "%.2f", b/(300*1024)/86400}')   # at 300 KB/s
     fi
     ok=never; [ -f ~/.seed-pull-$key.ok ] && ok=$(date -d @"$(cat ~/.seed-pull-$key.ok)" '+%F %R')
-    printf '%-13s %8sG %8sG %5s  %-9s %s\n' "$dir" $((have/1000000000)) $((src/1000000000)) "$pct" "$left" "$ok"
+    printf '%-13s %9sG %9sG %6s  %-9s %s\n' "$dir" "$(awk -v b="$have" 'BEGIN{printf "%.3f", b/1e9}')" \
+        "$(awk -v b="$src" 'BEGIN{printf "%.3f", b/1e9}')" "$pct" "$left" "$ok"
 done
 echo
 echo "== last file copied (immich):  $(tail -1 ~/sync-initial.log | cut -c1-19)"
