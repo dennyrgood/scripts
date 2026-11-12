@@ -7,7 +7,8 @@
 #   1. immich        -> /mnt/archive01p   (Immich: originals + DB dumps)
 #   2. misc/money    -> /mnt/archive00p   with a versions folder: a file about to be
 #                       overwritten is moved first to /mnt/archive00p/misc/.versions/<date>/
-#                       (2026-11-12: moved from 02s, which was decommissioned)
+#                       (2026-11-12: moved from 02s, which was decommissioned), then
+#                       mirrored to /mnt/archive01p/misc (no --delete) as a 2nd copy
 #   3. photo_legacy  -> /mnt/archive00p   (frozen, ~838 GB, ~32 days at 300 KB/s).
 #                       Only once Immich has completed at least once (user: legacy must
 #                       not start before Immich is done). Runs until 02:45, so the next
@@ -59,6 +60,15 @@ fi
 # 2. Money, with dated versions of anything replaced
 RSYNC_EXTRA="--backup --backup-dir=/mnt/archive00p/misc/.versions/$(date +%F)" \
     "$PULL" misc/money /mnt/archive00p
+
+# 2b. Mirror misc/ (money + .versions) 00p -> 01p as a second local copy.
+# Added without --delete: files later removed from 00p stay on 01p. Guarded by
+# both drives' markers so a power-cut leftover mount-point never gets written to.
+if [ -f /mnt/archive00p/.archive-mounted ] && [ -f /mnt/archive01p/.archive-mounted ]; then
+    rsync -a /mnt/archive00p/misc/ /mnt/archive01p/misc/ && echo "$(date) mirrored misc 00p -> 01p"
+else
+    echo "$(date) skipping misc mirror: an archive marker is missing"
+fi
 
 # 3. photo_legacy, in nightly chunks, only after Immich's first complete run
 if [ -f "$HOME/.seed-pull-immich.ok" ]; then
