@@ -1,0 +1,16 @@
+#!/bin/bash
+# Colorized `tailscale status`: green=active, red=offline, yellow=idle ("-")
+# Default: refresh every 5 min under watch. Use `tsstatus --once` for a single run.
+if [ "$1" = "--once" ]; then
+  shift
+elif [ -z "$TSSTATUS_INNER" ] && command -v watch >/dev/null 2>&1; then
+  TSSTATUS_INNER=1 exec watch -n 300 -c "$0" "$@"
+fi
+
+tailscale status "$@" | awk '
+  { sub(/[^ ]+@ +/, "") }
+  /offline/               { printf "\033[31m%s\033[0m\n", $0; next }
+  /active/                 { printf "\033[32m%s\033[0m\n", $0; next }
+  $NF == "-"               { printf "\033[33m%s\033[0m\n", $0; next }
+                           { print }
+'
