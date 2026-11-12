@@ -14,9 +14,8 @@
 # with `nofail`. If one drops off the bus, its mount point becomes a plain empty
 # directory on the root SSD and a backup job would happily fill the SSD instead.
 # Jobs should refuse to run without the marker file; this monitor tells you when
-# a drive is gone. 02s (Seagate Expansion enclosure) blocks SMART entirely, so the
-# kernel-I/O-error and ext4-error checks are the only live health signal for it
-# (plus the monthly read scan, 9046unix-archive-readscan.sh).
+# a drive is gone. (02s, a Seagate Expansion enclosure with no SMART, was
+# decommissioned 2026-11-12 and is no longer monitored.)
 
 HOST="9046unix"
 TO="dennyrgood@yahoo.com"
@@ -61,7 +60,7 @@ CLEAR_BODY=""
 # --- Check 0: archive auto-remount after a power cut / USB drop (added 2026-11-08) ---
 # The archive drives run off their own power bricks, the laptop off its battery. In a
 # power cut the drives vanish from USB and systemd unmounts them (tested 2026-11-08 by
-# unbinding 02s's USB device), leaving the bare mount-point directory on the root SSD --
+# unbinding a drive's USB device), leaving the bare mount-point directory on the root SSD --
 # which is why backup jobs must check the marker file. When power returns the drive
 # reappears but nothing remounts it. So: if a drive's UUID is present but its mount is
 # missing, points at an old device, or is dead, then lazy-unmount (if needed), fsck

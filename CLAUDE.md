@@ -24,7 +24,7 @@ The user refers to fleet machines by short alias in conversation — recognize t
 | s3g | surface3-gc | `Surface3GC/` | Windows |
 | tb | travelbeast | `TravelBeast/` | Windows |
 | wbu | workbenchunix | `WorkBenchUnix/` | Ubuntu |
-| 9046unix | 9046unix | `9046Unix/` | Ubuntu — old laptop, archive server with three 5 TB USB drives (00p/01p primary, 02s secondary), separate site, Wi-Fi only; notes in `fleet-configs/9046unix/README.md` |
+| 9046unix | 9046unix | `9046Unix/` | Ubuntu — old laptop, archive server with three 5 TB USB drives (00p/01p primary; 02s decommissioned 2026-11-12, unplugged), separate site, Wi-Fi only; notes in `fleet-configs/9046unix/README.md` |
 
 ## Flask backend migration (in progress)
 

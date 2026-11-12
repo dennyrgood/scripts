@@ -474,7 +474,7 @@ FLEET = [
     },
     {
         # Added 2026-11-08. Old laptop, Ubuntu 24.04, three 5 TB USB archive drives
-        # (00p/01p primary, 02s secondary). No network services of its own yet, so
+        # (00p/01p primary; 02s decommissioned 2026-11-12, so two in use). No network services of its own yet, so
         # the writer-liveness Heartbeat is the primary service; machine_info (with
         # the archive disks) is pulled from :9100 like every other host. Drive-level
         # health is local: scripts/9046Unix/9046unix-health-monitor.sh.
