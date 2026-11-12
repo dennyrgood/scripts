@@ -27,6 +27,7 @@ FLEET_HOSTS=(
   "workbenchunix:ubuntu"
   "chatworkhorseunix:ubuntu"
   "fleetnas:ubuntu"
+  "9046unix:ubuntu"
 )
 
 # All fleet hosts now have local repo checkouts (as of 2026-07-27); nothing to skip.

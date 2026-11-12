@@ -25,6 +25,7 @@ FLEET_HOSTS=(
   "workbenchunix:ubuntu"
   "chatworkhorseunix:ubuntu"
   "fleetnas:ubuntu"
+  "9046unix:ubuntu"
 )
 
 host_os() {
