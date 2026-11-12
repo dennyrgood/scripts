@@ -28,7 +28,7 @@ IOWAIT_THRESHOLD=20
 DISK_THRESHOLD=85
 DSTATE_FAIL_THRESHOLD=2
 
-ARCHIVES=(archive00p archive01p archive02s)   # under /mnt; each has a .archive-mounted marker
+ARCHIVES=(archive00p archive01p)   # under /mnt; each has a .archive-mounted marker
 MARKER=".archive-mounted"
 
 # Battery: the laptop battery keeps the box itself up on a power cut, but the 3.5"
@@ -266,14 +266,13 @@ read-only. Backup jobs must not write to it until fixed.
   3. sudo mount -a ; findmnt /mnt/<name>
   4. If read-only: unmount, sudo e2fsck -f /dev/sdX, remount
   Drive map: 00p=W4J0GB8C 01p=W4J1X92J (ASMedia dock, SMART via smartd)
-             02s=W4J1XARP (Seagate Expansion, NO SMART)
 
 EXT4 ERRORS: the filesystem recorded errors in its superblock. They stay
 recorded until an fsck: unmount, sudo e2fsck -f /dev/sdX, remount.
 
 KERNEL DISK / USB ERRORS: reported once per occurrence. A single USB
 reset can be harmless; repeated I/O errors on the same device mean a
-failing drive or cable/enclosure. For 02s this is the only early warning.
+failing drive or cable/enclosure.
 
 ON BATTERY: wall power is gone. The box shuts itself down at ${BAT_SHUTDOWN_PCT}%.
 

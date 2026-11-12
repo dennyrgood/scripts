@@ -17,11 +17,10 @@ TO="dennyrgood@yahoo.com"
 CC="dennis.mathes@icloud.com"     # self-CC feeds fleet_digest.py (reads that INBOX)
 MONITOR_STATE="/var/tmp/9046unix-monitor-state.tmp"
 REMOUNT_LOG="/var/log/9046unix-remount.log"
-READSCAN_LOG="/var/log/9046unix-readscan.log"
 HEARTBEAT="/home/dhm/fleet_monitor/heartbeat_9046unix.txt"
-ARCHIVES=(archive00p archive01p archive02s)
+ARCHIVES=(archive00p archive01p)
 MARKER=".archive-mounted"
-# by-id paths: sdX letters shuffle between boots. 02s has no SMART (enclosure).
+# by-id paths: sdX letters shuffle between boots.
 declare -A SMART_DEV=(
     [archive00p]="/dev/disk/by-id/usb-ASMedia_ASM1156_AAAABBBB0490-0:0"
     [archive01p]="/dev/disk/by-id/usb-ASMedia_ASM1156_AAAABBBB0490-0:1"
@@ -149,10 +148,10 @@ if [ -f /home/dhm/.nas-unreachable-since ]; then
     TLDR+="⚠️  ${NAS_DOWN} — copies retry until 02:50\n"; fail "FleetNAS unreachable"
 fi
 pull_report immich       /mnt/archive01p "immich -> 01p"       /home/dhm/sync-initial.log  86400
-pull_report misc/money   /mnt/archive02s "money -> 02s"        /home/dhm/rsync-misc_money.log 86400
+pull_report misc/money   /mnt/archive00p "money -> 00p"        /home/dhm/rsync-misc_money.log 86400
 pull_report photo_legacy /mnt/archive00p "photo_legacy -> 00p" /home/dhm/rsync-photo_legacy.log 604800
-NV=$(find /mnt/archive02s/misc/.versions -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-[ "$NV" -gt 0 ] && TLDR+="  money versions kept: $NV day(s) in /mnt/archive02s/misc/.versions\n"
+NV=$(find /mnt/archive00p/misc/.versions -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+[ "$NV" -gt 0 ] && TLDR+="  money versions kept: $NV day(s) in /mnt/archive00p/misc/.versions\n"
 BODY+="=== NAS PULLS (last 6 results, ~/nightly-pull.log) ===\n$(grep -E 'DONE|PAUSED|error|stopping|skipping|gave up|no .*marker|waiting|unreachable' /home/dhm/nightly-pull.log /home/dhm/immich-pull.log 2>/dev/null | tail -6 | sed 's#^/home/dhm/##')\n\n"
 
 # --- Household latency, last 24 h (9046unix-latency-log.sh, every 5 min) ---
@@ -214,23 +213,13 @@ for a in archive00p archive01p; do
 done
 BODY+="\n"
 
-# --- 02s: no SMART, so kernel errors + monthly read scan ---
+# --- kernel disk errors (02s read scan removed 2026-11-12 with 02s) ---
 KERR=$(journalctl -k --since "24 hours ago" --no-pager -q 2>/dev/null | grep -ciE \
     'I/O error|blk_update_request|Buffer I/O|critical medium error|EXT4-fs error|uas_eh_' || true)
 if [ "${KERR:-0}" -gt 0 ]; then
     TLDR+="⚠️  kernel disk I/O errors (24h): $KERR\n"; fail "kernel I/O errors"
 else
     TLDR+="  kernel disk I/O errors (24h): 0 ✓\n"
-fi
-if [ -f "$READSCAN_LOG" ]; then
-    LAST=$(grep ' end ' "$READSCAN_LOG" | tail -1)
-    case "$LAST" in
-        *"OK: 0 bad blocks"*) TLDR+="  02s read scan: ${LAST#* end   } ✓\n" ;;
-        "")                   TLDR+="  02s read scan: running/none finished yet\n" ;;
-        *)                    TLDR+="⚠️  02s read scan: ${LAST#* end   }\n"; fail "02s read scan bad" ;;
-    esac
-else
-    TLDR+="  02s read scan: none yet (15th of the month)\n"
 fi
 
 # --- Power cut recovery events (24h) ---

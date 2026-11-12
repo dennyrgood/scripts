@@ -9,7 +9,7 @@ r=$(pgrep -a rsync | grep -o '192\.168\.178\.123:/[^ ]*' | sort -u)
 echo "   ${r:-none}"
 echo
 printf '%-13s %10s %10s %6s  %-9s %s\n' FOLDER COPIED SOURCE PCT DAYS-LEFT "LAST COMPLETE RUN"
-for job in "immich /mnt/archive01p" "misc/money /mnt/archive02s" "photo_legacy /mnt/archive00p"; do
+for job in "immich /mnt/archive01p" "misc/money /mnt/archive00p" "photo_legacy /mnt/archive00p"; do
     set -- $job; dir=$1; mnt=$2; key=${dir//\//_}
     # same excludes as the nightly summary, so both report the same figure
     have=$(du -sb --exclude=.versions --exclude='*/immich/images/backups' "$mnt/$dir" 2>/dev/null | cut -f1); have=${have:-0}

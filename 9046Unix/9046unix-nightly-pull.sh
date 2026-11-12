@@ -5,8 +5,9 @@
 # dhm crontab:  @reboot (after 2 min)  and  03:00 daily.
 #
 #   1. immich        -> /mnt/archive01p   (Immich: originals + DB dumps)
-#   2. misc/money    -> /mnt/archive02s   with a versions folder: a file about to be
-#                       overwritten is moved first to /mnt/archive02s/misc/.versions/<date>/
+#   2. misc/money    -> /mnt/archive00p   with a versions folder: a file about to be
+#                       overwritten is moved first to /mnt/archive00p/misc/.versions/<date>/
+#                       (2026-11-12: moved from 02s, which was decommissioned)
 #   3. photo_legacy  -> /mnt/archive00p   (frozen, ~838 GB, ~32 days at 300 KB/s).
 #                       Only once Immich has completed at least once (user: legacy must
 #                       not start before Immich is done). Runs until 02:45, so the next
@@ -56,8 +57,8 @@ if [ -f /mnt/archive01p/.archive-mounted ]; then
 fi
 
 # 2. Money, with dated versions of anything replaced
-RSYNC_EXTRA="--backup --backup-dir=/mnt/archive02s/misc/.versions/$(date +%F)" \
-    "$PULL" misc/money /mnt/archive02s
+RSYNC_EXTRA="--backup --backup-dir=/mnt/archive00p/misc/.versions/$(date +%F)" \
+    "$PULL" misc/money /mnt/archive00p
 
 # 3. photo_legacy, in nightly chunks, only after Immich's first complete run
 if [ -f "$HOME/.seed-pull-immich.ok" ]; then
