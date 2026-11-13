@@ -346,7 +346,7 @@ FLEET = [
     {
         "display_name": "Plex Server AMS",
         "tailscale_name": "mathes-mac-mini",
-        "tailscale_ip": "100.108.12.39",
+        "tailscale_ip": "100.99.23.121",  # was 100.108.12.39 (stale; corrected 2026-11-14)
         "primary_role": "Plex Server",
         "probe_port": 22,
         "services": [
