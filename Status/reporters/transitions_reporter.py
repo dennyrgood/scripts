@@ -155,17 +155,55 @@ def _resolve_effective_status(raw_status: str, prev_entity: dict | None, grace_s
     return (prev_status if prev_status is not None else "up"), new_streak, down_since
 
 
+def _window_bounds(win: dict, now: datetime) -> tuple[datetime, datetime]:
+    """Today's (start, end) for a SCHEDULED_BLIP_WINDOWS entry, as aware datetimes.
+
+    Prefers local_start/local_end in the host's own timezone (win["tz"], else
+    config.HOST_TIMEZONES / DEFAULT_HOST_TZ) so the window follows that box's DST --
+    cwhu's warm-sync is `0 4 * * *` Amsterdam time, i.e. 02:00 UTC in CEST but 03:00
+    UTC in CET (2026-11-14 fix: the UTC-only window had been wrong all winter).
+    Falls back to start_utc/end_utc when no local times are given, or when the tz
+    can't be loaded (Windows Python has no tz database unless `pip install tzdata`).
+    Same-day windows only (start < end); none of today's cross midnight."""
+    if win.get("local_start") and win.get("local_end"):
+        tz_name = win.get("tz") or getattr(config, "HOST_TIMEZONES", {}).get(
+            win["host"], getattr(config, "DEFAULT_HOST_TZ", None))
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(tz_name)
+        except Exception as e:  # ZoneInfoNotFoundError, missing tzdata, None name
+            if not _window_bounds.warned:
+                logger.warning("blip window tz %r unavailable (%s) -- using start_utc/end_utc; "
+                               "pip install tzdata to fix", tz_name, e)
+                _window_bounds.warned = True
+        else:
+            local_now = now.astimezone(tz)
+            sh, sm = (int(x) for x in win["local_start"].split(":"))
+            eh, em = (int(x) for x in win["local_end"].split(":"))
+            return (local_now.replace(hour=sh, minute=sm, second=0, microsecond=0),
+                    local_now.replace(hour=eh, minute=em, second=0, microsecond=0))
+    sh, sm = (int(x) for x in win["start_utc"].split(":"))
+    eh, em = (int(x) for x in win["end_utc"].split(":"))
+    return (now.replace(hour=sh, minute=sm, second=0, microsecond=0),
+            now.replace(hour=eh, minute=em, second=0, microsecond=0))
+
+
+_window_bounds.warned = False
+
+
+def _window_desc(win: dict, now: datetime) -> str:
+    start_t, end_t = _window_bounds(win, now)
+    utc = lambda t: t.astimezone(timezone.utc).strftime("%H:%M")
+    return f"{utc(start_t)}-{utc(end_t)} UTC"
+
+
 def _in_scheduled_window(host: str, service: str | None, now: datetime) -> dict | None:
     """Return the matching SCHEDULED_BLIP_WINDOWS entry if (host, service) has one
-    active right now, else None. Windows are UTC time-of-day, assumed same-day
-    (start < end); none of today's configured windows cross midnight."""
+    active right now, else None. See _window_bounds for how the window is placed."""
     for win in config.SCHEDULED_BLIP_WINDOWS:
         if win["host"] != host or win["service"] != service:
             continue
-        start_h, start_m = (int(x) for x in win["start_utc"].split(":"))
-        end_h, end_m = (int(x) for x in win["end_utc"].split(":"))
-        start_t, end_t = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0), \
-                          now.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+        start_t, end_t = _window_bounds(win, now)
         if start_t <= now <= end_t:
             return win
     return None
@@ -178,8 +216,7 @@ def _just_closed_window(host: str, service: str | None, now: datetime) -> dict |
     for win in config.SCHEDULED_BLIP_WINDOWS:
         if win["host"] != host or win["service"] != service:
             continue
-        end_h, end_m = (int(x) for x in win["end_utc"].split(":"))
-        end_t = now.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+        _, end_t = _window_bounds(win, now)
         if end_t <= now <= end_t + grace:
             return win
     return None
@@ -344,7 +381,7 @@ def report(state: dict, status_dir: Path, checker_host: str) -> None:
             transitions.append({
                 "ts": timestamp_utc, "scope": "scheduled_blip", "host": win["host"], "service": win["service"],
                 "from": None, "to": None, "event": "missing",
-                "detail": f'Expected {win["label"]} blip ({win["start_utc"]}-{win["end_utc"]} UTC) did not occur today',
+                "detail": f'Expected {win["label"]} blip ({_window_desc(win, now)}) did not occur today',
             })
 
     _save_state(state_path, current)

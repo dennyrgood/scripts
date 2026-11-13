@@ -79,6 +79,17 @@ REMOTE_LINK_HOSTS = {
 # Servers (everything else in FLEET, incl. the two sets above by exception) stay
 # strict: any down/up transition emits immediately, no held grace period.
 
+# Local timezone of each host's own clock (crontab / Task Scheduler times are in this).
+# Main machines are on Amsterdam time; exceptions listed. Used by kuma_sync.py so a
+# SCHEDULED_BLIP_WINDOWS entry with local_start/local_end follows that host's DST.
+# (Added 2026-11-14.)
+DEFAULT_HOST_TZ = "Europe/Amsterdam"
+HOST_TIMEZONES = {
+    "surface3-gc": "Europe/London",     # GC site (MacMiniGC too, once it's in FLEET)
+    "remotews":    "America/New_York",  # Philly
+    "9046unix":    "America/New_York",  # PA archive site
+}
+
 # Scheduled, expected blips: the down/up transition inside the window is suppressed,
 # but if the expected blip does NOT happen at all that day, that silence is the anomaly
 # and gets its own alert line. chatworkhorseunix Immich goes "connection refused" for
@@ -89,6 +100,13 @@ SCHEDULED_BLIP_WINDOWS = [
         "host": "chatworkhorseunix", "service": "Immich",
         "start_utc": "01:55", "end_utc": "02:10",
         "label": "nightly warm-sync (4am CEST)",
+        # Same window in the host's local time (cwhu crontab: `0 4 * * *`; tz comes
+        # from HOST_TIMEZONES, or add "tz": here to override). Both
+        # transitions_reporter.py and kuma_sync.py prefer these, so the window
+        # follows DST (in CET the blip lands at ~03:00 UTC, not 02:00 -- fixed
+        # 2026-11-14). start_utc/end_utc are now only the fallback, used if the
+        # tz can't be loaded (Windows Python without `pip install tzdata`).
+        "local_start": "03:55", "local_end": "04:10",
     },
 ]
 

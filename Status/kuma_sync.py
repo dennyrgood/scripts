@@ -29,8 +29,22 @@ else FAIL_STREAK_THRESHOLD consecutive failures.
 Hosts whose tailscale_ip is a LAN address (FleetNAS, 192.168.178.x) are skipped
 unless --include-lan: the Pi is on a different LAN (192.168.0.x) and can't reach them.
 
-Idempotent: monitors are matched by name; existing ones are edited, missing ones
-added. Nothing is ever deleted — remove stale monitors in the Kuma UI.
+Notifications (enforced on every run, so don't hand-edit them in the Kuma UI):
+  - Every Kuma notification marked "Default enabled" is attached to each host's
+    GROUP only. A group goes down when any child does, so one email per host
+    incident instead of one per failing check (a box dropping off Tailscale
+    fails ping + port + every service at once).
+  - Individual checks get no notifications.
+  - PORTABLE_HOSTS groups get none either — the laptops sleep for hours, far
+    past any grace period, and would email every night. Still on the dashboard.
+
+Maintenance: each config.SCHEDULED_BLIP_WINDOWS entry becomes a daily Kuma
+maintenance window (cron, in the entry's tz if given, else UTC) on that host's matching service check, so the
+expected blip doesn't alert. (Kuma can't flag the blip going *missing* the way
+transitions_reporter does — that stays checker.py's job.)
+
+Idempotent: monitors/maintenances are matched by name/title; existing ones are
+edited, missing ones added. Nothing is ever deleted — remove stale ones in the UI.
 
 Usage (from anywhere; reads config.py next to this file):
     kuma_sync.py --dry-run                 # print the plan, no Kuma needed
@@ -84,7 +98,9 @@ def is_lan(ip):
 
 
 def build_plan(include_lan=False):
-    """Return (groups, monitors, skipped). monitors carry a 'group' key = group name."""
+    """Return (groups, monitors, maints, skipped).
+    groups: [{name, notify}]; monitors carry a 'group' key = group name;
+    maints: [{title, cron, duration, monitor_names}]."""
     by_name = {h["tailscale_name"]: h for h in config.FLEET}
     groups, monitors, skipped = [], [], []
     seen_urls = set()
@@ -99,7 +115,7 @@ def build_plan(include_lan=False):
             skipped.append(f"{dn} ({ip}) — LAN-only, not reachable from pi400")
             continue
         r = retries_for(host)
-        groups.append(dn)
+        groups.append({"name": dn, "notify": host not in config.PORTABLE_HOSTS})
         add(dn, type="ping", name=f"{dn} · ping", hostname=ip, maxretries=r)
         add(dn, type="port", name=f"{dn} · port {h['probe_port']}",
             hostname=ip, port=h["probe_port"], maxretries=r)
@@ -130,50 +146,85 @@ def build_plan(include_lan=False):
                 add(dn, type="http", name=f"{dn} · {sname} (public)",
                     url=s["public_url"], accepted=ANY_BELOW_500,
                     maxretries=max(0, config.FAIL_STREAK_THRESHOLD - 1))
-    return groups, monitors, skipped
+
+    maints = []
+    for w in getattr(config, "SCHEDULED_BLIP_WINDOWS", []):
+        h = by_name.get(w["host"])
+        if h is None:
+            skipped.append(f"blip window {w} — unknown host")
+            continue
+        prefix = f"{h['display_name']} · {w['service']} :"  # local check, not "(public)"
+        names = [m["name"] for m in monitors if m["name"].startswith(prefix)]
+        if not names:
+            skipped.append(f"blip window for {w['host']}/{w['service']} — no matching check")
+            continue
+        # Prefer the local-time form (follows DST); fall back to the fixed UTC one.
+        if w.get("local_start") and w.get("local_end"):
+            start, end = w["local_start"], w["local_end"]
+            tz = w.get("tz") or getattr(config, "HOST_TIMEZONES", {}).get(
+                w["host"], getattr(config, "DEFAULT_HOST_TZ", "UTC"))
+        else:
+            start, end, tz = w["start_utc"], w["end_utc"], "UTC"
+        sh, sm = map(int, start.split(":"))
+        eh, em = map(int, end.split(":"))
+        duration = ((eh * 60 + em) - (sh * 60 + sm)) % (24 * 60)
+        maints.append({
+            "title": f"{h['display_name']} {w['service']}: {w['label']}",
+            "cron": f"{sm} {sh} * * *", "tz": tz, "duration": duration,
+            "monitor_names": names,
+        })
+    return groups, monitors, maints, skipped
 
 
-def print_plan(groups, monitors, skipped):
+def print_plan(groups, monitors, maints, skipped):
     for g in groups:
-        print(f"[{g}]")
-        for m in (m for m in monitors if m["group"] == g):
+        print(f"[{g['name']}]  email: {'yes' if g['notify'] else 'no (portable)'}")
+        for m in (m for m in monitors if m["group"] == g["name"]):
             target = m.get("url") or f"{m['hostname']}" + (f":{m['port']}" if m.get("port") else "")
             print(f"  {m['type']:5} {m['name']:45} {target}  (retries {m['maxretries']})")
+    for mt in maints:
+        print(f"MAINTENANCE: {mt['title']} — daily cron '{mt['cron']}' {mt['tz']}, "
+              f"{mt['duration']} min, on {', '.join(mt['monitor_names'])}")
     for s in skipped:
         print(f"SKIPPED: {s}")
-    print(f"\n{len(groups)} groups, {len(monitors)} monitors")
+    print(f"\n{len(groups)} groups ({sum(g['notify'] for g in groups)} with email), "
+          f"{len(monitors)} monitors, {len(maints)} maintenance windows")
 
 
-def sync(url, user, password, groups, monitors):
+def sync(url, user, password, groups, monitors, maints):
     try:  # Kuma 2.x needs the fork; the original lib only speaks 1.21-1.23
-        from uptime_kuma_api_v2 import UptimeKumaApi, MonitorType
+        from uptime_kuma_api_v2 import UptimeKumaApi, MonitorType, MaintenanceStrategy
     except ImportError:
-        from uptime_kuma_api import UptimeKumaApi, MonitorType
+        from uptime_kuma_api import UptimeKumaApi, MonitorType, MaintenanceStrategy
 
     types = {"http": MonitorType.HTTP, "port": MonitorType.PORT, "ping": MonitorType.PING}
     added = edited = 0
     with UptimeKumaApi(url) as api:
         api.login(user, password)
         existing = {m["name"]: m for m in api.get_monitors()}
-        # Kuma's "Default enabled" notification flag is applied only by the web UI,
-        # not the socket API — so attach the default notification(s) to anything we
-        # add. Edits leave a monitor's notifications alone (edit_monitor merges).
+        # Kuma's "Default enabled" flag is only applied by the web UI, not the API,
+        # so we read it here and apply the group-only policy ourselves.
         default_notifs = [n["id"] for n in api.get_notifications() if n.get("isDefault")]
+        if not default_notifs:
+            print("NOTE: no notification is marked 'Default enabled' in Kuma — no alerts attached.")
 
         group_ids = {}
         for g in groups:
-            if g in existing:
-                group_ids[g] = existing[g]["id"]
+            kw = dict(type=MonitorType.GROUP, name=g["name"], description=MANAGED_NOTE,
+                      notificationIDList=default_notifs if g["notify"] else [])
+            if g["name"] in existing:
+                group_ids[g["name"]] = existing[g["name"]]["id"]
+                api.edit_monitor(group_ids[g["name"]], **kw)
+                edited += 1
             else:
-                group_ids[g] = api.add_monitor(type=MonitorType.GROUP, name=g,
-                                               description=MANAGED_NOTE,
-                                               notificationIDList=default_notifs)["monitorID"]
+                group_ids[g["name"]] = api.add_monitor(**kw)["monitorID"]
                 added += 1
 
         for m in monitors:
             kw = dict(type=types[m["type"]], name=m["name"], parent=group_ids[m["group"]],
                       interval=INTERVAL, retryInterval=RETRY_INTERVAL,
-                      maxretries=m["maxretries"], description=MANAGED_NOTE)
+                      maxretries=m["maxretries"], description=MANAGED_NOTE,
+                      notificationIDList=[])  # alerts come from the group
             if m["type"] == "http":
                 kw.update(url=m["url"], accepted_statuscodes=m["accepted"])
             else:
@@ -184,9 +235,25 @@ def sync(url, user, password, groups, monitors):
                 api.edit_monitor(existing[m["name"]]["id"], **kw)
                 edited += 1
             else:
-                api.add_monitor(notificationIDList=default_notifs, **kw)
+                api.add_monitor(**kw)
                 added += 1
-    print(f"Done: {added} added, {edited} updated.")
+        print(f"Monitors: {added} added, {edited} updated.")
+
+        ids = {m["name"]: m["id"] for m in api.get_monitors()}
+        existing_mt = {mt["title"]: mt for mt in api.get_maintenances()}
+        for mt in maints:
+            kw = dict(title=mt["title"], description=MANAGED_NOTE,
+                      strategy=MaintenanceStrategy.CRON, active=True,
+                      cron=mt["cron"], durationMinutes=mt["duration"], timezoneOption=mt["tz"])
+            if mt["title"] in existing_mt:
+                mid = existing_mt[mt["title"]]["id"]
+                api.edit_maintenance(mid, **kw)
+                verb = "updated"
+            else:
+                mid = api.add_maintenance(**kw)["maintenanceID"]
+                verb = "added"
+            api.add_monitor_maintenance(mid, [{"id": ids[n]} for n in mt["monitor_names"]])
+            print(f"Maintenance {verb}: {mt['title']}")
 
 
 def main():
@@ -197,12 +264,12 @@ def main():
     ap.add_argument("--include-lan", action="store_true", help="also monitor LAN-only hosts (FleetNAS)")
     a = ap.parse_args()
 
-    groups, monitors, skipped = build_plan(a.include_lan)
-    print_plan(groups, monitors, skipped)
+    groups, monitors, maints, skipped = build_plan(a.include_lan)
+    print_plan(groups, monitors, maints, skipped)
     if a.dry_run:
         return
     password = os.environ.get("KUMA_PASS") or getpass.getpass(f"Kuma password for {a.user}: ")
-    sync(a.url, a.user, password, groups, monitors)
+    sync(a.url, a.user, password, groups, monitors, maints)
 
 
 if __name__ == "__main__":
