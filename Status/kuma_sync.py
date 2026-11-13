@@ -155,6 +155,10 @@ def sync(url, user, password, groups, monitors):
     with UptimeKumaApi(url) as api:
         api.login(user, password)
         existing = {m["name"]: m for m in api.get_monitors()}
+        # Kuma's "Default enabled" notification flag is applied only by the web UI,
+        # not the socket API — so attach the default notification(s) to anything we
+        # add. Edits leave a monitor's notifications alone (edit_monitor merges).
+        default_notifs = [n["id"] for n in api.get_notifications() if n.get("isDefault")]
 
         group_ids = {}
         for g in groups:
@@ -162,7 +166,8 @@ def sync(url, user, password, groups, monitors):
                 group_ids[g] = existing[g]["id"]
             else:
                 group_ids[g] = api.add_monitor(type=MonitorType.GROUP, name=g,
-                                               description=MANAGED_NOTE)["monitorID"]
+                                               description=MANAGED_NOTE,
+                                               notificationIDList=default_notifs)["monitorID"]
                 added += 1
 
         for m in monitors:
@@ -179,7 +184,7 @@ def sync(url, user, password, groups, monitors):
                 api.edit_monitor(existing[m["name"]]["id"], **kw)
                 edited += 1
             else:
-                api.add_monitor(**kw)
+                api.add_monitor(notificationIDList=default_notifs, **kw)
                 added += 1
     print(f"Done: {added} added, {edited} updated.")
 
