@@ -226,7 +226,21 @@ def sync(url, user, password, groups, monitors, maints):
     added = edited = 0
     with UptimeKumaApi(url) as api:
         api.login(user, password)
-        existing = {m["name"]: m for m in api.get_monitors()}
+        all_mons = api.get_monitors()
+        # Duplicate names (e.g. a group created twice because get_monitors() lagged
+        # behind a fresh add) -> keep the copy with the most children, report the rest.
+        kids = {}
+        for m in all_mons:
+            if m.get("parent"):
+                kids[m["parent"]] = kids.get(m["parent"], 0) + 1
+        existing = {}
+        for m in sorted(all_mons, key=lambda m: kids.get(m["id"], 0)):
+            if m["name"] in existing:
+                d = existing[m["name"]]
+                print(f"DUPLICATE: '{m['name']}' ids {d['id']} ({kids.get(d['id'], 0)} checks) "
+                      f"and {m['id']} ({kids.get(m['id'], 0)} checks) — keeping {m['id']}; "
+                      f"delete id {d['id']} in the Kuma UI.")
+            existing[m["name"]] = m
         # Kuma's "Default enabled" flag is only applied by the web UI, not the API,
         # so we read it here and apply the group-only policy ourselves.
         default_notifs = [n["id"] for n in api.get_notifications() if n.get("isDefault")]
