@@ -32,8 +32,8 @@ which needs `sudo tailscale set --accept-routes` on the Pi (Linux defaults to of
 --skip-lan leaves them out.
 
 Status pages (public, no login, at <url>/status/<slug>), rebuilt every run:
-  - "plex"  — every check_type "plex" check, so a new Plex server added to
-              config.py shows up automatically. For family at the GC/Philly sites.
+  - the STATUS_PAGES table below (plex, ai): sections pick checks by check_type,
+    so a new server added to config.py shows up automatically.
   - "fleet" — one row per host group: servers, then laptops (PORTABLE_HOSTS).
 
 Notifications (enforced on every run, so don't hand-edit them in the Kuma UI):
@@ -85,6 +85,26 @@ HTTP_PATHS = {
 }
 ANY_BELOW_500 = ["200-299", "300-399", "400-499"]
 OK_ONLY = ["200-299"]
+
+# Status pages (<url>/status/<slug>, no login). Each section lists every check whose
+# config.py check_type is in `check_types` — both the Tailscale check and, if
+# "public" is True, the service's public_url check — so new hosts/services show up
+# automatically. To add a page: add an entry here and re-run.
+# (The "fleet" page — one row per host group — is built separately below.)
+STATUS_PAGES = [
+    {"slug": "plex", "title": "Plex",
+     "description": "Is Plex up? Green = that server is reachable.",
+     "sections": [
+         {"name": "Plex servers", "check_types": {"plex"}, "public": False},
+     ]},
+    {"slug": "ai", "title": "AI",
+     "description": "Chat, models and image generation across the fleet.",
+     "sections": [
+         {"name": "Chat (OpenWebUI)", "check_types": {"openwebui"}, "public": True},
+         {"name": "Ollama (models)",  "check_types": {"ollama"},    "public": True},
+         {"name": "ComfyUI (images)", "check_types": {"comfyui"},   "public": True},
+     ]},
+]
 
 
 def retries_for(host):
@@ -150,7 +170,7 @@ def build_plan(skip_lan=False):
                     hostname=ip, port=port, maxretries=r)
 
             if s.get("public_url"):
-                add(dn, type="http", name=f"{dn} · {sname} (public)",
+                add(dn, type="http", name=f"{dn} · {sname} (public)", check_type=ct, public=True,
                     url=s["public_url"], accepted=ANY_BELOW_500,
                     maxretries=max(0, config.FAIL_STREAK_THRESHOLD - 1))
 
@@ -185,13 +205,19 @@ def build_plan(skip_lan=False):
 
 def build_status_pages(groups, monitors):
     """Return [{slug, title, description, sections: [(name, [monitor names])]}]."""
-    plex = [m["name"] for m in monitors if m.get("check_type") == "plex"]
+    pages = []
+    for sp in STATUS_PAGES:
+        sections = []
+        for sec in sp["sections"]:
+            names = [m["name"] for m in monitors
+                     if m.get("check_type") in sec["check_types"]
+                     and (sec["public"] or not m.get("public"))]
+            sections.append((sec["name"], names))
+        pages.append({"slug": sp["slug"], "title": sp["title"],
+                      "description": sp["description"], "sections": sections})
     servers = [g["name"] for g in groups if g["notify"]]
     laptops = [g["name"] for g in groups if not g["notify"]]
-    return [
-        {"slug": "plex", "title": "Plex",
-         "description": "Is Plex up? Green = that server is reachable.",
-         "sections": [("Plex servers", plex)]},
+    return pages + [
         {"slug": "fleet", "title": "Fleet",
          "description": "One row per machine (red = any check on it is failing). Generated from scripts/Status/config.py.",
          "sections": [("Servers", servers), ("Laptops", laptops)]},
