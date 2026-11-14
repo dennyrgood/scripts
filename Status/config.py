@@ -9,6 +9,8 @@ No code changes needed to add/remove machines or services — edit this file onl
 # Updated: 2026-08-13 UTC — Phase 1 (alert-log noise-reduction project): add TIMEOUT_SYNCTHING_MS,
 #   FAIL_STREAK_THRESHOLD, PORTABLE_GRACE_SECONDS/PORTABLE_HOSTS, FLAP_* thresholds,
 #   SCHEDULED_BLIP_WINDOWS. Consumed by reporters/transitions_reporter.py and engine.py.
+# Updated: 2026-11-14 UTC — add pi400 (spuiraspberry) to FLEET + REMOTE_LINK_HOSTS; HOST_TIMEZONES;
+#   blip-window local_start/local_end.
 # Updated: 2026-08-13 UTC — moved surface3-gc into REMOTE_LINK_HOSTS (stationary Plex
 #   server at a remote site, not a sleeping laptop) and added remotews to the same set
 #   for the same reason.
@@ -74,6 +76,9 @@ REMOTE_LINK_HOSTS = {
     # 9046unix (added 2026-11-08): archive server at a separate site (LAN 192.168.1.x,
     # not the home 192.168.178.x), Wi-Fi only -- same short-grace treatment.
     "9046unix",
+    # spuiraspberry / pi400 (added 2026-11-14): Amsterdam satellite site (with mb2,
+    # LAN 192.168.0.x), Wi-Fi -- same short-grace treatment.
+    "spuiraspberry",
 }
 
 # Servers (everything else in FLEET, incl. the two sets above by exception) stay
@@ -509,6 +514,28 @@ FLEET = [
                 "check_type": "http_heartbeat",
                 "public_url": None,
                 "check_params": {"target_host": "9046unix"},
+            },
+        ],
+    },
+    {
+        # Added 2026-11-14. Raspberry Pi 400 at the Amsterdam *satellite* site (with mb2,
+        # LAN 192.168.0.x), not the home network. Runs Uptime Kuma 2 (Docker, :3001),
+        # which monitors this whole FLEET from off-site (built by kuma_sync.py). Listed
+        # here so the Windows checkers watch the watcher: the Pi + Kuma being down would
+        # otherwise just look like silence. No fleet_metrics_server on it (yet), so no
+        # machine_info / heartbeat -- engine.py skips that quietly.
+        "display_name": "pi400",
+        "tailscale_name": "spuiraspberry",
+        "tailscale_ip": "100.90.82.78",
+        "primary_role": "Uptime Kuma (off-site)",
+        "probe_port": 22,
+        "services": [
+            {
+                "name": "Uptime Kuma",
+                "port": 3001,
+                "priority": "P",
+                "check_type": "tcp",
+                "public_url": None,
             },
         ],
     },

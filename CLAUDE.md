@@ -20,7 +20,7 @@ The user refers to fleet machines by short alias in conversation — recognize t
 | mb2 | denniss-2nd-macbook-air | `Denniss2ndMacBookAir/` | macOS |
 | mmm | mathes-mac-mini | `MathesMacMini/` | macOS |
 | nas | fleetnas | `FleetNAS/` | Ubuntu |
-| pi400 | spuiraspberry | — (none yet) | Raspberry Pi OS 13 (trixie) 64-bit — Raspberry Pi 400, experimental box; boots from a USB SATA SSD, old buster SD card kept as fallback; LAN 192.168.0.26, Tailscale 100.90.82.78; user `dhm`; runs Uptime Kuma 2 in Docker on :3001 (monitors, alerts, maintenance windows and status pages all generated from `Status/config.py` by `Status/kuma_sync.sh`); Tailscale `--accept-routes` is on so it reaches FleetNAS via the workbenchunix subnet route |
+| pi400 | spuiraspberry | — (none yet) | Raspberry Pi OS 13 (trixie) 64-bit — Raspberry Pi 400, experimental box; boots from a USB SATA SSD, old buster SD card kept as fallback; located at the Amsterdam *satellite* site with mb2 (LAN 192.168.0.x), NOT the home network (192.168.178.x) — so its Kuma is the off-site observer that still alerts when the home site loses power/internet; LAN 192.168.0.26, Tailscale 100.90.82.78; user `dhm`; runs Uptime Kuma 2 in Docker on :3001 (monitors, alerts, maintenance windows and status pages all generated from `Status/config.py` by `Status/kuma_sync.sh`); Tailscale `--accept-routes` is on so it reaches FleetNAS via the workbenchunix subnet route |
 | rws | remotews | `RemoteWS/` | Windows |
 | s3g | surface3-gc | `Surface3GC/` | Windows |
 | tb | travelbeast | `TravelBeast/` | Windows |
