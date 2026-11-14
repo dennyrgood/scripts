@@ -26,8 +26,15 @@ Alert grace mirrors config.py: PORTABLE_HOSTS get ~PORTABLE_GRACE_SECONDS of
 retries before going red, REMOTE_LINK_HOSTS ~REMOTE_LINK_GRACE_SECONDS, everyone
 else FAIL_STREAK_THRESHOLD consecutive failures.
 
-Hosts whose tailscale_ip is a LAN address (FleetNAS, 192.168.178.x) are skipped
-unless --include-lan: the Pi is on a different LAN (192.168.0.x) and can't reach them.
+LAN-address hosts (FleetNAS, 192.168.178.123) are included: the Pi (192.168.0.x)
+reaches them through workbenchunix's Tailscale subnet route (192.168.178.123/32),
+which needs `sudo tailscale set --accept-routes` on the Pi (Linux defaults to off).
+--skip-lan leaves them out.
+
+Status pages (public, no login, at <url>/status/<slug>), rebuilt every run:
+  - "plex"  — every check_type "plex" check, so a new Plex server added to
+              config.py shows up automatically. For family at the GC/Philly sites.
+  - "fleet" — one row per host group: servers, then laptops (PORTABLE_HOSTS).
 
 Notifications (enforced on every run, so don't hand-edit them in the Kuma UI):
   - Every Kuma notification marked "Default enabled" is attached to each host's
@@ -97,7 +104,7 @@ def is_lan(ip):
     return addr.is_private and addr not in ipaddress.ip_network("100.64.0.0/10")
 
 
-def build_plan(include_lan=False):
+def build_plan(skip_lan=False):
     """Return (groups, monitors, maints, skipped).
     groups: [{name, notify}]; monitors carry a 'group' key = group name;
     maints: [{title, cron, duration, monitor_names}]."""
@@ -111,8 +118,8 @@ def build_plan(include_lan=False):
 
     for h in config.FLEET:
         host, ip, dn = h["tailscale_name"], h["tailscale_ip"], h["display_name"]
-        if is_lan(ip) and not include_lan:
-            skipped.append(f"{dn} ({ip}) — LAN-only, not reachable from pi400")
+        if is_lan(ip) and skip_lan:
+            skipped.append(f"{dn} ({ip}) — LAN address, --skip-lan given")
             continue
         r = retries_for(host)
         groups.append({"name": dn, "notify": host not in config.PORTABLE_HOSTS})
@@ -125,7 +132,7 @@ def build_plan(include_lan=False):
             if ct == "http_heartbeat":
                 target = s.get("check_params", {}).get("target_host", host)
                 t = by_name.get(target)
-                if t is None or (is_lan(t["tailscale_ip"]) and not include_lan):
+                if t is None or (is_lan(t["tailscale_ip"]) and skip_lan):
                     continue
                 url = f"http://{t['tailscale_ip']}:{config.METRICS_PORT}/heartbeat_{target}.txt"
                 if url in seen_urls:
@@ -135,11 +142,11 @@ def build_plan(include_lan=False):
                     url=url, accepted=OK_ONLY, maxretries=retries_for(target))
             elif ct in HTTP_PATHS:
                 path, lenient = HTTP_PATHS[ct]
-                add(dn, type="http", name=f"{dn} · {sname} :{port}",
+                add(dn, type="http", name=f"{dn} · {sname} :{port}", check_type=ct,
                     url=f"http://{ip}:{port}{path}",
                     accepted=ANY_BELOW_500 if lenient else OK_ONLY, maxretries=r)
             else:  # "tcp" and anything unknown
-                add(dn, type="port", name=f"{dn} · {sname} :{port}",
+                add(dn, type="port", name=f"{dn} · {sname} :{port}", check_type=ct,
                     hostname=ip, port=port, maxretries=r)
 
             if s.get("public_url"):
@@ -176,6 +183,21 @@ def build_plan(include_lan=False):
     return groups, monitors, maints, skipped
 
 
+def build_status_pages(groups, monitors):
+    """Return [{slug, title, description, sections: [(name, [monitor names])]}]."""
+    plex = [m["name"] for m in monitors if m.get("check_type") == "plex"]
+    servers = [g["name"] for g in groups if g["notify"]]
+    laptops = [g["name"] for g in groups if not g["notify"]]
+    return [
+        {"slug": "plex", "title": "Plex",
+         "description": "Is Plex up? Green = that server is reachable.",
+         "sections": [("Plex servers", plex)]},
+        {"slug": "fleet", "title": "Fleet",
+         "description": "One row per machine (red = any check on it is failing). Generated from scripts/Status/config.py.",
+         "sections": [("Servers", servers), ("Laptops", laptops)]},
+    ]
+
+
 def print_plan(groups, monitors, maints, skipped):
     for g in groups:
         print(f"[{g['name']}]  email: {'yes' if g['notify'] else 'no (portable)'}")
@@ -185,6 +207,9 @@ def print_plan(groups, monitors, maints, skipped):
     for mt in maints:
         print(f"MAINTENANCE: {mt['title']} — daily cron '{mt['cron']}' {mt['tz']}, "
               f"{mt['duration']} min, on {', '.join(mt['monitor_names'])}")
+    for sp in build_status_pages(groups, monitors):
+        print(f"STATUS PAGE /status/{sp['slug']}: " +
+              "; ".join(f"{n} ({len(ms)})" for n, ms in sp["sections"]))
     for s in skipped:
         print(f"SKIPPED: {s}")
     print(f"\n{len(groups)} groups ({sum(g['notify'] for g in groups)} with email), "
@@ -208,7 +233,10 @@ def sync(url, user, password, groups, monitors, maints):
         if not default_notifs:
             print("NOTE: no notification is marked 'Default enabled' in Kuma — no alerts attached.")
 
+        # name -> id, recorded as we go: get_monitors() right after an add can lag
+        # behind (a just-created group was missing from it -> KeyError, 2026-11-14).
         group_ids = {}
+        ids = group_ids  # groups and checks share one name->id map (names are unique)
         for g in groups:
             kw = dict(type=MonitorType.GROUP, name=g["name"], description=MANAGED_NOTE,
                       notificationIDList=default_notifs if g["notify"] else [])
@@ -232,14 +260,14 @@ def sync(url, user, password, groups, monitors, maints):
                 if m["type"] == "port":
                     kw.update(port=m["port"])
             if m["name"] in existing:
-                api.edit_monitor(existing[m["name"]]["id"], **kw)
+                ids[m["name"]] = existing[m["name"]]["id"]
+                api.edit_monitor(ids[m["name"]], **kw)
                 edited += 1
             else:
-                api.add_monitor(**kw)
+                ids[m["name"]] = api.add_monitor(**kw)["monitorID"]
                 added += 1
         print(f"Monitors: {added} added, {edited} updated.")
 
-        ids = {m["name"]: m["id"] for m in api.get_monitors()}
         existing_mt = {mt["title"]: mt for mt in api.get_maintenances()}
         for mt in maints:
             kw = dict(title=mt["title"], description=MANAGED_NOTE,
@@ -255,16 +283,28 @@ def sync(url, user, password, groups, monitors, maints):
             api.add_monitor_maintenance(mid, [{"id": ids[n]} for n in mt["monitor_names"]])
             print(f"Maintenance {verb}: {mt['title']}")
 
+        existing_sp = {sp["slug"] for sp in api.get_status_pages()}
+        for sp in build_status_pages(groups, monitors):
+            if sp["slug"] not in existing_sp:
+                api.add_status_page(sp["slug"], sp["title"])
+            api.save_status_page(
+                sp["slug"], title=sp["title"], description=sp["description"],
+                publicGroupList=[
+                    {"name": name, "weight": i + 1, "monitorList": [{"id": ids[n]} for n in names]}
+                    for i, (name, names) in enumerate(sp["sections"]) if names])
+            print(f"Status page {'updated' if sp['slug'] in existing_sp else 'added'}: "
+                  f"{url.rstrip('/')}/status/{sp['slug']}")
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--url", default=os.environ.get("KUMA_URL", "http://spuiraspberry:3001"))
     ap.add_argument("--user", default=os.environ.get("KUMA_USER", "dhm"))
     ap.add_argument("--dry-run", action="store_true", help="print the plan only")
-    ap.add_argument("--include-lan", action="store_true", help="also monitor LAN-only hosts (FleetNAS)")
+    ap.add_argument("--skip-lan", action="store_true", help="leave out LAN-address hosts (FleetNAS)")
     a = ap.parse_args()
 
-    groups, monitors, maints, skipped = build_plan(a.include_lan)
+    groups, monitors, maints, skipped = build_plan(a.skip_lan)
     print_plan(groups, monitors, maints, skipped)
     if a.dry_run:
         return

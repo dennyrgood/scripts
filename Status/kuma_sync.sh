@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # kuma_sync.sh — run kuma_sync.py in its own venv (created on first run).
-# Usage: Status/kuma_sync.sh [--dry-run] [--include-lan] [--url URL] [--user USER]
+# Usage: Status/kuma_sync.sh [--dry-run] [--skip-lan] [--url URL] [--user USER]
 set -euo pipefail
 VENV="$HOME/.venvs/kuma"
 if [ ! -x "$VENV/bin/python" ]; then
