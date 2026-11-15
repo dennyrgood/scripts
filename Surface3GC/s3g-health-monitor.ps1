@@ -18,15 +18,16 @@
 #     by Status\FleetMetricsWatchdog.ps1, never emails. Checked below via its own
 #     last-task-result + staleness only.
 #   Restic Offsite Integrity Check -- Surface3GC\verify-restic-integrity-scheduled.ps1,
-#     runs on an irregular multi-week cadence (confirmed: last run 08/28, next
-#     scheduled 09/16 -- roughly every ~19 days, verifying one rotating "bucket" of
-#     the offsite restic repo each time), writes a JSON status file (NOT a log, no
-#     mail) to C:\fleet_monitor\watchdog_restic-offsite_surface3-gc.json with an "ok"
-#     boolean + mismatch/unreadable counts. Checked below via that JSON's "ok" field;
-#     staleness uses a generous 30-day window given the irregular cadence (checking
-#     against a fixed short interval would either miss a real stall or false-alarm
-#     between normal runs -- there's no fixed "every N days" guarantee to check against
-#     precisely, so this errs toward not nagging over normal schedule variance).
+#     runs MONTHLY on the 16th at 03:30 (CalendarTrigger in fleet-configs
+#     Surface3GC/TaskSched; bucket = month, so 12 runs cover the whole repo once a
+#     year), writes a JSON status file (NOT a log, no mail) to
+#     C:\fleet_monitor\watchdog_restic-offsite_surface3-gc.json with an "ok"
+#     boolean + mismatch/unreadable counts. Checked below via that JSON's "ok" field,
+#     plus staleness > 35 days. The old 30-day window (and its "~19 days" cadence,
+#     misread from the 08/28 manual first run -> 09/16) false-alarmed every month
+#     following a 31-day month: Oct 16 -> Nov 15 crossed 30d a day before the Nov 16
+#     run (2026-11-15). 35 = one month + slack for a late start; a single missed
+#     run alerts ~4 days later. wbu's syncthing_offsite_status.sh separately uses 45.
 #
 # Requires this task to run with highest privileges (Win32_Process's CommandLine
 # comes back blank for other-session processes otherwise).
@@ -112,9 +113,9 @@ if (Test-Path $ResticJsonPath) {
             $ResticDetail = "ok=false. $($rj.note) (mismatches=$($rj.mismatches), unreadable=$($rj.unreadable), bucket=$($rj.bucket))"
         }
         $ageDays = (New-TimeSpan -Start ([datetime]$rj.finished_utc) -End (Get-Date).ToUniversalTime()).TotalDays
-        if ($ageDays -gt 30) {
+        if ($ageDays -gt 35) {
             $ResticTriggered = 1
-            $ResticDetail += " Last successful check was $([int]$ageDays)d ago (expected roughly every ~19 days)."
+            $ResticDetail += " Last successful check was $([int]$ageDays)d ago (expected monthly, on the 16th)."
         }
     } catch {
         $ResticTriggered = 1
