@@ -11,7 +11,8 @@ No code changes needed to add/remove machines or services — edit this file onl
 #   SCHEDULED_BLIP_WINDOWS. Consumed by reporters/transitions_reporter.py and engine.py.
 # Updated: 2026-11-14 UTC — add pi400 (spuiraspberry) to FLEET + REMOTE_LINK_HOSTS; HOST_TIMEZONES;
 #   blip-window local_start/local_end.
-# Updated: 2026-11-18 UTC — 9046unix: add Uptime Kuma :3001 service (second off-site Kuma).
+# Updated: 2026-11-18 UTC — 9046unix: add Uptime Kuma :3001 service (second off-site Kuma);
+#   pi400: add Heartbeat (heartbeat writer + fleet_metrics_server now on it).
 # Updated: 2026-08-13 UTC — moved surface3-gc into REMOTE_LINK_HOSTS (stationary Plex
 #   server at a remote site, not a sleeping laptop) and added remotews to the same set
 #   for the same reason.
@@ -532,14 +533,22 @@ FLEET = [
         # LAN 192.168.0.x), not the home network. Runs Uptime Kuma 2 (Docker, :3001),
         # which monitors this whole FLEET from off-site (built by kuma_sync.py). Listed
         # here so the Windows checkers watch the watcher: the Pi + Kuma being down would
-        # otherwise just look like silence. No fleet_metrics_server on it (yet), so no
-        # machine_info / heartbeat -- engine.py skips that quietly.
+        # otherwise just look like silence. Since 2026-11-18 it runs the heartbeat writer +
+        # fleet_metrics_server (:9100) too (Status/linux_metrics_setup.sh spuiraspberry).
         "display_name": "pi400",
         "tailscale_name": "spuiraspberry",
         "tailscale_ip": "100.90.82.78",
         "primary_role": "Uptime Kuma (off-site)",
         "probe_port": 22,
         "services": [
+            {
+                "name": "Heartbeat",
+                "port": 0,  # Not applicable for heartbeat check
+                "priority": "P",
+                "check_type": "http_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "spuiraspberry"},
+            },
             {
                 "name": "Uptime Kuma",
                 "port": 3001,
