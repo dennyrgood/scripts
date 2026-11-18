@@ -73,6 +73,7 @@ EXPECTED_HOSTS = [
     "MacBook Air", "MacBook Air 2", "Mac Mini",
     "9046unix",   # 2026-11-08, 9046Unix/9046unix-nightly-summary.sh
     "FleetDev",   # 2026-11-08, was sending all along but never expected, so never flagged MISSING
+    "MacMiniGC",  # 2026-11-18, MacMiniGC/mgc-nightly-summary.sh (s3g's replacement; Surface3GC stays until Phase 10)
 ]
 
 CHECK = "✅"

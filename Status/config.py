@@ -13,6 +13,8 @@ No code changes needed to add/remove machines or services — edit this file onl
 #   blip-window local_start/local_end.
 # Updated: 2026-11-18 UTC — 9046unix: add Uptime Kuma :3001 service (second off-site Kuma);
 #   pi400: add Heartbeat (heartbeat writer + fleet_metrics_server now on it).
+# Updated: 2026-11-18 UTC — add MacMiniGC (macminigc), s3g's replacement: FLEET entry (Plex, Syncthing,
+#   Heartbeat), PLEX_CONFIG, SYNCTHING_CONFIG (api_key filled in by hand on mgc).
 # Updated: 2026-08-13 UTC — moved surface3-gc into REMOTE_LINK_HOSTS (stationary Plex
 #   server at a remote site, not a sleeping laptop) and added remotews to the same set
 #   for the same reason.
@@ -135,6 +137,10 @@ PLEX_CONFIG = {
         "plex_url": "http://remotews:32400",
         "plex_token": "xqetuxscJvEVVUdNE6-v",
     },
+    "macminigc": {
+        "plex_url": "http://macminigc:32400",
+        "plex_token": "xqetuxscJvEVVUdNE6-v",
+    },
     "chatworkhorse": None,
     "travelbeast": None,
     "amsterdamdesktop": None,
@@ -158,6 +164,10 @@ SYNCTHING_CONFIG = {
     "remotews": {
         "syncthing_url": "http://remotews:8384",
         "api_key": "HuYQZgkKm6ZtnWaHvfKepncUkNwgogsE"
+    },
+    "macminigc": {
+        "syncthing_url": "http://macminigc:8384",
+        "api_key": "WsW5WPZLzbXketiqHuAYqaW4Uf5nV7Ky",
     },
 }
 
@@ -365,6 +375,42 @@ FLEET = [
                 "priority": "P",
                 "check_type": "syncthing",
                 "public_url": None,
+            },
+        ],
+    },
+    {
+        # Added 2026-11-18. Mac mini M1, s3g's replacement: Plex GC_Plex_Mini + off-site
+        # immich-restic copy on the 24 TB GC_Media. On the Amsterdam home LAN until it's
+        # deployed to GC in January 2027 -- then add it to REMOTE_LINK_HOSTS and
+        # HOST_TIMEZONES (Europe/London) like surface3-gc. Heartbeat files are written as
+        # heartbeat_MacMiniGC.*, but APFS is case-insensitive, so "macminigc" resolves (tested).
+        "display_name": "Plex Server GC Mini",
+        "tailscale_name": "macminigc",
+        "tailscale_ip": "100.81.140.63",
+        "primary_role": "Plex Server",
+        "probe_port": 22,
+        "services": [
+            {
+                "name": "Plex",
+                "port": 32400,
+                "priority": "P",
+                "check_type": "plex",
+                "public_url": None,
+            },
+            {
+                "name": "Syncthing",
+                "port": 8384,
+                "priority": "P",
+                "check_type": "syncthing",
+                "public_url": None,
+            },
+            {
+                "name": "Heartbeat",
+                "port": 0,  # Not applicable for heartbeat check
+                "priority": "P",
+                "check_type": "http_heartbeat",
+                "public_url": None,
+                "check_params": {"target_host": "macminigc"},
             },
         ],
     },
