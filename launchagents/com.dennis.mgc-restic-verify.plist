@@ -3,6 +3,11 @@
 <!-- Created: 2026-10-23 12:30 UTC. Monthly off-site restic integrity check on mgc
      (port of s3g's Task Scheduler job). Day 15 keeps it well clear of wbu's
      prune on day 01, which rewrites packs that Syncthing then re-sends here. -->
+<!-- 2026-11-18 22:55 UTC: run CLT Python.app's binary directly instead of /usr/bin/python3.
+     macOS TCC judges a launchd job by the binary launchd starts; /usr/bin/python3 (xcode-select
+     shim) and CLT usr/bin/python3 were both denied on /Volumes/GC_Media even with Full Disk
+     Access. Python.app has FDA on mgc. If a CLT update moves Python off 3.9 this path breaks
+     and the FDA grant must be re-added for the new Python.app. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -10,7 +15,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
+        <string>/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python</string>
         <string>/Users/dennishmathes/repos/scripts/MacMiniGC/verify-restic-integrity-scheduled.py</string>
     </array>
 
