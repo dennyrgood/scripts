@@ -19,6 +19,7 @@ FLEET_HOSTS=(
   "denniss-macbook-air:mac"
   "denniss-2nd-macbook-air:mac"
   "fleetdev:mac"
+  "spuiraspberry:ubuntu"
   "surface3-gc:win"
   "mathes-mac-mini:mac"
   "remotews:win"
@@ -66,6 +67,7 @@ resolve_hosts() {
       ib) lc=imagebeast ;; mb2) lc=denniss-2nd-macbook-air ;; mb) lc=denniss-macbook-air ;;
       mmm) lc=mathes-mac-mini ;; nas) lc=fleetnas ;; rws) lc=remotews ;;
       s3g) lc=surface3-gc ;; tb) lc=travelbeast ;; wbu) lc=workbenchunix ;;
+      pi400) lc=spuiraspberry ;;
     esac
     found=0
     case "$lc" in windows) lc=win ;; macos) lc=mac ;; esac
