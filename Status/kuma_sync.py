@@ -250,7 +250,7 @@ def sync(url, user, password, groups, monitors, maints):
 
     types = {"http": MonitorType.HTTP, "port": MonitorType.PORT, "ping": MonitorType.PING}
     added = edited = 0
-    with UptimeKumaApi(url) as api:
+    with UptimeKumaApi(url, timeout=30) as api:  # 10s default is tight for old boxes
         api.login(user, password)
         all_mons = api.get_monitors()
         # Duplicate names (e.g. a group created twice because get_monitors() lagged
