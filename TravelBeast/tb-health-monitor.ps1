@@ -102,13 +102,34 @@ foreach ($svc in $Services) {
 }
 
 # --- Check: FleetMetricsWatchdog itself (last-run result + staleness), read-only ---
+# 2026-11-12 UTC -- LastTaskResult went permanently nonzero (0x800710E0) right after
+# a reboot that landed TravelBeast in a new timezone (Eastern -> W. Europe, this being
+# a travel laptop). Task Scheduler's CalendarTrigger StartBoundary has no timezone of
+# its own, and post-reboot-in-a-new-zone it started logging a spurious Event ID 153
+# ("missed its schedule") ~21s after every single real run -- confirmed via
+# Get-WinEvent (Microsoft-Windows-TaskScheduler/Operational) that the real run always
+# completes with "return code 0" moments earlier. That phantom entry is what overwrites
+# LastRunTime/LastTaskResult, not an actual restart failure, so it fired every 30 min
+# forever instead of self-clearing. Corroborate with the heartbeat the watchdog is
+# actually protecting -- same check FleetMetricsWatchdog.ps1 itself uses -- before
+# trusting Task Scheduler's bookkeeping.
 $WatchdogTriggered = 0
 $WatchdogDetail = ""
 try {
     $wdInfo = Get-ScheduledTaskInfo -TaskName "Fleet Metrics Watchdog" -ErrorAction Stop
     if ($wdInfo.LastTaskResult -ne 0) {
-        $WatchdogTriggered = 1
-        $WatchdogDetail = "Last result: $($wdInfo.LastTaskResult) (nonzero = a restart attempt failed). Last run: $($wdInfo.LastRunTime)."
+        $heartbeatFresh = $false
+        try {
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:9100/heartbeat_$HostName.txt" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+            if ($resp.StatusCode -eq 200) {
+                $hb = [DateTime]::Parse($resp.Content.Trim()).ToUniversalTime()
+                $heartbeatFresh = ((Get-Date).ToUniversalTime() - $hb).TotalMinutes -le 10
+            }
+        } catch {}
+        if (-not $heartbeatFresh) {
+            $WatchdogTriggered = 1
+            $WatchdogDetail = "Last result: $($wdInfo.LastTaskResult) (nonzero = a restart attempt failed). Last run: $($wdInfo.LastRunTime)."
+        }
     } elseif (((Get-Date) - $wdInfo.LastRunTime).TotalMinutes -gt 15) {
         $WatchdogTriggered = 1
         $WatchdogDetail = "Task has not run in $([int]((Get-Date) - $wdInfo.LastRunTime).TotalMinutes) min (expected every 5 min). Last run: $($wdInfo.LastRunTime)."
