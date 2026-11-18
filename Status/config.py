@@ -11,6 +11,7 @@ No code changes needed to add/remove machines or services — edit this file onl
 #   SCHEDULED_BLIP_WINDOWS. Consumed by reporters/transitions_reporter.py and engine.py.
 # Updated: 2026-11-14 UTC — add pi400 (spuiraspberry) to FLEET + REMOTE_LINK_HOSTS; HOST_TIMEZONES;
 #   blip-window local_start/local_end.
+# Updated: 2026-11-18 UTC — 9046unix: add Uptime Kuma :3001 service (second off-site Kuma).
 # Updated: 2026-08-13 UTC — moved surface3-gc into REMOTE_LINK_HOSTS (stationary Plex
 #   server at a remote site, not a sleeping laptop) and added remotews to the same set
 #   for the same reason.
@@ -497,8 +498,8 @@ FLEET = [
     },
     {
         # Added 2026-11-08. Old laptop, Ubuntu 24.04, three 5 TB USB archive drives
-        # (00p/01p primary; 02s decommissioned 2026-11-12, so two in use). No network services of its own yet, so
-        # the writer-liveness Heartbeat is the primary service; machine_info (with
+        # (00p/01p primary; 02s decommissioned 2026-11-12, so two in use). Heartbeat is
+        # the writer-liveness check; since 2026-11-18 it also runs Uptime Kuma (:3001); machine_info (with
         # the archive disks) is pulled from :9100 like every other host. Drive-level
         # health is local: scripts/9046Unix/9046unix-health-monitor.sh.
         "display_name": "9046unix",
@@ -514,6 +515,15 @@ FLEET = [
                 "check_type": "http_heartbeat",
                 "public_url": None,
                 "check_params": {"target_host": "9046unix"},
+            },
+            {
+                # Added 2026-11-18: second off-site Uptime Kuma 2 (Docker), mirror of
+                # pi400's. Listed so pi400's Kuma and the Windows checkers watch it.
+                "name": "Uptime Kuma",
+                "port": 3001,
+                "priority": "P",
+                "check_type": "tcp",
+                "public_url": None,
             },
         ],
     },
