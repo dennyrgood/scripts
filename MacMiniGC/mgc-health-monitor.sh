@@ -5,6 +5,9 @@
 # 2-sample streaks, 30-min re-alert, all-clear, one stdout line per run) plus the Plex/Syncthing/
 # disk checks from MathesMacMini/mathes-mac-mini-health-monitor.sh, since mgc is a Plex +
 # Syncthing box like mmm. Drafted before Plex/Syncthing/GC_Media existed: re-test after Phase 7.
+# 2026-11-18 23:20 UTC: re-tested with Plex + Syncthing running (0 alerts). Added Plex auto-restart
+#   (Plex is a login item, not a KeepAlive job, so nothing restarted it after its first-scan crash
+#   on 2026-11-18). Footer: Syncthing GUI is now http://macminigc:8384 (0.0.0.0, like mmm).
 #
 # Differences from mmm's version:
 #   - Syncthing is Homebrew's (brew services), not Syncthing.app, so the process pattern differs.
@@ -17,6 +20,8 @@
 #     nightly summary reports it instead.
 #   - The Receive Only folder (immich-restic) showing local changes is flagged: nothing on mgc
 #     should ever write to the off-site restic repo.
+#   - Plex MISSING for FAIL_THRESHOLD checks (~10 min) -> relaunched with open -a, every check
+#     until it's back; the alert says so, and the next check sends ALL CLEAR.
 #   - No UPS/NUT, no TMDB Explorer.
 
 HOST="MacMiniGC"                  # must match the writer's heartbeat_<HOST>.txt filename
@@ -36,6 +41,7 @@ SMART_TEMP_MAX=55                 # deg C; Seagate rates its desktop HDDs to 60 
 
 PLEX_PROC_PATTERN="Plex Media Server.app/Contents/MacOS/Plex Media Server"
 PLEX_URL="http://127.0.0.1:32400/identity"
+PLEX_APP="Plex Media Server"      # for open -a (auto-restart)
 SYNCTHING_PROC_PATTERN="opt/syncthing/bin/syncthing"
 SYNCTHING_BASE="http://127.0.0.1:8384"
 SYNCTHING_URL="$SYNCTHING_BASE/rest/noauth/health"
@@ -178,6 +184,17 @@ check_condition_streak() {
     fi
 }
 
+# Plex auto-restart: only once MISSING has lasted FAIL_THRESHOLD checks (so a manual
+# quit/update isn't fought within 5 min), then every check until it's back.
+plex_autorestart() {
+    if open -a "$PLEX_APP" >/dev/null 2>&1; then
+        PLEX_RESTART_NOTE="Auto-restart: ran open -a '${PLEX_APP}' at $(date '+%H:%M'). Expect ALL CLEAR in ~5 min."
+    else
+        PLEX_RESTART_NOTE="Auto-restart FAILED: open -a '${PLEX_APP}' returned an error. Start it by hand."
+    fi
+    echo "$(date '+%Y-%m-%d %H:%M:%S') ${PLEX_RESTART_NOTE}"
+}
+
 ALERT_BODY=""
 CLEAR_BODY=""
 for svc in $SERVICES; do
@@ -196,6 +213,10 @@ for svc in $SERVICES; do
         suppress) eval "MISSING_${svc}_ACTIVE=1" ;;
         wait|ok)  eval "MISSING_${svc}_ACTIVE=0" ;;
     esac
+    if [ "$svc" = "PLEX" ] && { [ "$verdict" = "alert" ] || [ "$verdict" = "suppress" ]; }; then
+        plex_autorestart
+        [ "$verdict" = "alert" ] && ALERT_BODY+="${PLEX_RESTART_NOTE}\n\n"
+    fi
 
     # Skip "down" while missing, so a crash doesn't read as "responding again" (FleetDev 2026-09-04 fix).
     [ "${MISSING_TRIGGERED[$svc]}" -eq 1 ] && continue
@@ -230,11 +251,13 @@ SMART PROBLEM: the 24TB is failing SMART, has a pre-fail attribute at threshold,
   copied from mmm and immich-restic from wbu, so nothing exists only here, but
   plan a replacement.
 
-PLEX / SYNCTHING MISSING: the app isn't running. Plex: open -a 'Plex Media Server'.
-  Syncthing: brew services restart syncthing.
+PLEX MISSING: the monitor relaunches it itself (open -a) every check until it's
+  back; ALL CLEAR follows. If alerts keep coming, check crash reports in
+  ~/Library/Application Support/Plex Media Server/Crash Reports/.
+SYNCTHING MISSING: brew services restart syncthing.
 PLEX / SYNCTHING PROBLEM: running but not answering, or (Syncthing) a folder is in
   error, has too many failed items, or immich-restic has local changes. Look in the
-  GUI (ssh -L 8384:127.0.0.1:8384 mgc).
+  GUI: http://macminigc:8384
 
 HEARTBEAT_WRITER / METRICS_SERVER: the fleet dashboard can't see mgc.
   launchctl kickstart -k gui/\$(id -u)/com.dennis.heartbeat-writer   (or .fleet-metrics-server)

@@ -7,6 +7,8 @@
 # SMART/temperature readout of the 24TB, Syncthing per-folder completion, Plex up/version, and the
 # monthly off-site restic verify result. Drafted before Plex/Syncthing/GC_Media existed: re-test
 # after Phase 7.
+# 2026-11-18 23:25 UTC: re-tested after Phase 7. Plex version now read from the MediaContainer
+#   element (the old grep matched the <?xml version="1.0"?> header).
 #
 # Sends via msmtp (iCloud SMTP, ~/.msmtprc account "icloud"). launchd gives a minimal PATH, so
 # every Homebrew tool is called by full path.
@@ -127,7 +129,7 @@ fi
 # --- Plex ---
 PLEX_ID=$(curl -s --max-time 5 "$PLEX_URL" 2>/dev/null)
 if [ -n "$PLEX_ID" ]; then
-    TLDR+="  Plex: up, $(echo "$PLEX_ID" | grep -oE 'version="[^"]*"' | head -1) ✓\n"
+    TLDR+="  Plex: up, version $(echo "$PLEX_ID" | sed -n 's/.*<MediaContainer .* version="\([^"]*\)".*/\1/p') ✓\n"
 else
     TLDR+="  Plex: ⚠️ no answer on $PLEX_URL\n"
     fail "Plex not answering"

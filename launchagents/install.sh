@@ -70,7 +70,9 @@ FLEETDEV_AGENTS="com.dennis.search-adv-web com.dennis.search-shows-web com.denni
 # MacMiniGC / mgc (2026-10-23 12:40 UTC): s3g's replacement in Gran Canaria. Fleet agents plus the monthly off-site
 # restic integrity check (port of Surface3GC/verify-restic-integrity-scheduled.ps1). Plex and Syncthing are not
 # LaunchAgents in this folder. Add com.dennis.mgc-health-monitor / mgc-nightly-summary here once those plists exist.
-MGC_AGENTS="$FLEET_ONLY com.dennis.mgc-restic-verify"
+# 2026-11-18 23:35 UTC: added mgc-health-monitor (5 min, incl. Plex auto-restart) and mgc-nightly-summary (07:00),
+# re-tested on mgc after Plex (Phase 7).
+MGC_AGENTS="$FLEET_ONLY com.dennis.mgc-restic-verify com.dennis.mgc-health-monitor com.dennis.mgc-nightly-summary"
 
 RAW_HOST="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
 # Normalize: strip apostrophes (straight ' and curly macOS default '),
