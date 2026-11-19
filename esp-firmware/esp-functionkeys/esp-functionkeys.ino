@@ -82,7 +82,7 @@ static const MonoPalette MONO_PALETTES[THEME_COUNT] = {
 struct CellSpec {
     const char *lines[2];
     int line_count;
-    bool cyc;
+    const char *tag; // sub-tag text under the label, e.g. "(cyc)"; "" = none
 };
 
 static const char *FKEYS[N_COLS] = {"F6", "F7", "F8", "F9", "F10", "F11", "F12"};
@@ -106,6 +106,9 @@ static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 // their keystroke, so a Hammerspoon binding can be added without touching
 // this file.
 // No modifier symbols in the action text itself anymore -- see MOD_TAG above.
+// Each cell's last field is a free-text sub-tag shown under the label
+// (small font, same row/col as the old "(cyc)" tag) -- "" for none, or any
+// string you want, e.g. "(cyc)", "(hold)", "(2x)".
 //
 // ====================================================================
 // AFTER EDITING THIS GRID, YOU MUST REFLASH THE BOARD, OR NOTHING CHANGES:
@@ -118,40 +121,40 @@ static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 // ====================================================================
 static const CellSpec GRID[N_ROWS][N_COLS] = {
     { // row 0 -- Ctrl+Shift
-        {{"Max", ""}, 1, false},
-        {{"", ""}, 0, false},
-        {{"new", ""}, 1, false},
-        {{"", ""}, 0, false},
-        {{"email", ""}, 1, false},
-        {{"move", ""}, 1, false},
-        {{"arrange", ""}, 1, false},
+        {{"Max", ""}, 1, ""},
+        {{"", ""}, 0, ""},
+        {{"new", ""}, 1, ""},
+        {{"", ""}, 0, ""},
+        {{"email", ""}, 1, ""},
+        {{"move", ""}, 1, ""},
+        {{"arrange", ""}, 1, ""},
     },
     { // row 1 -- Ctrl
-        {{"Min", ""}, 1, false},
-        {{"Restore", ""}, 1, false},
-        {{"iTerm", ""}, 1, true},
-        {{"", ""}, 0, false},
-        {{"live", ""}, 1, false},
-        {{"tear", ""}, 1, false},
-        {{"open", "iTerm"}, 2, false},
+        {{"Min", ""}, 1, ""},
+        {{"Restore", ""}, 1, "(min)"},
+        {{"iTerm", ""}, 1, "(cyc)"},
+        {{"", ""}, 0, ""},
+        {{"live", ""}, 1, ""},
+        {{"tear", ""}, 1, ""},
+        {{"open", "iTerm"}, 2, ""},
     },
     { // row 2 -- Shift
-        {{"Delay", ""}, 1, false},
-        {{"Scroll", ""}, 1, false},
-        {{"new", ""}, 1, false},
-        {{"new", ""}, 1, false},
-        {{"ug", ""}, 1, false},
-        {{"list", ""}, 1, false},
-        {{"new", ""}, 1, false},
+        {{"Delay", ""}, 1, ""},
+        {{"Scroll", ""}, 1, ""},
+        {{"new", ""}, 1, ""},
+        {{"new", ""}, 1, ""},
+        {{"ug", ""}, 1, ""},
+        {{"list", ""}, 1, ""},
+        {{"new", ""}, 1, ""},
     },
     { // row 3 -- Plain
-        {{"Area", ""}, 1, false},
-        {{"Full", ""}, 1, false},
-        {{"Term", ""}, 1, true},
-        {{"Firefox", ""}, 1, true},
-        {{"pat", ""}, 1, false},
-        {{"Jump", ""}, 1, true},
-        {{"Finder", ""}, 1, true},
+        {{"Area", ""}, 1, ""},
+        {{"Full", ""}, 1, ""},
+        {{"Term", ""}, 1, "(cyc)"},
+        {{"Firefox", ""}, 1, "(cyc)"},
+        {{"pat", ""}, 1, ""},
+        {{"Jump", ""}, 1, "(cyc)"},
+        {{"Finder", ""}, 1, "(cyc)"},
     },
 };
 
@@ -330,9 +333,9 @@ static void build_ui(void) {
                 lv_obj_align(content, LV_ALIGN_TOP_LEFT, 2, 0);
             }
 
-            if (spec.cyc) {
+            if (spec.tag != nullptr && spec.tag[0] != '\0') {
                 lv_obj_t *cyc = lv_label_create(cell);
-                lv_label_set_text(cyc, "(cyc)");
+                lv_label_set_text(cyc, spec.tag);
                 lv_obj_set_style_text_font(cyc, &lv_font_montserrat_14, 0);
                 lv_obj_set_style_text_color(cyc, cyc_col, 0);
                 lv_obj_set_style_text_opa(cyc, cyc_opa, 0);
