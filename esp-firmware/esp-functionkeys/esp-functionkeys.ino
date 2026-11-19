@@ -106,6 +106,16 @@ static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 // their keystroke, so a Hammerspoon binding can be added without touching
 // this file.
 // No modifier symbols in the action text itself anymore -- see MOD_TAG above.
+//
+// ====================================================================
+// AFTER EDITING THIS GRID, YOU MUST REFLASH THE BOARD, OR NOTHING CHANGES:
+//   cable in UART1 connector (port /dev/cu.usbmodem5B5E0664711), then:
+//     ./flash.esp.keypad          (from the scripts repo root)
+//   or ./flash-fkeys.sh           (from this esp-functionkeys/ directory)
+//   Then move the cable to the USB connector to use it as a keyboard again.
+//   SAVE THE FILE FIRST -- an unsaved edit compiles the old content and
+//   the flasher reports "no changed sectors," silently flashing nothing new.
+// ====================================================================
 static const CellSpec GRID[N_ROWS][N_COLS] = {
     { // row 0 -- Ctrl+Shift
         {{"Max", ""}, 1, false},
@@ -118,7 +128,7 @@ static const CellSpec GRID[N_ROWS][N_COLS] = {
     },
     { // row 1 -- Ctrl
         {{"Min", ""}, 1, false},
-        {{"", ""}, 0, false},
+        {{"Restore", ""}, 1, false},
         {{"iTerm", ""}, 1, true},
         {{"", ""}, 0, false},
         {{"live", ""}, 1, false},

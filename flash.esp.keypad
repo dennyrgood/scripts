@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# flash.esp.keypad -- thin wrapper, repo root. Runs the real flashing
+# script for the esp-functionkeys macro pad (ESP#2). See that script for
+# the flashing details (UART1 vs USB connector, port refusal guards, etc).
+set -euo pipefail
+exec "$(dirname "$0")/esp-firmware/esp-functionkeys/flash-fkeys.sh" "$@"
