@@ -15,10 +15,11 @@ and augments the user's physical Surface Dial + extended-F-key setup.
 - The grid mirrors the user's Hammerspoon bindings (posCtrlShift /
   posCtrl / posShift / posPlain tables in ~/.hammerspoon/init.lua).
   The action words are short labels for what Hammerspoon does on that
-  key. To know what a label really does, read the secret-free copy
-  ~/.hammerspoon/init.lua.safe. NEVER read init.lua or the
-  init.lua-* backups (real secrets; also denied in settings.json).
-  That includes grep/cat/sed via Bash, not just the Read tool.
+  key. To know what a label really does, read ~/.hammerspoon/init.lua.
+  As of 2026-11-19 it no longer contains secrets: typeSecret() reads
+  them from the macOS Keychain at keypress (service "hs-<name>").
+  Older init.lua-* / init.lua.bak* backups may still hold real secrets,
+  so don't read those.
 - The physical printed key strip above the real keys shows the same
   layout. Column colors here are chosen to match that strip.
 
@@ -85,9 +86,10 @@ looks at the panel (often sends a photo) -> adjust -> repeat.
 - Never ask the user whether they want to stop. Just do the next thing.
 - The user picks colors by eye on the real panel, which renders more
   yellow than a monitor. Expect several rounds; reflash each time.
-- Hammerspoon's init.lua contains real secrets (a GitHub token and
-  passwords). Never print, quote or copy them anywhere. Labels stay
-  as the short names already used (pat, ug, live, email).
+- Hammerspoon's init.lua no longer holds secrets (they are in the
+  Keychain), but older backups might. Never print, quote or copy a
+  secret anywhere. Labels stay as the short names already used
+  (pat, ug, live, email).
 - Keep labels short. Long words like "Terminal" clip the cell border
   (that's why it is "Term").
 - Fonts: only Montserrat 14 and 20 are enabled and used. Other sizes
