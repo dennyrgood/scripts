@@ -1,0 +1,12 @@
+Whenever you change Status/config.py:
+
+  1. Edit config.py, then commit and push.
+  2. Sync both Kumas. You can run both from one machine, because the sync talks
+     to each Kuma over the network:
+  Status/kuma_sync.sh
+  Status/kuma_sync.sh --url http://9046unix:3001
+     The first command goes to pi400, which is the default. Run them on
+     whichever box you're on (mb, mb2 or 9046), after a git pull there. You
+     don't need to be on each Kuma's own machine.
+  3. Restart the Windows checkers. On cwh and amsdt, git pull, then restart
+     Fleet Checker so the dashboard picks up the change too.
