@@ -1,0 +1,72 @@
+# zshrc.common - shared by every Mac in the fleet (fd, mb, mb2, mmm, mgc).
+# Source it from ~/.zshrc:   [ -f ~/repos/scripts/shell/zshrc.common ] && source ~/repos/scripts/shell/zshrc.common
+# Keep machine-specific things (precmd title, money/notify, one-off aliases) in each machine's own ~/.zshrc.
+
+export PATH="$HOME/.local/bin:/Applications/Tailscale.app/Contents/MacOS:$HOME/repos/scripts:$PATH"
+export PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+[ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env"
+
+# OLLAMA_HOST must NOT be exported: the Ollama.app tray captures shell env at
+# startup, and an exported remote host makes its local server try to bind
+# chatworkhorse's IP and crash-loop. So the function below sets it for ONE command
+# only, never exported. `o` (~/repos/scripts/o) is the fuller menu (models, launcher).
+# ollama: at an interactive terminal, asks which machine (Enter = this machine).
+# Skips the prompt when piped/scripted or when OLLAMA_HOST is already set.
+ollama() {
+  local host="" choice
+  if [ -t 0 ] && [ -t 1 ] && [ -z "$OLLAMA_HOST" ]; then
+    echo "  1) this machine (default)"
+    echo "  2) chatworkhorse"
+    echo "  3) imagebeast"
+    echo "  q) cancel"
+    read "choice?Machine: "
+    case "$choice" in
+      2) host="http://chatworkhorse:11434" ;;
+      3) host="http://imagebeast:11434" ;;
+      q|Q) return 0 ;;
+    esac
+  fi
+  if [ -n "$host" ]; then
+    OLLAMA_HOST="$host" command ollama "$@"
+  else
+    command ollama "$@"
+  fi
+}
+
+# notify: iMessage yourself via FleetDev (scripts/FleetDev/add-notify-alias.sh).
+# On FleetDev it runs notify-me directly; on every other machine it goes over ssh to fleetdev.
+_notify_run() {
+  if [[ "$(hostname -s)" == "FleetDev" ]]; then
+    ~/repos/scripts/FleetDev/notify-me "$@"
+  else
+    ssh -o ConnectTimeout=10 dennishmathes@fleetdev repos/scripts/FleetDev/notify-me "$@"
+  fi
+}
+notify() {
+  local e=
+  case "${1:-}" in
+    -h|--help) _notify_run --help </dev/null; return ;;
+    --email) e=--email; shift ;;
+  esac
+  if [ $# -gt 0 ]; then printf "%s\n" "$*"; else cat; fi | _notify_run $e
+}
+
+# Fleet ssh shortcuts (an alias to the machine you are on just ssh's to itself - harmless).
+alias wbu='ssh workbenchunix'
+alias cwhu='ssh -o LogLevel=ERROR chatworkhorseunix'
+alias amsdt='ssh amsterdamdesktop'
+alias ib='ssh imagebeast'
+alias cwh='ssh chatworkhorse'
+alias tb='ssh travelbeast'
+alias mb2='ssh denniss-2nd-macbook-air'
+alias pi='ssh dhm@spuiraspberry'
+alias 9046='ssh 9046unix'
+alias mb='ssh denniss-macbook-air'
+alias mmm='ssh mathes-mac-mini'
+alias mgc='ssh macminigc'
+alias rws='ssh remotews'
+alias s3g='ssh surface3-gc'
+alias sgc='ssh surfacegolaptopgc'
+alias nas='ssh -o LogLevel=ERROR fleetnas'
+alias nasj='ssh -o LogLevel=ERROR -J workbenchunix fleetnas'
+alias fd='ssh fleetdev'
