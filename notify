@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# notify - iMessage yourself via FleetDev. For the bash-only (Linux) boxes; the Macs get the
+# same behavior from the notify() function in shell/zshrc.common.
+#   notify "message"            send the message
+#   echo "message" | notify     message from stdin
+#   notify --email "message"    also email it
+#   notify --help
+# On FleetDev it runs notify-me directly; everywhere else it goes over ssh to fleetdev
+# (needs key login from this box to dennishmathes@fleetdev).
+
+run() {
+  if [ "$(hostname -s)" = "FleetDev" ]; then
+    "$HOME/repos/scripts/FleetDev/notify-me" "$@"
+  else
+    ssh -o ConnectTimeout=10 dennishmathes@fleetdev repos/scripts/FleetDev/notify-me "$@"
+  fi
+}
+
+e=
+case "${1:-}" in
+  -h|--help) run --help </dev/null; exit ;;
+  --email) e=--email; shift ;;
+esac
+
+if [ $# -gt 0 ]; then printf '%s\n' "$*"; else cat; fi | run $e
