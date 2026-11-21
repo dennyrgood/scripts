@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# o - Ollama launcher.
+#   o            menu: (1) pick a machine + model and chat, (2) Ollama's own menu on cwh or ib
+#   o <args>     pass straight through to the LOCAL ollama (e.g. o list, o run llama3.2:3b)
+
+LOCAL="http://127.0.0.1:11434"
+CWH="http://chatworkhorse:11434"
+IB="http://imagebeast:11434"
+
+if [ $# -gt 0 ]; then
+  OLLAMA_HOST="$LOCAL" exec ollama "$@"
+fi
+
+# choose "prompt" item1 item2 ... -> prints one item per line, sets PICK (1-based). q quits.
+choose() {
+  local prompt="$1"; shift
+  local count=$# i=1 item reply
+  echo
+  for item in "$@"; do
+    printf '  %2d) %s\n' "$i" "$item"
+    i=$((i+1))
+  done
+  echo "   q) quit"
+  while true; do
+    read -r -p "$prompt" reply || exit 0
+    case "$reply" in q|Q) exit 0 ;; esac
+    if [[ "$reply" =~ ^[0-9]+$ ]] && [ "$reply" -ge 1 ] && [ "$reply" -le "$count" ]; then
+      PICK=$reply
+      return 0
+    fi
+  done
+}
+
+choose "Choice: " \
+  "My models (pick machine + model)" \
+  "Ollama's own menu on chatworkhorse" \
+  "Ollama's own menu on imagebeast"
+
+case "$PICK" in
+  2) OLLAMA_HOST="$CWH" exec ollama ;;
+  3) OLLAMA_HOST="$IB" exec ollama ;;
+esac
+
+NAMES=("this machine" "imagebeast" "chatworkhorse")
+HOSTS=("$LOCAL" "$IB" "$CWH")
+choose "Machine: " "${NAMES[@]}"
+NAME="${NAMES[$((PICK-1))]}"
+HOST="${HOSTS[$((PICK-1))]}"
+
+MODELS=()
+while IFS= read -r line; do
+  [ -n "$line" ] && MODELS+=("$line")
+done < <(OLLAMA_HOST="$HOST" ollama list 2>/dev/null | awk 'NR>1{print $1}')
+if [ ${#MODELS[@]} -eq 0 ]; then
+  echo "No models returned from $NAME ($HOST) - is it up?"
+  exit 1
+fi
+
+choose "Model on $NAME: " "${MODELS[@]}"
+OLLAMA_HOST="$HOST" exec ollama run "${MODELS[$((PICK-1))]}"
