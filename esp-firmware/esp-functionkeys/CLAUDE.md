@@ -4,24 +4,75 @@ Touchscreen macro pad on a Waveshare ESP32-S3-Touch-LCD-7 (800x480).
 Tapping a cell sends a real USB HID keystroke to the Mac. It replaces
 and augments the user's physical Surface Dial + extended-F-key setup.
 
+## The F-key layout (redone 2026-11-24)
+F-keys are split by where they live. Hammerspoon (~/.hammerspoon/init.lua,
+`fkeyMap`) and Rectangle Pro do the actions; this firmware only sends keys.
+- F1-F7  = THIS PAD. Columns of the grid. (FKEY_CODES[] is F1..F7.)
+- F8-F12 = laptop keyboard only (not on the pad). F8 Firefox, F10 Jump
+  (cycle / Shift = list), F12 = pat/ug/live/email. F9, F11 unbound.
+- F13-F19 = extended keyboard only (not on the pad): window management
+  in Rectangle Pro (see "Rectangle Pro and F13-F19" below).
+
+Pad cells (Hammerspoon actions; blank = no label but still sends the key):
+| Col | Plain | Shift | Ctrl | Ctrl+Shift |
+|---|---|---|---|---|
+| F1 | Area | Delay | | |
+| F2 | Full | Scroll | | |
+| F3 | Term (cyc) | new | | |
+| F4 | iTerm (cyc) | new iTerm | | |
+| F5 | Finder (cyc) | new | open iTerm @folder | |
+| F6 | Max (toggle) | Min | Restore (un-minimize) | |
+| F7 | Move | Tear | Jump (dup of F10) | Jump list (dup of Shift+F10) |
+
 ## What the grid means
-- Column = F-key: F6..F12 (FKEY_CODES[] is in that order).
+- Column = F-key: F1..F7.
 - Row = modifier layer, top to bottom: Ctrl+Shift, Ctrl, Shift, Plain.
   ROW_CTRL[] / ROW_SHIFT[] give the modifiers per row.
 - Every cell is exactly one keystroke: the row's modifiers + the
   column's F-key. Blank cells (line_count 0) are unlabeled (same full
   color, not dimmed) but STILL send their keystroke, so bindings can be added in Hammerspoon
   without touching the firmware.
-- The grid mirrors the user's Hammerspoon bindings (posCtrlShift /
-  posCtrl / posShift / posPlain tables in ~/.hammerspoon/init.lua).
+- The grid mirrors the user's Hammerspoon bindings (fkeyMap in
+  ~/.hammerspoon/init.lua, built from the posCtrlShift / posCtrl /
+  posShift / posPlain action tables).
   The action words are short labels for what Hammerspoon does on that
   key. To know what a label really does, read ~/.hammerspoon/init.lua.
   As of 2026-11-19 it no longer contains secrets: typeSecret() reads
   them from the macOS Keychain at keypress (service "hs-<name>").
   Older init.lua-* / init.lua.bak* backups may still hold real secrets,
   so don't read those.
-- The physical printed key strip above the real keys shows the same
-  layout. Column colors here are chosen to match that strip.
+- Column colors: amber F1-F2 (capture), green F3-F5 (apps), purple F6-F7
+  (window). They do NOT necessarily match the old printed key strip.
+
+## Rectangle Pro and F13-F19 (extended keyboard)
+Hammerspoon forwards ONLY plain F13-F19 (the `rectFwd` table):
+F13/F14/F15 -> ctrl+opt+D/F/G (thirds), F16-F19 -> ctrl+opt+U/I/J/K
+(quarters TL/TR/BL/BR). Shift / Ctrl / Ctrl+Shift F13-F19 are recorded
+directly in Rectangle Pro and Hammerspoon must NOT bind them (a Hammerspoon
+hotkey swallows the key before Rectangle sees it):
+- Shift: bottom sixths (F13-F15), bottom eighths (F16-F19)
+- Ctrl: top sixths (F13-F15), top eighths (F16-F19)
+- Ctrl+Shift: Snap Left/Up/Right on F13/F14/F15; Snap TL/TR/BL/BR on F16-F19
+Backup of the working config: ~/Documents/RectangleProConfigFinal.json
+(RectangleProConfigOrig.json = before the hand edit).
+
+### Making Rectangle Pro use Ctrl+F14 / Ctrl+F15 (manual JSON edit)
+Rectangle Pro's GUI shortcut recorder refuses F14 and F15 (with some
+modifier combos, e.g. plain Ctrl), even though the keys reach apps fine
+(verified with an hs.eventtap logger: `f14(107) ctrl+fn`). The macOS
+brightness shortcuts (symbolichotkeys ids 53/54 on keycodes 107/113) are
+already disabled here, so that is not the cause -- it is the recorder.
+Workaround, confirmed working 2026-11-24:
+1. In Rectangle Pro, assign any combo it accepts (e.g. Ctrl+Shift+F13) to
+   the action, then Settings > General > Export Config.
+2. Edit the JSON under "shortcuts": set that action's "keyCode" and
+   "modifierFlags". Names seen in the export: topCenterSixth, topRightSixth,
+   moveLeft/moveUp/moveRight, snapTopLeft/TopRight/BottomLeft/BottomRight.
+3. Import Config. Check for duplicate (keyCode, modifierFlags) pairs after.
+keyCodes: F13=105 F14=107 F15=113 F16=106 F17=64 F18=79 F19=80.
+modifierFlags: Shift=131072, Ctrl=262144, Ctrl+Shift=393216.
+Diff two exports with sorted keys: `diff -u <(python3 -m json.tool
+--sort-keys A.json) <(python3 -m json.tool --sort-keys B.json)`.
 
 ## Where things live (esp-functionkeys.ino)
 - GRID[row][col]: CellSpec {lines[2], line_count, cyc}.
@@ -44,7 +95,7 @@ and augments the user's physical Surface Dial + extended-F-key setup.
   MONO_PALETTES[] (indexed by the Theme enum); THEME_COLOR keeps
   using COL_FILL_HEX[]/COL_DARK_TEXT[] instead. The current theme is
   saved in flash (NVS namespace "fkeys", key "theme", a uint8) and
-  read in setup(). Hold the top-left cell (Ctrl+Shift F6,
+  read in setup(). Hold the top-left cell (Ctrl+Shift F1,
   THEME_TOGGLE_ROW/COL) for THEME_TOGGLE_MS (2s), then release: it
   advances to the next theme and reboots into it, sending NO
   keystroke. A normal tap on that cell still sends its keystroke.

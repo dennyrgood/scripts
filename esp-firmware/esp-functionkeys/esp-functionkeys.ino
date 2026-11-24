@@ -85,8 +85,8 @@ struct CellSpec {
     const char *tag; // sub-tag text under the label, e.g. "(cyc)"; "" = none
 };
 
-static const char *FKEYS[N_COLS] = {"F6", "F7", "F8", "F9", "F10", "F11", "F12"};
-static const uint8_t FKEY_CODES[N_COLS] = {KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12};
+static const char *FKEYS[N_COLS] = {"F1", "F2", "F3", "F4", "F5", "F6", "F7"};
+static const uint8_t FKEY_CODES[N_COLS] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7};
 
 // Which modifiers each row's keystroke holds down. Row order matches MOD_TAG
 // below: 0=Ctrl+Shift, 1=Ctrl, 2=Shift, 3=Plain (no modifier).
@@ -101,7 +101,7 @@ static const bool ROW_SHIFT[N_ROWS] = {true,  false, true,  false};
 static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 
 // [row][col] -- row 0 = Ctrl+Shift, row 1 = Ctrl, row 2 = Shift, row 3 = Plain.
-// F8/F10/F11 use all four layers; F12 stops at Ctrl; F6/F7/F9 stop at Shift.
+// Pad = F1-F7 (F8-F12 laptop keys and F13-F19 extended keys are not on the pad).
 // Blank cells (line_count 0) are unlabeled (same color, not dimmed) but STILL send
 // their keystroke, so a Hammerspoon binding can be added without touching
 // this file.
@@ -120,48 +120,48 @@ static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 //   the flasher reports "no changed sectors," silently flashing nothing new.
 // ====================================================================
 static const CellSpec GRID[N_ROWS][N_COLS] = {
-    { // row 0 -- Ctrl+Shift
-        {{"Max", ""}, 1, ""},
+    { // row -- Ctrl+Shift
         {{"", ""}, 0, ""},
-        {{"new", ""}, 1, ""},
         {{"", ""}, 0, ""},
-        {{"email", ""}, 1, ""},
-        {{"move", ""}, 1, ""},
-        {{"arrange", ""}, 1, ""},
+        {{"", ""}, 0, ""},
+        {{"", ""}, 0, ""},
+        {{"", ""}, 0, ""},
+        {{"", ""}, 0, ""},
+        {{"Jump", "list"}, 2, "(dup)"},
     },
-    { // row 1 -- Ctrl
-        {{"Min", ""}, 1, ""},
-        {{"Restore", ""}, 1, "(min)"},
-        {{"iTerm", ""}, 1, "(cyc)"},
+    { // row -- Ctrl
         {{"", ""}, 0, ""},
-        {{"live", ""}, 1, ""},
-        {{"tear", ""}, 1, ""},
+        {{"", ""}, 0, ""},
+        {{"", ""}, 0, ""},
+        {{"", ""}, 0, ""},
         {{"open", "iTerm"}, 2, ""},
+        {{"Restore", ""}, 1, "(min)"},
+        {{"Jump", ""}, 1, "(dup)"},
     },
-    { // row 2 -- Shift
+    { // row -- Shift
         {{"Delay", ""}, 1, ""},
         {{"Scroll", ""}, 1, ""},
         {{"new", ""}, 1, ""},
         {{"new", ""}, 1, ""},
-        {{"ug", ""}, 1, ""},
-        {{"list", ""}, 1, ""},
         {{"new", ""}, 1, ""},
+        {{"Min", ""}, 1, ""},
+        {{"Tear", ""}, 1, ""},
     },
-    { // row 3 -- Plain
+    { // row -- Plain
         {{"Area", ""}, 1, ""},
         {{"Full", ""}, 1, ""},
         {{"Term", ""}, 1, "(cyc)"},
-        {{"Firefox", ""}, 1, "(cyc)"},
-        {{"pat", ""}, 1, ""},
-        {{"Jump", ""}, 1, "(cyc)"},
+        {{"iTerm", ""}, 1, "(cyc)"},
         {{"Finder", ""}, 1, "(cyc)"},
+        {{"Max", ""}, 1, ""},
+        {{"Move", ""}, 1, ""},
     },
 };
 
 // Per-column colors, matching the physical printed key strip above the keys:
-// amber, amber, dark green, dark green, yellow, purple, dark green.
-static const uint32_t COL_FILL_HEX[N_COLS] = {0xE8590C, 0xE8590C, 0x22C55E, 0x22C55E, 0xFBBF24, 0x7B3FA6, 0x22C55E};
-static const bool COL_DARK_TEXT[N_COLS]    = {true,     true,     false,    false,    true,     false,    false};
+// amber, amber (capture), green x3 (apps), purple x2 (window). Physical strip colors for F1-F7 not matched.
+static const uint32_t COL_FILL_HEX[N_COLS] = {0xE8590C, 0xE8590C, 0x22C55E, 0x22C55E, 0x22C55E, 0x7B3FA6, 0x7B3FA6};
+static const bool COL_DARK_TEXT[N_COLS]    = {true,     true,     false,    false,    false,    false,    false};
 
 // Per-cell context handed to the event callback so it knows which
 // keystroke to send and which colors to restore after a press.
