@@ -7,11 +7,14 @@ and augments the user's physical Surface Dial + extended-F-key setup.
 ## The F-key layout (redone 2026-11-24)
 F-keys are split by where they live. Hammerspoon (~/.hammerspoon/init.lua,
 `fkeyMap`) and Rectangle Pro do the actions; this firmware only sends keys.
-- F1-F7  = THIS PAD. Columns of the grid. (FKEY_CODES[] is F1..F7.)
+- F1-F7  = THIS PAD, layout 0 (default). FKEY_CODES[0][] is F1..F7.
 - F8-F12 = laptop keyboard only (not on the pad). F8 Firefox, F10 Jump
   (cycle / Shift = list), F12 = pat/ug/live/email. F9, F11 unbound.
-- F13-F19 = extended keyboard only (not on the pad): window management
-  in Rectangle Pro (see "Rectangle Pro and F13-F19" below).
+- F13-F19 = extended keyboard (window management in Rectangle Pro, see
+  "Rectangle Pro and F13-F19" below) AND pad layout 1: medium-hold the
+  top-left cell to switch the pad to a second layout that sends F13-F19
+  (FKEY_CODES[1][]) with its own labels and colors (blue F13-F15, teal
+  F16-F19). See "Layouts and hold tiers".
 
 Pad cells (Hammerspoon actions; blank = no label but still sends the key):
 | Col | Plain | Shift | Ctrl | Ctrl+Shift |
@@ -22,10 +25,45 @@ Pad cells (Hammerspoon actions; blank = no label but still sends the key):
 | F4 | iTerm (cyc) | new iTerm | | |
 | F5 | Finder (cyc) | new | open iTerm @folder | |
 | F6 | Max (toggle) | Min | Restore (un-minimize) | |
-| F7 | Move | Tear | Jump (dup of F10) | Jump list (dup of Shift+F10) |
+| F7 | Move | Tear | Jump | Jump (list) |
+
+Pad layout 1 (F13-F19; labels in GRID[1]; Rectangle Pro does the work):
+| Row | F13 | F14 | F15 | F16 | F17 | F18 | F19 |
+|---|---|---|---|---|---|---|---|
+| Ctrl+Shift | Snap Left | Snap Up | Snap Right | Snap TL | Snap TR | Snap BL | Snap BR |
+| Ctrl | 6th TL | 6th TC | 6th TR | 8th TL | 8th TCL | 8th TCR | 8th TR |
+| Shift | 6th BL | 6th BC | 6th BR | 8th BL | 8th BCL | 8th BCR | 8th BR |
+| Plain | 1/3 | 2/3 | 3/3 | 1/4 TL | 1/4 TR | 1/4 BL | 1/4 BR |
+(T/B = top/bottom, L/C/R = left/center/right, TCL/TCR = center-left/right.
+Plain F13-F19 go through Hammerspoon's rectFwd -> ctrl+opt+D/F/G, U/I/J/K.)
+
+## Option swap (Hammerspoon, 2026-11-24)
+Holding the Mac keyboard's Option key swaps the two ranges for any key
+source (the ESP cannot see the Mac's Option state, so this lives in
+~/.hammerspoon/init.lua, "OPTION SWAP" block): Opt+F1-F7 acts like
+F13-F19, Opt+F13-F19 acts like F1-F7. Not swapped: F8-F12. Opt+F1-F7 plain
+runs the ctrl+opt forward; with Shift/Ctrl/Ctrl+Shift it posts a synthetic
+F13-F19 with that modifier for Rectangle Pro. Checked no conflict: no
+enabled macOS symbolic hotkey and no Rectangle Pro shortcut uses Option on
+these keys.
+
+## Layouts and hold tiers (added 2026-11-24)
+Top-left cell (THEME_TOGGLE_ROW/COL = Ctrl+Shift F1 / F13), by hold time:
+- under LAYOUT_TOGGLE_MS (600 ms): normal tap, sends its keystroke on release.
+- 600 ms up to THEME_TOGGLE_MS (2000 ms): switches layout 0 <-> 1, sends nothing.
+- 2000 ms or more: next theme + reboot, sends nothing (as before).
+The cell border turns yellow at the layout tier and red at the theme tier
+while the finger is still down (hold_feedback()). The layout switch rebuilds
+the screen via lv_async_call (never from inside the touch callback, since
+lv_obj_clean() deletes the cell that is handling the event). The layout is
+kept in NVS key "layout" ONLY across the theme-change reboot (setup() reads
+and erases it); any other boot, including moving the cable, starts in layout 0.
+Per-layout arrays: FKEYS, FKEY_CODES, GRID, COL_FILL_HEX, COL_DARK_TEXT are
+all indexed [g_layout]. A third layout = bump LAYOUT_COUNT and add an entry
+to each of those five.
 
 ## What the grid means
-- Column = F-key: F1..F7.
+- Column = F-key: F1..F7 (layout 0) or F13..F19 (layout 1).
 - Row = modifier layer, top to bottom: Ctrl+Shift, Ctrl, Shift, Plain.
   ROW_CTRL[] / ROW_SHIFT[] give the modifiers per row.
 - Every cell is exactly one keystroke: the row's modifiers + the
@@ -75,12 +113,12 @@ Diff two exports with sorted keys: `diff -u <(python3 -m json.tool
 --sort-keys A.json) <(python3 -m json.tool --sort-keys B.json)`.
 
 ## Where things live (esp-functionkeys.ino)
-- GRID[row][col]: CellSpec {lines[2], line_count, cyc}.
+- GRID[layout][row][col]: CellSpec {lines[2], line_count, cyc}.
   - lines: up to 2 lines of label text.
   - cyc: display-only. Shows a small "(cyc)" tag under the label.
     It does not change the keystroke. Set on Term, Firefox, Jump,
     Finder (and means "cycles" in the user's Hammerspoon setup).
-- COL_FILL_HEX[] / COL_DARK_TEXT[]: per-column fill color and whether
+- COL_FILL_HEX[layout][] / COL_DARK_TEXT[layout][]: per-column fill color and whether
   text is black (true) or white (false). Change these to recolor.
 - MOD_TAG[]: small modifier text in each cell's corner ("^Sh", "^",
   "Sh"). Text, not symbols: LV_SYMBOL_UP and "^" looked identical.
@@ -95,7 +133,7 @@ Diff two exports with sorted keys: `diff -u <(python3 -m json.tool
   MONO_PALETTES[] (indexed by the Theme enum); THEME_COLOR keeps
   using COL_FILL_HEX[]/COL_DARK_TEXT[] instead. The current theme is
   saved in flash (NVS namespace "fkeys", key "theme", a uint8) and
-  read in setup(). Hold the top-left cell (Ctrl+Shift F1,
+  read in setup(). Hold the top-left cell (Ctrl+Shift F1 / F13,
   THEME_TOGGLE_ROW/COL) for THEME_TOGGLE_MS (2s), then release: it
   advances to the next theme and reboots into it, sending NO
   keystroke. A normal tap on that cell still sends its keystroke.
@@ -111,7 +149,7 @@ looks at the panel (often sends a photo) -> adjust -> repeat.
   set COL_DARK_TEXT[] (true = black text, false = white). Hex codes
   from the user are used as given, e.g. "#22c55e" -> 0x22C55E. If a
   color looks off, adjust and reflash rather than debating it.
-- Change a label: edit the string in GRID[row][col]. Keep it short.
+- Change a label: edit the string in GRID[layout][row][col]. Keep it short.
   Use 2 lines only where line_count is 2 (see "open"/"Iterm").
 - Add or remove the "(cyc)" tag: flip that cell's cyc flag.
 - Move or restyle text (alignment, font, corner tags): the cell is

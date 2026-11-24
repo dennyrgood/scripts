@@ -1,5 +1,5 @@
 /*
- * ESP-FUNCTIONKEYS — visual macro-pad GUI, F6-F12 cheat sheet / touch pad.
+ * ESP-FUNCTIONKEYS — visual macro-pad GUI, F1-F7 / F13-F19 cheat sheet / touch pad.
  * Base init sequence copied verbatim from Waveshare's official
  * examples/Arduino/examples/10_lvgl_v9_demo (esp-arduino-libs/ESP32_Display_Panel),
  * same as fleet_wall/esp-test.
@@ -11,7 +11,9 @@
  * HID+CDC device. Pattern taken from arduino-esp32's own
  * USB/examples/Keyboard/KeyboardMessage: Keyboard.begin() before USB.begin().
  *
- * Grid: 7 columns (F6-F12) x 4 rows (Ctrl+Shift / Ctrl / Shift / Plain),
+ * Two layouts (medium-hold the top-left cell to switch): layout 0 = F1-F7,
+ * layout 1 = F13-F19 (Rectangle Pro window management).
+ * Grid: 7 columns (F1-F7 or F13-F19) x 4 rows (Ctrl+Shift / Ctrl / Shift / Plain),
  * mirroring the real Hammerspoon posCtrlShift/posCtrl/posShift/posPlain
  * tables -- every modifier variant is its own touch target, column = F-key,
  * so no on-screen modifier toggle is needed at all.
@@ -49,9 +51,22 @@ static USBHIDKeyboard Keyboard;
 enum Theme { THEME_COLOR = 0, THEME_CLASSIC, THEME_AMBER, THEME_GREEN, THEME_COUNT };
 static Theme g_theme = THEME_COLOR;
 static uint32_t g_press_ms = 0;
+
+// Two layouts, same 7x4 grid shape. Layout 0 sends F1-F7, layout 1 sends
+// F13-F19 (extended-keyboard keys; Rectangle Pro does the window moves).
+// Hold the top-left cell (see THEME_TOGGLE_ROW/COL) for TIERED durations:
+//   < LAYOUT_TOGGLE_MS             -> normal tap, sends its keystroke
+//   LAYOUT_TOGGLE_MS..THEME_TOGGLE_MS -> switch layout, sends NOTHING
+//   >= THEME_TOGGLE_MS             -> next theme + reboot, sends NOTHING
+// The cell's border turns yellow at the layout tier and red at the theme
+// tier while the finger is still down, so you can see which one you'll get.
+#define LAYOUT_COUNT 2
+#define LAYOUT_TOGGLE_MS 600
+static int g_layout = 0;
+static int g_hold_tier = 0; // 0 none, 1 layout, 2 theme (feedback state)
 #define THEME_TOGGLE_ROW 0
 #define THEME_TOGGLE_COL 0
-#define THEME_TOGGLE_MS  2000
+#define THEME_TOGGLE_MS  2000 // must stay > LAYOUT_TOGGLE_MS
 
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
@@ -85,8 +100,15 @@ struct CellSpec {
     const char *tag; // sub-tag text under the label, e.g. "(cyc)"; "" = none
 };
 
-static const char *FKEYS[N_COLS] = {"F1", "F2", "F3", "F4", "F5", "F6", "F7"};
-static const uint8_t FKEY_CODES[N_COLS] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7};
+// [layout][col]. Layout 0 = F1-F7, layout 1 = F13-F19.
+static const char *FKEYS[LAYOUT_COUNT][N_COLS] = {
+    {"F1", "F2", "F3", "F4", "F5", "F6", "F7"},
+    {"F13", "F14", "F15", "F16", "F17", "F18", "F19"},
+};
+static const uint8_t FKEY_CODES[LAYOUT_COUNT][N_COLS] = {
+    {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7},
+    {KEY_F13, KEY_F14, KEY_F15, KEY_F16, KEY_F17, KEY_F18, KEY_F19},
+};
 
 // Which modifiers each row's keystroke holds down. Row order matches MOD_TAG
 // below: 0=Ctrl+Shift, 1=Ctrl, 2=Shift, 3=Plain (no modifier).
@@ -119,49 +141,101 @@ static const char *MOD_TAG[N_ROWS] = {"^Sh", "^", "Sh", ""};
 //   SAVE THE FILE FIRST -- an unsaved edit compiles the old content and
 //   the flasher reports "no changed sectors," silently flashing nothing new.
 // ====================================================================
-static const CellSpec GRID[N_ROWS][N_COLS] = {
-    { // row -- Ctrl+Shift
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"Jump", "list"}, 2, "(dup)"},
+// [layout][row][col]. Layout 1 mirrors Rectangle Pro (set in that app):
+//   Plain = thirds + quarters (Hammerspoon forwards plain F13-F19 to
+//           ctrl+opt+D/F/G and U/I/J/K), Shift = bottom sixths/eighths,
+//   Ctrl = top sixths/eighths, Ctrl+Shift = Snap. TL/TC/TR = top left/
+//   center/right, BL/BC/BR = bottom, TCL/TCR = top center-left/right.
+static const CellSpec GRID[LAYOUT_COUNT][N_ROWS][N_COLS] = {
+    { // layout 0: F1-F7
+        { // row -- Ctrl+Shift
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"Jump", ""}, 1, "(list)"},
+        },
+        { // row -- Ctrl
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"", ""}, 0, ""},
+            {{"open", "iTerm"}, 2, ""},
+            {{"Restore", ""}, 1, "(min)"},
+            {{"Jump", ""}, 1, ""},
+        },
+        { // row -- Shift
+            {{"Delay", ""}, 1, ""},
+            {{"Scroll", ""}, 1, ""},
+            {{"new", ""}, 1, ""},
+            {{"new", ""}, 1, ""},
+            {{"new", ""}, 1, ""},
+            {{"Min", ""}, 1, ""},
+            {{"Tear", ""}, 1, ""},
+        },
+        { // row -- Plain
+            {{"Area", ""}, 1, ""},
+            {{"Full", ""}, 1, ""},
+            {{"Term", ""}, 1, "(cyc)"},
+            {{"iTerm", ""}, 1, "(cyc)"},
+            {{"Finder", ""}, 1, "(cyc)"},
+            {{"Max", ""}, 1, ""},
+            {{"Move", ""}, 1, ""},
+        },
     },
-    { // row -- Ctrl
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"", ""}, 0, ""},
-        {{"open", "iTerm"}, 2, ""},
-        {{"Restore", ""}, 1, "(min)"},
-        {{"Jump", ""}, 1, "(dup)"},
-    },
-    { // row -- Shift
-        {{"Delay", ""}, 1, ""},
-        {{"Scroll", ""}, 1, ""},
-        {{"new", ""}, 1, ""},
-        {{"new", ""}, 1, ""},
-        {{"new", ""}, 1, ""},
-        {{"Min", ""}, 1, ""},
-        {{"Tear", ""}, 1, ""},
-    },
-    { // row -- Plain
-        {{"Area", ""}, 1, ""},
-        {{"Full", ""}, 1, ""},
-        {{"Term", ""}, 1, "(cyc)"},
-        {{"iTerm", ""}, 1, "(cyc)"},
-        {{"Finder", ""}, 1, "(cyc)"},
-        {{"Max", ""}, 1, ""},
-        {{"Move", ""}, 1, ""},
+    { // layout 1: F13-F19
+        { // row -- Ctrl+Shift
+            {{"Snap", "Left"}, 2, ""},
+            {{"Snap", "Up"}, 2, ""},
+            {{"Snap", "Right"}, 2, ""},
+            {{"Snap", "TL"}, 2, ""},
+            {{"Snap", "TR"}, 2, ""},
+            {{"Snap", "BL"}, 2, ""},
+            {{"Snap", "BR"}, 2, ""},
+        },
+        { // row -- Ctrl
+            {{"6th", "TL"}, 2, ""},
+            {{"6th", "TC"}, 2, ""},
+            {{"6th", "TR"}, 2, ""},
+            {{"8th", "TL"}, 2, ""},
+            {{"8th", "TCL"}, 2, ""},
+            {{"8th", "TCR"}, 2, ""},
+            {{"8th", "TR"}, 2, ""},
+        },
+        { // row -- Shift
+            {{"6th", "BL"}, 2, ""},
+            {{"6th", "BC"}, 2, ""},
+            {{"6th", "BR"}, 2, ""},
+            {{"8th", "BL"}, 2, ""},
+            {{"8th", "BCL"}, 2, ""},
+            {{"8th", "BCR"}, 2, ""},
+            {{"8th", "BR"}, 2, ""},
+        },
+        { // row -- Plain
+            {{"1/3", ""}, 1, ""},
+            {{"2/3", ""}, 1, ""},
+            {{"3/3", ""}, 1, ""},
+            {{"1/4", "TL"}, 2, ""},
+            {{"1/4", "TR"}, 2, ""},
+            {{"1/4", "BL"}, 2, ""},
+            {{"1/4", "BR"}, 2, ""},
+        },
     },
 };
 
-// Per-column colors, matching the physical printed key strip above the keys:
-// amber, amber (capture), green x3 (apps), purple x2 (window). Physical strip colors for F1-F7 not matched.
-static const uint32_t COL_FILL_HEX[N_COLS] = {0xE8590C, 0xE8590C, 0x22C55E, 0x22C55E, 0x22C55E, 0x7B3FA6, 0x7B3FA6};
-static const bool COL_DARK_TEXT[N_COLS]    = {true,     true,     false,    false,    false,    false,    false};
+// Per-column colors, per layout. Layout 0: amber, amber (capture), green x3
+// (apps), purple x2 (window). Layout 1: blue (F13-F15: thirds/sixths/snap
+// L-U-R), teal (F16-F19: quarters/eighths/snap corners).
+static const uint32_t COL_FILL_HEX[LAYOUT_COUNT][N_COLS] = {
+    {0xE8590C, 0xE8590C, 0x22C55E, 0x22C55E, 0x22C55E, 0x7B3FA6, 0x7B3FA6},
+    {0x2563EB, 0x2563EB, 0x2563EB, 0x0D9488, 0x0D9488, 0x0D9488, 0x0D9488},
+};
+static const bool COL_DARK_TEXT[LAYOUT_COUNT][N_COLS] = {
+    {true,  true,  false, false, false, false, false},
+    {false, false, false, false, false, false, false},
+};
 
 // Per-cell context handed to the event callback so it knows which
 // keystroke to send and which colors to restore after a press.
@@ -181,7 +255,7 @@ static void send_keystroke(int row, int col) {
     // Blank cells send too -- no line_count guard on purpose.
     if (ROW_CTRL[row])  Keyboard.press(KEY_LEFT_CTRL);
     if (ROW_SHIFT[row]) Keyboard.press(KEY_LEFT_SHIFT);
-    Keyboard.press(FKEY_CODES[col]);
+    Keyboard.press(FKEY_CODES[g_layout][col]);
     delay(15);
     Keyboard.releaseAll();
 }
@@ -191,10 +265,43 @@ static void advance_theme_and_restart(void) {
     Preferences prefs;
     prefs.begin("fkeys", false);
     prefs.putUChar("theme", (uint8_t)next);
+    // Carry the current layout across THIS reboot only; setup() reads and
+    // erases it, so a power cycle (e.g. moving the cable) boots to layout 0.
+    prefs.putUChar("layout", (uint8_t)g_layout);
     prefs.end();
     Serial.printf("Theme -> %d, restarting\n", (int)next);
     delay(50);
     ESP.restart();
+}
+
+static void build_ui(void);
+
+// Rebuild the whole screen for the new g_layout. Run via lv_async_call, NOT
+// directly from the touch callback: that callback belongs to a cell that
+// lv_obj_clean() is about to delete.
+static void rebuild_ui_async(void *) {
+    build_ui();
+}
+
+static void switch_layout(void) {
+    g_layout = (g_layout + 1) % LAYOUT_COUNT;
+    Serial.printf("Layout -> %d\n", g_layout);
+    lv_async_call(rebuild_ui_async, nullptr);
+}
+
+static bool is_toggle_cell(const CellCtx *ctx) {
+    return ctx->row == THEME_TOGGLE_ROW && ctx->col == THEME_TOGGLE_COL;
+}
+
+// Visual cue while holding the toggle cell: yellow border = release now to
+// switch layout, red border = release now to change theme.
+static void hold_feedback(lv_obj_t *cell, int tier) {
+    if (tier == g_hold_tier) return;
+    g_hold_tier = tier;
+    lv_color_t c = (tier == 2) ? lv_color_hex(0xFF3B30) : lv_color_hex(0xFFD400);
+    lv_obj_set_style_border_color(cell, c, 0);
+    lv_obj_set_style_border_width(cell, 6, 0);
+    lv_obj_set_style_shadow_color(cell, c, 0);
 }
 
 static void cell_event_cb(lv_event_t *e) {
@@ -203,8 +310,15 @@ static void cell_event_cb(lv_event_t *e) {
     CellCtx *ctx = (CellCtx *)lv_event_get_user_data(e);
     lv_obj_t *content = ctx->content;
 
-    if (code == LV_EVENT_PRESSED) {
+    if (code == LV_EVENT_PRESSING) {
+        if (is_toggle_cell(ctx)) {
+            uint32_t held = millis() - g_press_ms;
+            if (held >= THEME_TOGGLE_MS)       hold_feedback(cell, 2);
+            else if (held >= LAYOUT_TOGGLE_MS) hold_feedback(cell, 1);
+        }
+    } else if (code == LV_EVENT_PRESSED) {
         g_press_ms = millis();
+        g_hold_tier = 0;
         if (g_theme != THEME_COLOR) {
             const MonoPalette &pal = MONO_PALETTES[g_theme];
             lv_obj_set_style_bg_color(cell, lv_color_hex(pal.pressed_bg), 0);
@@ -224,6 +338,8 @@ static void cell_event_cb(lv_event_t *e) {
     } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         lv_obj_set_style_bg_color(cell, ctx->fill, 0);
         lv_obj_set_style_border_color(cell, ctx->border, 0);
+        lv_obj_set_style_border_width(cell, 2, 0);
+        g_hold_tier = 0;
         lv_obj_set_style_shadow_width(cell, 0, 0);
         lv_obj_set_style_shadow_opa(cell, LV_OPA_TRANSP, 0);
         if (g_theme != THEME_COLOR && content) {
@@ -233,11 +349,18 @@ static void cell_event_cb(lv_event_t *e) {
         // not on PRESS_LOST (finger dragged off) -- matches a real button's
         // behavior, where dragging off before releasing cancels the press.
         if (code == LV_EVENT_RELEASED) {
-            // Long hold on the toggle cell advances the theme INSTEAD of sending.
-            if (ctx->row == THEME_TOGGLE_ROW && ctx->col == THEME_TOGGLE_COL &&
-                millis() - g_press_ms >= THEME_TOGGLE_MS) {
-                advance_theme_and_restart();
-                return;
+            // Holds on the toggle cell act INSTEAD of sending a keystroke:
+            // long = next theme (reboot), medium = switch layout.
+            if (is_toggle_cell(ctx)) {
+                uint32_t held = millis() - g_press_ms;
+                if (held >= THEME_TOGGLE_MS) {
+                    advance_theme_and_restart();
+                    return;
+                }
+                if (held >= LAYOUT_TOGGLE_MS) {
+                    switch_layout();
+                    return;
+                }
             }
             send_keystroke(ctx->row, ctx->col);
         }
@@ -249,6 +372,7 @@ static void build_ui(void) {
     lv_obj_set_style_bg_color(scr, COL_BG, 0);
     lv_obj_set_style_pad_all(scr, 6, 0);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clean(scr); // no-op on first build; deletes the old grid on a layout switch
 
     static lv_coord_t col_dsc[N_COLS + 1];
     static lv_coord_t row_dsc[N_ROWS + 1];
@@ -268,12 +392,12 @@ static void build_ui(void) {
 
     for (int row = 0; row < N_ROWS; row++) {
         for (int col = 0; col < N_COLS; col++) {
-            const CellSpec &spec = GRID[row][col];
+            const CellSpec &spec = GRID[g_layout][row][col];
 
             lv_obj_t *cell = lv_obj_create(grid);
             lv_obj_set_grid_cell(cell, LV_GRID_ALIGN_STRETCH, col, 1, LV_GRID_ALIGN_STRETCH, row, 1);
-            lv_color_t base = lv_color_hex(COL_FILL_HEX[col]);
-            lv_color_t txt  = COL_DARK_TEXT[col] ? lv_color_black() : lv_color_white();
+            lv_color_t base = lv_color_hex(COL_FILL_HEX[g_layout][col]);
+            lv_color_t txt  = COL_DARK_TEXT[g_layout][col] ? lv_color_black() : lv_color_white();
             // Blank cells are NOT dimmed: they send a keystroke like any other,
             // so they get the same full column color, just with no label.
             lv_color_t fill = base;
@@ -349,9 +473,9 @@ static void build_ui(void) {
             lv_obj_t *fkey = lv_label_create(cell);
             char fkey_buf[16];
             if (MOD_TAG[row][0] != '\0') {
-                snprintf(fkey_buf, sizeof(fkey_buf), "%s %s", MOD_TAG[row], FKEYS[col]);
+                snprintf(fkey_buf, sizeof(fkey_buf), "%s %s", MOD_TAG[row], FKEYS[g_layout][col]);
             } else {
-                snprintf(fkey_buf, sizeof(fkey_buf), "%s", FKEYS[col]);
+                snprintf(fkey_buf, sizeof(fkey_buf), "%s", FKEYS[g_layout][col]);
             }
             lv_label_set_text(fkey, fkey_buf);
             lv_obj_set_style_text_font(fkey, &lv_font_montserrat_14, 0);
@@ -364,6 +488,7 @@ static void build_ui(void) {
             CELL_CTX[row][col].row = row;
             CELL_CTX[row][col].col = col;
             lv_obj_add_event_cb(cell, cell_event_cb, LV_EVENT_PRESSED, &CELL_CTX[row][col]);
+            lv_obj_add_event_cb(cell, cell_event_cb, LV_EVENT_PRESSING, &CELL_CTX[row][col]);
             lv_obj_add_event_cb(cell, cell_event_cb, LV_EVENT_RELEASED, &CELL_CTX[row][col]);
             lv_obj_add_event_cb(cell, cell_event_cb, LV_EVENT_PRESS_LOST, &CELL_CTX[row][col]);
         }
@@ -388,8 +513,12 @@ void setup()
         prefs.begin("fkeys", false); // rw so the namespace is created on first boot
         uint8_t saved = prefs.getUChar("theme", THEME_COLOR);
         g_theme = (saved < THEME_COUNT) ? (Theme)saved : THEME_COLOR; // guard against a stale/garbage value
+        // Layout survives only the theme-change reboot: read it, then erase.
+        uint8_t lay = prefs.getUChar("layout", 0);
+        g_layout = (lay < LAYOUT_COUNT) ? lay : 0;
+        prefs.remove("layout");
         prefs.end();
-        Serial.printf("Theme: %d\n", (int)g_theme);
+        Serial.printf("Theme: %d, layout: %d\n", (int)g_theme, g_layout);
     }
 
     Board *board = new Board();
