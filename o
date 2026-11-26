@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # o - Ollama launcher.
-#   o            menu: (1) pick a machine + model and chat, (2) Ollama's own menu on cwh or ib
+#   o            menu: pick a machine + model and chat, Ollama's own menu on cwh or ib,
+#                or Claude Code (runs here) on a picked machine + model
 #   o <args>     pass straight through to the LOCAL ollama (e.g. o list, o run llama3.2:3b)
 
 LOCAL="http://127.0.0.1:11434"
@@ -34,9 +35,11 @@ choose() {
 choose "Choice: " \
   "My models (pick machine + model)" \
   "Ollama's own menu on chatworkhorse" \
-  "Ollama's own menu on imagebeast"
+  "Ollama's own menu on imagebeast" \
+  "Claude Code (pick machine + model)"
+MODE=$PICK
 
-case "$PICK" in
+case "$MODE" in
   2) OLLAMA_HOST="$CWH" exec ollama ;;
   3) OLLAMA_HOST="$IB" exec ollama ;;
 esac
@@ -57,4 +60,21 @@ if [ ${#MODELS[@]} -eq 0 ]; then
 fi
 
 choose "Model on $NAME: " "${MODELS[@]}"
-OLLAMA_HOST="$HOST" exec ollama run "${MODELS[$((PICK-1))]}"
+MODEL="${MODELS[$((PICK-1))]}"
+if [ "$MODE" -eq 4 ]; then
+  # Claude Code assumes 1M for models it doesn't know, so load the model and
+  # tell it the context size the server actually used.
+  echo "Loading $MODEL on $NAME ..."
+  curl -sf "$HOST/api/generate" -d "{\"model\":\"$MODEL\"}" >/dev/null
+  CTX=$(curl -sf "$HOST/api/ps" | python3 -c 'import json,sys
+for m in json.load(sys.stdin)["models"]:
+    if m["name"] == sys.argv[1]: print(m.get("context_length") or "")' "$MODEL" 2>/dev/null)
+  if [ -n "$CTX" ]; then
+    export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$CTX"
+    echo "Context: $CTX tokens"
+  else
+    echo "Could not read the context size - Claude Code will guess it."
+  fi
+  OLLAMA_HOST="$HOST" exec ollama launch claude --model "$MODEL"
+fi
+OLLAMA_HOST="$HOST" exec ollama run "$MODEL"
